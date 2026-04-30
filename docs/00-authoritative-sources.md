@@ -19,11 +19,17 @@
 - World Bank：金融普惠、数字金融、支付和发展金融资料，https://www.worldbank.org/
 - International Monetary Fund (IMF)：https://www.imf.org/
 - International Organization of Securities Commissions (IOSCO)：https://www.iosco.org/
+- IFRS Foundation：国际财务报告准则和概念框架，https://www.ifrs.org/
 
 ## 专业金融和风险管理机构
 
 - CFA Institute：投资基础、投资管理、金融科技、数据科学相关资料，https://www.cfainstitute.org/
 - Global Association of Risk Professionals (GARP)：风险管理、FRM 相关资料，https://www.garp.org/
+- ACCA Global：会计、审计和财务基础资料，https://www.accaglobal.com/
+
+## 开放教材和辅助学习资料
+
+- OpenStax：开放教材，可作为基础概念辅助资料，https://openstax.org/
 
 ## 美国监管和公共机构
 

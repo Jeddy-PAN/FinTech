@@ -1,0 +1,7 @@
+name: fintech-lab
+channels:
+  - defaults
+dependencies:
+  - python=3.13
+  - pandas
+  - pytest

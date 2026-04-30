@@ -9,17 +9,26 @@
 - 学习方式：先学概念，再写最小实验，再把知识沉淀成文档。
 - 当前阶段：阶段 0，建立学习框架、资料来源和协作规则。
 
+## 环境和语言约定
+
+- Python 环境优先使用 Anaconda / conda 管理，基础配置见 [environment.yml](environment.yml)。
+- 学习文档使用中文并按 UTF-8 编码阅读。
+- 脚本、命令行输出、测试样例中的用户可见文本，以及未来前端 UI 文案，默认使用英文。
+- 脚本注释可以使用中文，用于解释学习意图或金融概念。
+
 ## 目录结构
 
 ```text
 .
 ├── AGENTS.md                  # 后续 AI 终端协作规则
+├── environment.yml            # conda 学习环境
 ├── LEARNING_PROGRESS.md       # 当前学习进度、计划和交接记录
 ├── README.md                  # 仓库入口
 ├── docs/                      # 金融科技基础知识和权威资料
 │   ├── 00-authoritative-sources.md
 │   ├── 01-fintech-overview.md
-│   └── 02-developer-to-finance.md
+│   ├── 02-developer-to-finance.md
+│   └── 03-ledger-basics.md
 └── labs/                      # 后续代码实验
     └── ledger-basics/         # 第一个实验：双分录账本
 ```
@@ -30,7 +39,8 @@
 2. 再读 [docs/00-authoritative-sources.md](docs/00-authoritative-sources.md)，理解哪些资料可以作为权威来源。
 3. 读 [docs/01-fintech-overview.md](docs/01-fintech-overview.md)，建立 FinTech 地图。
 4. 读 [docs/02-developer-to-finance.md](docs/02-developer-to-finance.md)，理解程序员转金融领域需要补什么。
-5. 开始 `labs/ledger-basics/`，用代码理解账户、交易、余额和审计。
+5. 读 [docs/03-ledger-basics.md](docs/03-ledger-basics.md)，理解账户、交易、分录和借贷平衡。
+6. 开始 `labs/ledger-basics/`，用代码理解账户、交易、余额和审计。
 
 ## 协作原则
 
