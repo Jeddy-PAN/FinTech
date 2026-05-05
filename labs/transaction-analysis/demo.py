@@ -1,7 +1,8 @@
 import sys
 from pathlib import Path
 
-from transaction_analysis import TransactionRepository
+from reporting import generate_analysis_report
+from transaction_analysis import CategoryRuleSet, TransactionRepository
 
 
 def main() -> None:
@@ -11,11 +12,15 @@ def main() -> None:
     lab_dir = Path(__file__).resolve().parent
     database_path = lab_dir / "transaction_analysis_demo.db"
     csv_path = lab_dir / "sample_transactions.csv"
+    category_rules_path = lab_dir / "category_rules.csv"
 
     if database_path.exists():
         database_path.unlink()
 
-    repository = TransactionRepository(database_path)
+    repository = TransactionRepository(
+        database_path,
+        category_rules=CategoryRuleSet.from_csv(category_rules_path),
+    )
     try:
         result = repository.import_csv(csv_path, source="sample_statement")
 
@@ -59,6 +64,15 @@ def main() -> None:
                 f"remaining={item.remaining}, "
                 f"over_budget={item.is_over_budget}"
             )
+
+        report_path = generate_analysis_report(
+            repository,
+            lab_dir / "reports",
+            budget_month="2026-01",
+            budget_by_category=budget,
+        )
+        print(f"\nHTML report: {report_path}")
+        print(f"CSV exports: {report_path.parent}")
     finally:
         repository.close()
 

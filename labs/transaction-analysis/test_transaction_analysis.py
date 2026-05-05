@@ -5,7 +5,9 @@ from uuid import uuid4
 import pandas as pd
 import pytest
 
+from reporting import generate_analysis_report
 from transaction_analysis import (
+    CategoryRuleSet,
     TransactionAnalysisError,
     TransactionRepository,
     categorize_transaction,
@@ -187,6 +189,45 @@ def test_compare_monthly_budget_rejects_negative_budget(repository) -> None:
         repository.compare_monthly_budget("2026-01", {"groceries": "-1.00"})
 
 
+def test_generate_analysis_report_writes_html_and_csv_exports(
+    repository,
+    csv_path,
+) -> None:
+    repository.import_csv(csv_path)
+    output_directory = _test_data_directory() / f"report-{uuid4()}"
+
+    report_path = generate_analysis_report(
+        repository,
+        output_directory,
+        budget_month="2026-01",
+        budget_by_category={
+            "groceries": "100.00",
+            "rent": "1400.00",
+            "transport": "50.00",
+        },
+    )
+
+    try:
+        assert report_path.exists()
+        assert (output_directory / "monthly_cashflow.csv").exists()
+        assert (output_directory / "monthly_expense_matrix.csv").exists()
+
+        html = report_path.read_text(encoding="utf-8")
+        assert "Transaction Analysis Report" in html
+        assert "Monthly Cashflow" in html
+        assert "Budget Variance: 2026-01" in html
+        assert "over-budget" in html
+
+        csv_header = (output_directory / "monthly_cashflow.csv").read_text(
+            encoding="utf-8"
+        ).splitlines()[0]
+        assert csv_header == "month,income,expense,net_cashflow"
+    finally:
+        for path in output_directory.glob("*"):
+            path.unlink()
+        output_directory.rmdir()
+
+
 def test_invalid_amount_is_rejected(repository) -> None:
     path = _test_data_directory() / f"{uuid4()}.csv"
     path.write_text(
@@ -231,6 +272,68 @@ def test_categorize_transaction_uses_keyword_rules() -> None:
     assert categorize_transaction("Payroll ACME Corp") == "income"
     assert categorize_transaction("Metro Transit") == "transport"
     assert categorize_transaction("Unknown Merchant") == "other"
+
+
+def test_repository_can_use_category_rules_from_csv(database_path) -> None:
+    directory = _test_data_directory()
+    statement_path = directory / f"{uuid4()}.csv"
+    rules_path = directory / f"{uuid4()}.csv"
+    statement_path.write_text(
+        "\n".join(
+            [
+                "transaction_id,posted_date,description,amount",
+                "txn_001,2026-01-02,Neighborhood Bakery,-12.50",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    rules_path.write_text(
+        "\n".join(
+            [
+                "category,keyword",
+                "dining,bakery",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    repository = TransactionRepository(
+        database_path,
+        category_rules=CategoryRuleSet.from_csv(rules_path),
+    )
+    try:
+        repository.import_csv(statement_path)
+
+        assert repository.transactions[0].category == "dining"
+    finally:
+        repository.close()
+        if statement_path.exists():
+            statement_path.unlink()
+        if rules_path.exists():
+            rules_path.unlink()
+
+
+def test_category_rules_csv_rejects_missing_required_column() -> None:
+    path = _test_data_directory() / f"{uuid4()}.csv"
+    path.write_text(
+        "\n".join(
+            [
+                "category",
+                "dining",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    try:
+        with pytest.raises(
+            TransactionAnalysisError,
+            match="Category rules CSV missing required columns",
+        ):
+            CategoryRuleSet.from_csv(path)
+    finally:
+        if path.exists():
+            path.unlink()
 
 
 def _test_data_directory() -> Path:

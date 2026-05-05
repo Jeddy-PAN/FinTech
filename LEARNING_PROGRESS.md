@@ -53,6 +53,8 @@
 - 实现交易流水 CSV 导入、SQLite 存储、分类和月度现金流分析：`labs/transaction-analysis/`
 - 添加交易流水分析测试：`labs/transaction-analysis/test_transaction_analysis.py`
 - 交易流水分析支持按类别的月度支出矩阵和预算对比
+- 交易流水分析支持 HTML 报告和 CSV 导出：`labs/transaction-analysis/reporting.py`
+- 交易流水分析支持从 `category_rules.csv` 读取可配置分类规则
 
 ## 当前待学
 
@@ -175,8 +177,10 @@
 - 重复导入时用 `transaction_id` 防止重复计入
 - 按类别的月度支出矩阵 pivot table
 - 预算 budget 与实际支出 actual 对比
+- HTML 报告和 CSV 导出
+- 可配置分类规则 `category_rules.csv`
 
-当前已完成第一版学习材料和代码实验，并新增了按类别的月度支出矩阵和预算对比；下一步可加入简单图表或导出报表。
+当前已完成第一版学习材料和代码实验，并新增了按类别的月度支出矩阵、预算对比、HTML 报告、CSV 导出和可配置分类规则；下一步建议进入投资组合实验。
 
 ## 近期计划
 
@@ -223,7 +227,9 @@
 - 对比 SQL 汇总和 Pandas 汇总的结果
 - 理解按类别的月度支出矩阵
 - 理解预算和实际支出的差异计算
-- 下一步可扩展简单图表、CSV 导出或更细的分类规则
+- 理解 HTML 报告和 CSV 导出如何让分析结果可阅读、可复核
+- 理解 `category_rules.csv` 如何把业务规则从代码里分离出来
+- 下一步进入投资组合实验：收益率、波动率、最大回撤
 
 ## 本机环境记录
 
@@ -321,3 +327,5 @@ conda activate fintech-lab
 | 2026-05-05 | 新增 outbox publisher 第一版 | demo_sqlite 可发布 outbox；全量 pytest 50 个测试通过 |
 | 2026-05-05 | 新增交易流水分析第一版 | transaction-analysis demo 可运行；全量 pytest 58 个测试通过 |
 | 2026-05-05 | 扩展交易流水分析 | 支持按类别的月度支出矩阵和预算对比；全量 pytest 61 个测试通过 |
+| 2026-05-05 | 新增交易流水报告导出 | 生成 HTML 报告和 CSV 导出；全量 pytest 62 个测试通过 |
+| 2026-05-05 | 新增可配置分类规则 | 从 `category_rules.csv` 读取关键词规则；全量 pytest 64 个测试通过 |

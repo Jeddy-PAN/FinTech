@@ -59,6 +59,8 @@ CSV statement -> normalized transactions table -> SQL aggregation -> cashflow re
 
 第四，导入要考虑幂等。当前实验用 `transaction_id` 做主键；同一份 CSV 重复导入时，已存在的交易会被跳过，不会重复计入月度汇总。
 
+第五，分类规则最好和代码分离。规则经常会调整，例如新增商户、修正误分类、拆分更细的类别。如果每次都改 Python 代码，维护成本会很高，也不利于非工程角色参与配置。
+
 ## 当前实验数据格式
 
 示例 CSV：
@@ -76,6 +78,33 @@ txn_003,2026-01-05,Metro Transit,-32.00
 amount > 0  流入，例如工资、利息、退款
 amount < 0  流出，例如房租、餐饮、购物
 ```
+
+## 可配置分类规则
+
+当前实验把分类规则放在：
+
+```text
+labs/transaction-analysis/category_rules.csv
+```
+
+格式很简单：
+
+```csv
+category,keyword
+income,payroll
+groceries,grocery
+dining,restaurant
+transport,metro
+```
+
+导入流水时，系统会按规则顺序检查 `description` 是否包含某个 `keyword`。匹配到第一条规则后，就使用对应的 `category`。如果没有任何规则匹配，则分类为 `other`。
+
+这仍然是教学版规则引擎，但它比写死在代码里更接近真实系统：
+
+- 规则可以单独查看。
+- 新增规则不需要改核心导入逻辑。
+- 测试可以验证“配置文件缺列、空规则、未知商户”等场景。
+- 后续可以扩展优先级、商户标准化或用户手动修正。
 
 ## SQLite 表结构
 
@@ -182,14 +211,40 @@ remaining = budget - actual
 
 注意：这是学习用的个人现金流分析，不是会计准则意义上的正式预算管理，也不是个人理财建议。
 
+## HTML 报告和 CSV 导出
+
+分析结果如果只停留在 Python 对象或终端输出里，很难给其他人阅读，也不方便后续复核。真实金融系统常常需要把分析结果落成报表、文件、审计附件或运营看板。
+
+当前实验新增一个最小报告生成器：
+
+```text
+SQLite transactions -> monthly summary -> HTML report + CSV exports
+```
+
+运行 demo 后会生成：
+
+```text
+labs/transaction-analysis/reports/transaction_analysis_report.html
+labs/transaction-analysis/reports/monthly_cashflow.csv
+labs/transaction-analysis/reports/monthly_expense_matrix.csv
+```
+
+HTML 报告适合直接打开阅读；CSV 文件适合继续用 Excel、LibreOffice、Pandas 或其他 BI 工具分析。
+
+这里刻意没有引入 Web 框架。原因是当前学习目标是掌握交易流水分析闭环，而不是做一个完整报表系统。先把数据、计算和导出打通，比过早做前端更稳。
+
 ## 当前实验新增了什么
 
 - `labs/transaction-analysis/sample_transactions.csv`
+- `labs/transaction-analysis/category_rules.csv`
 - `labs/transaction-analysis/transaction_analysis.py`
+- `labs/transaction-analysis/reporting.py`
 - `labs/transaction-analysis/demo.py`
 - `labs/transaction-analysis/test_transaction_analysis.py`
 - `category_monthly_expense_matrix()`
 - `compare_monthly_budget()`
+- `generate_analysis_report()`
+- `CategoryRuleSet.from_csv()`
 
 运行 demo：
 

@@ -52,9 +52,99 @@ class BudgetVariance:
     is_over_budget: bool
 
 
+@dataclass(frozen=True)
+class CategoryRule:
+    category: str
+    keyword: str
+
+
+class CategoryRuleSet:
+    def __init__(self, rules: list[CategoryRule]) -> None:
+        if not rules:
+            raise TransactionAnalysisError("At least one category rule is required")
+        self._rules = tuple(rules)
+
+    @classmethod
+    def default(cls) -> CategoryRuleSet:
+        return cls(
+            [
+                CategoryRule("income", "payroll"),
+                CategoryRule("income", "salary"),
+                CategoryRule("income", "interest"),
+                CategoryRule("income", "dividend"),
+                CategoryRule("rent", "rent"),
+                CategoryRule("rent", "landlord"),
+                CategoryRule("groceries", "grocery"),
+                CategoryRule("groceries", "market"),
+                CategoryRule("groceries", "supermarket"),
+                CategoryRule("transport", "metro"),
+                CategoryRule("transport", "transit"),
+                CategoryRule("transport", "taxi"),
+                CategoryRule("transport", "ride share"),
+                CategoryRule("transport", "gas"),
+                CategoryRule("dining", "restaurant"),
+                CategoryRule("dining", "coffee"),
+                CategoryRule("dining", "cafe"),
+                CategoryRule("utilities", "electric"),
+                CategoryRule("utilities", "utility"),
+                CategoryRule("utilities", "water"),
+                CategoryRule("utilities", "internet"),
+                CategoryRule("shopping", "online store"),
+                CategoryRule("shopping", "shopping"),
+                CategoryRule("shopping", "shop"),
+                CategoryRule("transfer", "transfer"),
+            ]
+        )
+
+    @classmethod
+    def from_csv(cls, csv_path: str | Path) -> CategoryRuleSet:
+        path = Path(csv_path)
+        with path.open(newline="", encoding="utf-8") as file:
+            reader = csv.DictReader(file)
+            required_columns = {"category", "keyword"}
+            if reader.fieldnames is None:
+                raise TransactionAnalysisError("Category rules CSV header is required")
+
+            missing_columns = required_columns - set(reader.fieldnames)
+            if missing_columns:
+                missing = ", ".join(sorted(missing_columns))
+                raise TransactionAnalysisError(
+                    f"Category rules CSV missing required columns: {missing}"
+                )
+
+            rules = []
+            for row in reader:
+                category = row["category"].strip()
+                keyword = row["keyword"].strip()
+                if not category:
+                    raise TransactionAnalysisError("Category rule category is required")
+                if not keyword:
+                    raise TransactionAnalysisError("Category rule keyword is required")
+                rules.append(CategoryRule(category, keyword))
+
+        return cls(rules)
+
+    @property
+    def rules(self) -> tuple[CategoryRule, ...]:
+        return self._rules
+
+    def categorize(self, description: str) -> str:
+        normalized = description.casefold()
+        for rule in self._rules:
+            if rule.keyword.casefold() in normalized:
+                return rule.category
+        return "other"
+
+
 class TransactionRepository:
-    def __init__(self, database_path: str | Path) -> None:
+    def __init__(
+        self,
+        database_path: str | Path,
+        *,
+        category_rules: CategoryRuleSet | None = None,
+    ) -> None:
         self.database_path = Path(database_path)
+        self.category_rules = category_rules or CategoryRuleSet.default()
         self._connection = sqlite3.connect(self.database_path)
         self._connection.row_factory = sqlite3.Row
         self._create_schema()
@@ -322,7 +412,7 @@ class TransactionRepository:
             posted_date=_parse_date(row["posted_date"]),
             description=description,
             amount=_parse_signed_money(row["amount"]),
-            category=categorize_transaction(description),
+            category=self.category_rules.categorize(description),
             source=source,
         )
 
@@ -338,23 +428,7 @@ class TransactionRepository:
 
 
 def categorize_transaction(description: str) -> str:
-    normalized = description.casefold()
-    rules = [
-        ("income", ("payroll", "salary", "interest", "dividend")),
-        ("rent", ("rent", "landlord")),
-        ("groceries", ("grocery", "market", "supermarket")),
-        ("transport", ("metro", "transit", "taxi", "ride share", "gas")),
-        ("dining", ("restaurant", "coffee", "cafe")),
-        ("utilities", ("electric", "utility", "water", "internet")),
-        ("shopping", ("online store", "shopping", "shop")),
-        ("transfer", ("transfer",)),
-    ]
-
-    for category, keywords in rules:
-        if any(keyword in normalized for keyword in keywords):
-            return category
-
-    return "other"
+    return CategoryRuleSet.default().categorize(description)
 
 
 def _parse_date(value: str) -> date:
