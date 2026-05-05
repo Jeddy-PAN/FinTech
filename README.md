@@ -7,7 +7,7 @@
 - 学习对象：有编程背景，金融领域零基础。
 - 学习目标：理解金融业务、FinTech 工程系统、数据分析、风控和合规基础。
 - 学习方式：先学概念，再写最小实验，再把知识沉淀成文档。
-- 当前阶段：阶段 3，进入交易流水分析和金融数据分析基础。
+- 当前阶段：阶段 4，进入投资组合分析基础。
 
 ## 环境和语言约定
 
@@ -45,11 +45,13 @@ PYTHONIOENCODING=utf-8
 │   ├── 09-payment-order-persistence.md
 │   ├── 10-transactional-outbox.md
 │   ├── 11-outbox-publisher.md
-│   └── 12-transaction-statement-analysis.md
+│   ├── 12-transaction-statement-analysis.md
+│   └── 13-portfolio-analysis.md
 └── labs/                      # 后续代码实验
     ├── ledger-basics/         # 第一个实验：双分录账本
     ├── payment-orders/        # 第二个实验：支付订单系统
-    └── transaction-analysis/  # 第三个实验：交易流水分析
+    ├── transaction-analysis/  # 第三个实验：交易流水分析
+    └── portfolio-analysis/    # 第四个实验：投资组合分析
 ```
 
 ## 建议学习顺序
@@ -69,6 +71,8 @@ PYTHONIOENCODING=utf-8
 13. 读 [docs/11-outbox-publisher.md](docs/11-outbox-publisher.md)，理解 pending outbox message 如何发布和重试。
 14. 读 [docs/12-transaction-statement-analysis.md](docs/12-transaction-statement-analysis.md)，理解 CSV 交易流水、SQLite 聚合和 Pandas 月度现金流。
 15. 运行 `labs/transaction-analysis/`，从样例流水生成月度现金流报表。
+16. 读 [docs/13-portfolio-analysis.md](docs/13-portfolio-analysis.md)，理解收益率、波动率和最大回撤。
+17. 运行 `labs/portfolio-analysis/`，用样例价格数据计算投资组合指标。
 
 ## 协作原则
 

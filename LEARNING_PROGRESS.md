@@ -5,9 +5,9 @@
 ## 当前状态
 
 - 学习者背景：程序员，金融和 FinTech 目前按零基础处理。
-- 当前阶段：阶段 3，进入交易流水分析和金融数据分析基础。
-- 当前主线：把账户交易流水导入 SQLite，理解交易分类、SQL 月度聚合、Pandas 分组分析和个人现金流报表。
-- 当前仓库状态：已完成账本基础实验、支付订单实验、outbox publisher 第一版，以及交易流水分析第一版。
+- 当前阶段：阶段 4，进入投资组合分析基础。
+- 当前主线：用样例价格数据理解收益率、组合收益、年化波动率和最大回撤。
+- 当前仓库状态：已完成账本基础实验、支付订单实验、交易流水分析实验，以及投资组合分析第一版。
 
 ## 学习原则
 
@@ -55,6 +55,12 @@
 - 交易流水分析支持按类别的月度支出矩阵和预算对比
 - 交易流水分析支持 HTML 报告和 CSV 导出：`labs/transaction-analysis/reporting.py`
 - 交易流水分析支持从 `category_rules.csv` 读取可配置分类规则
+- 建立投资组合分析笔记：`docs/13-portfolio-analysis.md`
+- 实现投资组合收益率、年化波动率和最大回撤实验：`labs/portfolio-analysis/`
+- 添加投资组合分析测试：`labs/portfolio-analysis/test_portfolio_analysis.py`
+- 投资组合分析支持相关性矩阵、协方差矩阵和基于协方差的组合波动率
+- 投资组合分析支持基于当前持仓、最新价格和目标权重计算再平衡交易
+- 投资组合分析支持 HTML 报告和 CSV 导出：`labs/portfolio-analysis/portfolio_reporting.py`
 
 ## 当前待学
 
@@ -182,6 +188,28 @@
 
 当前已完成第一版学习材料和代码实验，并新增了按类别的月度支出矩阵、预算对比、HTML 报告、CSV 导出和可配置分类规则；下一步建议进入投资组合实验。
 
+### 主题 12：投资组合分析
+
+- 投资组合 portfolio
+- 价格历史 price history
+- 单资产收益率 asset return
+- 组合收益率 portfolio return
+- 固定权重 fixed weights
+- 累计收益率 cumulative return
+- 年化波动率 annualized volatility
+- 最大回撤 maximum drawdown
+- 相关性矩阵 correlation matrix
+- 协方差矩阵 covariance matrix
+- 组合风险公式 `sqrt(w^T * Sigma * w)`
+- 组合再平衡 rebalancing
+- 当前权重 current weight
+- 目标权重 target weight
+- 交易金额 trade value
+- 交易份额 trade quantity
+- HTML 报告和 CSV 导出
+
+当前已完成第一版学习材料和代码实验，并加入资产相关性、协方差矩阵、基于协方差的组合波动率、组合再平衡、HTML 报告和 CSV 导出；下一步建议进入风控规则引擎。
+
 ## 近期计划
 
 ### 第 1 周
@@ -230,6 +258,20 @@
 - 理解 HTML 报告和 CSV 导出如何让分析结果可阅读、可复核
 - 理解 `category_rules.csv` 如何把业务规则从代码里分离出来
 - 下一步进入投资组合实验：收益率、波动率、最大回撤
+
+### 第 5 周
+
+- 阅读 `docs/13-portfolio-analysis.md`
+- 运行 `labs/portfolio-analysis/demo.py`
+- 理解价格如何转换成收益率
+- 理解组合收益率为什么是资产收益率的加权和
+- 理解年化波动率的 `sqrt(252)` 简化假设
+- 理解最大回撤如何从净值曲线计算
+- 理解资产相关性和协方差如何影响组合风险
+- 理解 `sqrt(w^T * Sigma * w)` 如何从协方差矩阵计算组合波动率
+- 理解组合再平衡如何从当前持仓和目标权重计算买卖金额
+- 理解投资组合报告如何导出收益、风险和再平衡结果
+- 下一步进入风控规则引擎：限额、异常检测、规则命中和审核
 
 ## 本机环境记录
 
@@ -287,6 +329,12 @@ conda activate fintech-lab
 & 'C:\App\Anaconda\python.exe' -m pytest -p no:cacheprovider .\labs
 ```
 
+- 运行投资组合分析 demo：
+
+```powershell
+& 'C:\App\Anaconda\python.exe' .\labs\portfolio-analysis\demo.py
+```
+
 - pytest 曾生成 `pytest-cache-files-*` 临时目录且当前无法删除，已通过 `.ignore` 和 `.gitignore` 忽略，避免影响 `rg --files`。
 - pytest 的默认用户临时目录曾出现访问权限问题；测试数据优先写入仓库内各实验的 `.test-data/`，并已忽略该目录。
 
@@ -329,3 +377,8 @@ conda activate fintech-lab
 | 2026-05-05 | 扩展交易流水分析 | 支持按类别的月度支出矩阵和预算对比；全量 pytest 61 个测试通过 |
 | 2026-05-05 | 新增交易流水报告导出 | 生成 HTML 报告和 CSV 导出；全量 pytest 62 个测试通过 |
 | 2026-05-05 | 新增可配置分类规则 | 从 `category_rules.csv` 读取关键词规则；全量 pytest 64 个测试通过 |
+| 2026-05-05 | 新增投资组合分析第一版 | portfolio-analysis demo 可运行；全量 pytest 72 个测试通过 |
+| 2026-05-05 | 扩展投资组合风险指标 | 支持相关性矩阵、协方差矩阵和协方差组合波动率；全量 pytest 75 个测试通过 |
+| 2026-05-05 | 新增组合再平衡计算 | 根据当前持仓、最新价格和目标权重计算买卖金额；全量 pytest 77 个测试通过 |
+| 2026-05-05 | 新增投资组合报告导出 | 生成 HTML 报告和收益/风险/再平衡 CSV；全量 pytest 78 个测试通过 |
+| 2026-05-05 | 补强交易流水和投资组合学习文档 | 增加核心概念定义、真实金融使用场景和实现注意点 |
