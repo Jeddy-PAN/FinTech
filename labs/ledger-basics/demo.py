@@ -31,6 +31,7 @@ def main() -> None:
             Entry(platform_bank.id, EntrySide.DEBIT, money("100.00")),
             Entry(user_wallet.id, EntrySide.CREDIT, money("100.00")),
         ],
+        idempotency_key="demo-top-up-001",
     )
 
     ledger.post_transaction(
@@ -39,6 +40,16 @@ def main() -> None:
             Entry(user_wallet.id, EntrySide.DEBIT, money("2.00")),
             Entry(fee_income.id, EntrySide.CREDIT, money("2.00")),
         ],
+        idempotency_key="demo-fee-001",
+    )
+
+    retry = ledger.post_transaction(
+        "User wallet top-up: 100.00",
+        [
+            Entry(platform_bank.id, EntrySide.DEBIT, money("100.00")),
+            Entry(user_wallet.id, EntrySide.CREDIT, money("100.00")),
+        ],
+        idempotency_key="demo-top-up-001",
     )
 
     print("Account Balances")
@@ -49,6 +60,7 @@ def main() -> None:
     print("\nTrial Balance")
     print(f"- Total debits: {trial_balance[EntrySide.DEBIT]}")
     print(f"- Total credits: {trial_balance[EntrySide.CREDIT]}")
+    print(f"\nIdempotent retry returned transaction: {retry.id}")
 
 
 if __name__ == "__main__":

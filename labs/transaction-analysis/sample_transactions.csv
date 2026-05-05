@@ -1,0 +1,14 @@
+transaction_id,posted_date,description,amount
+txn_001,2026-01-02,Payroll ACME Corp,3200.00
+txn_002,2026-01-03,City Grocery Market,-86.45
+txn_003,2026-01-05,Metro Transit,-32.00
+txn_004,2026-01-06,Blue Bottle Coffee,-5.75
+txn_005,2026-01-10,January Rent,-1450.00
+txn_006,2026-01-18,Electric Utility,-94.20
+txn_007,2026-01-25,Savings Interest,4.12
+txn_008,2026-02-01,Payroll ACME Corp,3200.00
+txn_009,2026-02-03,Online Store,-124.99
+txn_010,2026-02-04,City Grocery Market,-91.30
+txn_011,2026-02-12,Restaurant Dinner,-48.80
+txn_012,2026-02-15,Transfer from Brokerage,500.00
+

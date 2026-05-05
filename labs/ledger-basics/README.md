@@ -12,6 +12,9 @@
 - 使用 `Decimal` 处理金额。
 - 查询账户余额。
 - 计算试算平衡。
+- 提供内存版 `Ledger` 和 SQLite 持久化版 `SQLiteLedger`。
+- 使用 `idempotency_key` 防止重复请求重复入账。
+- 使用 `request_fingerprint` 检查同一个幂等键下的请求参数一致性。
 
 ## 运行示例
 
@@ -23,6 +26,12 @@ python .\labs\ledger-basics\demo.py
 
 ```powershell
 & 'C:\App\Anaconda\python.exe' .\labs\ledger-basics\demo.py
+```
+
+运行 SQLite 持久化示例：
+
+```powershell
+& 'C:\App\Anaconda\python.exe' .\labs\ledger-basics\demo_sqlite.py
 ```
 
 ## 运行测试

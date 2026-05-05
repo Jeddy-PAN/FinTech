@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import json
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
@@ -47,6 +49,8 @@ class Transaction:
     id: str
     description: str
     entries: tuple[Entry, ...]
+    idempotency_key: str | None = None
+    request_fingerprint: str | None = None
     posted_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
 
@@ -66,6 +70,7 @@ class Ledger:
     def __init__(self) -> None:
         self._accounts: dict[str, Account] = {}
         self._transactions: list[Transaction] = []
+        self._idempotency_index: dict[str, Transaction] = {}
 
     @property
     def accounts(self) -> tuple[Account, ...]:
@@ -101,16 +106,29 @@ class Ledger:
         description: str,
         entries: Iterable[Entry],
         transaction_id: str | None = None,
+        idempotency_key: str | None = None,
     ) -> Transaction:
+        normalized_key = self._normalize_idempotency_key(idempotency_key)
         normalized_entries = tuple(entries)
+        request_fingerprint = self._request_fingerprint(description, normalized_entries)
+
+        if normalized_key and normalized_key in self._idempotency_index:
+            existing = self._idempotency_index[normalized_key]
+            self._validate_idempotent_retry(existing, request_fingerprint)
+            return existing
+
         self._validate_transaction(description, normalized_entries)
 
         transaction = Transaction(
             id=transaction_id or str(uuid4()),
             description=description.strip(),
             entries=normalized_entries,
+            idempotency_key=normalized_key,
+            request_fingerprint=request_fingerprint,
         )
         self._transactions.append(transaction)
+        if normalized_key:
+            self._idempotency_index[normalized_key] = transaction
         return transaction
 
     def balance_for(self, account_id: str) -> Decimal:
@@ -182,3 +200,39 @@ class Ledger:
             return entry.amount if is_debit_positive else -entry.amount
 
         return -entry.amount if is_debit_positive else entry.amount
+
+    def _normalize_idempotency_key(self, idempotency_key: str | None) -> str | None:
+        if idempotency_key is None:
+            return None
+
+        normalized_key = idempotency_key.strip()
+        if not normalized_key:
+            raise LedgerError("Idempotency key cannot be blank")
+
+        return normalized_key
+
+    def _request_fingerprint(self, description: str, entries: tuple[Entry, ...]) -> str:
+        payload = {
+            "description": description.strip(),
+            "entries": sorted(
+                [
+                    {
+                        "account_id": entry.account_id,
+                        "side": entry.side.value,
+                        "amount": str(entry.amount.quantize(CENT)),
+                    }
+                    for entry in entries
+                ],
+                key=lambda item: (item["account_id"], item["side"], item["amount"]),
+            ),
+        }
+        encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        return hashlib.sha256(encoded).hexdigest()
+
+    def _validate_idempotent_retry(
+        self,
+        existing: Transaction,
+        request_fingerprint: str,
+    ) -> None:
+        if existing.request_fingerprint != request_fingerprint:
+            raise LedgerError("Idempotency key was reused with different request data")
