@@ -39,6 +39,8 @@
 - Consumer Financial Protection Bureau (CFPB)：消费者金融、信贷、支付、数据权益，https://www.consumerfinance.gov/
 - Office of the Comptroller of the Currency (OCC)：银行监管和金融科技，https://www.occ.gov/
 - Federal Deposit Insurance Corporation (FDIC)：银行、存款保险、监管资料，https://www.fdic.gov/
+- Financial Crimes Enforcement Network (FinCEN)：反洗钱、CDD、BSA、beneficial ownership 等资料，https://www.fincen.gov/
+- Office of Foreign Assets Control (OFAC)：制裁名单、名单搜索和制裁合规资料，https://ofac.treasury.gov/
 
 ## 中国监管和公共机构
 

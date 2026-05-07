@@ -5,9 +5,9 @@
 ## 当前状态
 
 - 学习者背景：程序员，金融和 FinTech 目前按零基础处理。
-- 当前阶段：阶段 5，进入风控规则引擎基础。
-- 当前主线：用最小规则引擎理解限额、规则命中、可解释决策、人工审核和持久化审计。
-- 当前仓库状态：已完成账本基础实验、支付订单实验、交易流水分析实验、投资组合分析实验，以及风控规则引擎、人工复核状态机、SQLite 持久化、风控审计事件日志、规则版本记录、第一组非金额风险信号、教学版风险评分、纯评分策略、可筛选规则命中统计报表、规则版本对比报表和风控报表导出。
+- 当前阶段：阶段 6，进入 KYC/AML 和合规基础。
+- 当前主线：用最小开户筛查实验理解客户身份识别、CDD、beneficial owner、名单筛查、watchlist 数据版本、policy 策略版本、版本对比报表、replay 重放分析、replay run 审批、风险评分、人工复核、持久化审计、报表观察、报表导出和可解释决策。
+- 当前仓库状态：已完成账本基础实验、支付订单实验、交易流水分析实验、投资组合分析实验、风控规则引擎实验，以及 KYC/AML 开户筛查、人工复核状态机、SQLite 持久化、审计事件、汇总报表、报表导出、watchlist 数据版本记录、KYC/AML 策略版本记录、版本对比报表、replay 重放分析和 replay run 持久化审批实验。
 
 ## 学习原则
 
@@ -75,6 +75,21 @@
 - 风控规则引擎支持规则命中统计报表：决策状态、规则命中次数、风险分数和审核状态，并可按规则版本和决策时间窗口筛选
 - 风控规则引擎支持规则版本对比报表：比较两个规则版本的决策状态、规则命中、风险分数和审核状态差异
 - 风控规则引擎支持导出 CSV 和 HTML 报表：`labs/risk-rule-engine/risk_report_export.py`
+- 建立 KYC/AML 开户筛查笔记：`docs/15-kyc-aml-onboarding.md`
+- 实现最小 KYC/AML 开户筛查实验：`labs/kyc-aml-onboarding/`
+- 添加 KYC/AML 开户筛查测试：`labs/kyc-aml-onboarding/test_kyc_aml.py`
+- KYC/AML 开户筛查支持个人和法人客户资料检查、beneficial owner 检查、教学版 watchlist screening、模糊匹配、风险评分和可解释决策
+- KYC/AML 开户筛查支持为 `review` 决策创建人工复核案例，并流转 `pending_review -> approved / rejected / request_more_info`
+- KYC/AML 开户筛查支持使用 SQLite 保存客户申请、beneficial owner、KYC/AML 决策、检查结果和审核案例：`labs/kyc-aml-onboarding/sqlite_kyc_store.py`
+- KYC/AML 开户筛查支持追加式审计事件：`kyc_application.saved`、`kyc_decision.saved`、`kyc_review_case.created`、`kyc_review_case.approved/rejected/request_more_info`
+- KYC/AML 开户筛查支持汇总报表：客户类型、决策状态、检查命中次数、风险分数和审核状态，并可按客户类型、决策状态、提交时间窗口和决策时间窗口筛选：`labs/kyc-aml-onboarding/kyc_reporting.py`
+- KYC/AML 开户筛查支持导出 CSV 和 HTML 报表：`labs/kyc-aml-onboarding/kyc_report_export.py`
+- KYC/AML 开户筛查支持保存 watchlist 数据版本，并让 KYC/AML 决策关联 `watchlist_version_id`
+- KYC/AML 开户筛查支持保存策略版本，并让 KYC/AML 决策关联 `policy_version_id`
+- KYC/AML 开户筛查支持 watchlist/policy 版本对比报表，比较已保存版本下的决策状态、检查命中、风险分数和审核状态差异
+- KYC/AML 开户筛查支持 replay 报表，用新的样例 watchlist 或 policy 重新评估已保存申请，并逐客户比较原决策和重放决策
+- KYC/AML 开户筛查支持保存 replay run、逐客户 replay 明细和 `pending_review -> approved / rejected` 审批结论，并记录 replay run 审计事件
+- 权威资料索引新增 FinCEN 和 OFAC：`docs/00-authoritative-sources.md`
 
 ## 当前待学
 
@@ -266,7 +281,63 @@
 - 币种限制 currency control
 - 规则配置 rule configuration
 
-当前已完成第一版学习材料和代码实验，支持从 JSON 配置读取规则参数，已加入最小人工复核状态机、SQLite 持久化、追加式风控审计事件、规则版本记录、第一组非金额风险信号、教学版风险评分、纯评分策略、可筛选规则命中统计报表、规则版本对比报表和风控报表导出；下一步可进入 KYC/AML/合规基础。
+当前已完成第一版学习材料和代码实验，支持从 JSON 配置读取规则参数，已加入最小人工复核状态机、SQLite 持久化、追加式风控审计事件、规则版本记录、第一组非金额风险信号、教学版风险评分、纯评分策略、可筛选规则命中统计报表、规则版本对比报表和风控报表导出；后续可以和 KYC/AML 决策、审核案例和审计日志继续衔接。
+
+### 主题 14：KYC/AML 开户筛查
+
+- KYC / Know Your Customer
+- AML / Anti-Money Laundering
+- CDD / Customer Due Diligence
+- EDD / Enhanced Due Diligence
+- CIP / Customer Identification Program
+- beneficial owner
+- sanctions screening
+- watchlist matching
+- fuzzy matching
+- false positive
+- risk-based approach
+- customer application
+- customer type
+- individual
+- legal entity
+- expected activity
+- risk score
+- check result
+- manual review
+- review case
+- review status
+- request more info
+- reviewer
+- review reason
+- KYC persistence
+- audit event
+- append-only log
+- kyc applications table
+- kyc decisions table
+- kyc check results table
+- kyc review cases table
+- KYC summary report
+- report filter
+- submitted time window
+- decided time window
+- check hit count
+- customer type count
+- report export
+- CSV report
+- HTML report
+- watchlist version
+- watchlist version id
+- policy version
+- policy version id
+- KYC version comparison report
+- KYC replay report
+- KYC replay run
+- replay run approval
+- content hash
+- effective at
+- approved / review / blocked
+
+当前已完成第一版学习材料和代码实验，支持个人和法人客户开户申请检查、beneficial owner 信息检查、样例名单筛查、模糊匹配、样例高风险国家/地区、较高预期月交易量、风险评分和可解释决策；已加入最小人工复核状态机、SQLite 持久化、追加式审计事件、可筛选 KYC/AML 汇总报表、报表导出、watchlist 数据版本记录、KYC/AML 策略版本记录、版本对比报表、replay 重放分析、replay run 运行记录和审批结论。所有名单、国家/地区和阈值均为教学数据，不代表真实合规规则；下一步可进入合规与审计主题，继续理解权限、留痕、数据保护和记录保留。
 
 ## 近期计划
 
@@ -361,6 +432,32 @@
 - 理解风控报表导出如何把统计结果写成 CSV 和 HTML 文件
 - 下一步可进入 KYC/AML/合规基础
 
+### 第 7 周
+
+- 阅读 `docs/15-kyc-aml-onboarding.md`
+- 运行 `labs/kyc-aml-onboarding/demo.py`
+- 理解 KYC、AML、CDD、beneficial owner 和 sanctions screening 的区别
+- 理解为什么名单筛查需要模糊匹配和人工复核，而不是简单字符串相等
+- 理解当前实验为什么只使用教学版名单和样例国家/地区
+- 理解开户筛查决策为什么要保存每条检查的原因和分值
+- 运行 `labs/kyc-aml-onboarding/demo_sqlite.py`
+- 理解客户申请、beneficial owner、KYC/AML 决策和检查结果为什么要分表保存
+- 理解 `pending_review -> approved / rejected / request_more_info` 的状态流转
+- 理解 `kyc_audit_events` 如何记录关键动作历史
+- 理解状态表和追加式审计日志的区别
+- 理解 KYC/AML 汇总报表如何聚合客户类型、决策状态、检查命中、风险分数和审核状态
+- 理解报表为什么需要按客户类型、决策状态、提交时间窗口和决策时间窗口筛选
+- 理解 KYC/AML 报表导出如何把统计结果写成 CSV 和 HTML 文件
+- 理解 watchlist 数据版本为什么需要保存 `version_id`、`source`、`entry_count`、`content_hash` 和 `effective_at`
+- 理解 KYC/AML 决策为什么要关联当时使用的 `watchlist_version_id`
+- 理解 KYC/AML 策略版本为什么需要保存阈值、样例高风险国家/地区、匹配分数门槛和 `effective_at`
+- 理解 KYC/AML 决策为什么要关联当时使用的 `policy_version_id`
+- 理解 watchlist/policy 版本对比报表如何比较已保存决策的决策状态、检查命中、风险分数和审核状态差异
+- 理解 KYC/AML replay 如何用新名单或新策略重新评估已保存申请，并逐客户比较原决策和重放决策
+- 理解 replay run 如何保存评估结果、逐客户变化和 `pending_review -> approved / rejected` 审批结论
+- 理解 replay run 审批为什么不会自动改写原始 KYC/AML 决策
+- 下一步可进入合规与审计主题，继续理解权限、留痕、数据保护和记录保留
+
 ## 本机环境记录
 
 - 用户偏好使用 Anaconda / conda 管理 Python 环境。
@@ -435,6 +532,18 @@ conda activate fintech-lab
 & 'C:\App\Anaconda\python.exe' .\labs\risk-rule-engine\demo_sqlite.py
 ```
 
+- 运行 KYC/AML 开户筛查 demo：
+
+```powershell
+& 'C:\App\Anaconda\python.exe' .\labs\kyc-aml-onboarding\demo.py
+```
+
+- 运行 KYC/AML SQLite demo：
+
+```powershell
+& 'C:\App\Anaconda\python.exe' .\labs\kyc-aml-onboarding\demo_sqlite.py
+```
+
 - pytest 曾生成 `pytest-cache-files-*` 临时目录且当前无法删除，已通过 `.ignore` 和 `.gitignore` 忽略，避免影响 `rg --files`。
 - pytest 的默认用户临时目录曾出现访问权限问题；测试数据优先写入仓库内各实验的 `.test-data/`，并已忽略该目录。
 
@@ -445,7 +554,8 @@ conda activate fintech-lab
 3. 交易流水分析：理解个人金融数据和报表。
 4. 投资组合实验：理解收益率、波动率、最大回撤。
 5. 风控规则引擎：理解异常检测、额度、评分和审核。
-6. 合规与审计：理解 KYC、AML、日志、权限和数据保护。
+6. KYC/AML 开户筛查：理解身份识别、CDD、beneficial owner、名单筛查和可解释决策。
+7. 合规与审计：理解日志、权限、数据保护、记录留存和复核流程。
 
 ## 交接给后续 AI 终端
 
@@ -495,3 +605,12 @@ conda activate fintech-lab
 | 2026-05-07 | 新增规则版本对比报表 | 比较两个规则版本的决策状态、规则命中、风险分数和审核状态差异；SQLite demo 可显示版本对比；风控实验 pytest 55 个测试通过；全量 pytest 133 个测试通过 |
 | 2026-05-07 | 新增风控报表导出 | 导出风险汇总 CSV、规则版本对比 CSV 和 HTML 报告；SQLite demo 可生成 `reports/` 文件；风控实验 pytest 57 个测试通过；全量 pytest 135 个测试通过 |
 | 2026-05-07 | 新增纯评分策略 | `unusual_hour` 和 `round_amount` 作为弱信号只贡献分数，累计达到阈值后触发审核；全量 pytest 138 个测试通过 |
+| 2026-05-07 | 新增 KYC/AML 开户筛查第一版 | 支持个人/法人客户资料检查、beneficial owner 检查、教学版名单筛查、模糊匹配和风险评分；KYC/AML 实验 pytest 10 个测试通过；全量 pytest 148 个测试通过 |
+| 2026-05-07 | 新增 KYC/AML 人工复核和 SQLite 持久化 | 保存客户申请、beneficial owner、决策、检查结果、审核案例和审计事件；KYC/AML 实验 pytest 21 个测试通过；全量 pytest 159 个测试通过 |
+| 2026-05-07 | 新增 KYC/AML 汇总报表 | 汇总客户类型、决策状态、检查命中、风险分数和审核状态，并支持客户类型、决策状态和时间窗口筛选；KYC/AML 实验 pytest 28 个测试通过；全量 pytest 166 个测试通过 |
+| 2026-05-07 | 新增 KYC/AML 报表导出 | 导出 KYC 汇总 CSV 和 HTML 报告；KYC/AML 实验 pytest 31 个测试通过；全量 pytest 169 个测试通过 |
+| 2026-05-07 | 新增 watchlist 数据版本记录 | 保存样例名单版本、来源、条目数、内容哈希和生效时间，并让 KYC/AML 决策关联 `watchlist_version_id`；KYC/AML 实验 pytest 36 个测试通过；全量 pytest 174 个测试通过 |
+| 2026-05-07 | 新增 KYC/AML 策略版本记录 | 保存样例策略阈值、高风险国家/地区、匹配分数门槛和生效时间，并让 KYC/AML 决策关联 `policy_version_id`；KYC/AML 实验 pytest 41 个测试通过 |
+| 2026-05-07 | 新增 KYC/AML 版本对比报表 | 比较两个 watchlist/policy 版本下已保存决策的决策状态、检查命中、风险分数和审核状态差异，并导出 `kyc_version_comparison_report.csv`；KYC/AML 实验 pytest 45 个测试通过 |
+| 2026-05-07 | 新增 KYC/AML replay 重放分析 | 用新的样例 watchlist 或 policy 重新评估已保存申请，逐客户比较原决策和重放决策，并导出 `kyc_replay_report.csv`；KYC/AML 实验 pytest 49 个测试通过 |
+| 2026-05-07 | 新增 KYC/AML replay 运行记录和审批 | 保存 replay run、逐客户变化、审批结论和审计事件；KYC/AML 实验 pytest 51 个测试通过；全量 pytest 189 个测试通过 |

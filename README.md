@@ -7,7 +7,7 @@
 - 学习对象：有编程背景，金融领域零基础。
 - 学习目标：理解金融业务、FinTech 工程系统、数据分析、风控和合规基础。
 - 学习方式：先学概念，再写最小实验，再把知识沉淀成文档。
-- 当前阶段：阶段 5，进入风控规则引擎基础。
+- 当前阶段：阶段 6，进入 KYC/AML 和合规基础。
 
 ## 环境和语言约定
 
@@ -47,13 +47,15 @@ PYTHONIOENCODING=utf-8
 │   ├── 11-outbox-publisher.md
 │   ├── 12-transaction-statement-analysis.md
 │   ├── 13-portfolio-analysis.md
-│   └── 14-risk-rule-engine.md
+│   ├── 14-risk-rule-engine.md
+│   └── 15-kyc-aml-onboarding.md
 └── labs/                      # 后续代码实验
     ├── ledger-basics/         # 第一个实验：双分录账本
     ├── payment-orders/        # 第二个实验：支付订单系统
     ├── transaction-analysis/  # 第三个实验：交易流水分析
     ├── portfolio-analysis/    # 第四个实验：投资组合分析
-    └── risk-rule-engine/      # 第五个实验：风控规则引擎
+    ├── risk-rule-engine/      # 第五个实验：风控规则引擎
+    └── kyc-aml-onboarding/    # 第六个实验：KYC/AML 开户筛查
 ```
 
 ## 建议学习顺序
@@ -78,6 +80,16 @@ PYTHONIOENCODING=utf-8
 18. 读 [docs/14-risk-rule-engine.md](docs/14-risk-rule-engine.md)，理解风控规则、决策、命中原因和限额。
 19. 运行 `labs/risk-rule-engine/`，用最小规则引擎评估交易请求。
 20. 运行 `labs/risk-rule-engine/demo_sqlite.py`，观察风控决策、规则命中和审核案例如何保存到 SQLite。
+21. 读 [docs/15-kyc-aml-onboarding.md](docs/15-kyc-aml-onboarding.md)，理解 KYC、AML、CDD、beneficial owner 和 sanctions screening 的工程形状。
+22. 运行 `labs/kyc-aml-onboarding/`，用教学版开户筛查引擎评估客户申请。
+23. 运行 `labs/kyc-aml-onboarding/demo_sqlite.py`，观察客户申请、KYC/AML 决策、审核案例和审计事件如何保存到 SQLite。
+24. 观察 `labs/kyc-aml-onboarding/demo_sqlite.py` 输出的 KYC 汇总报表，理解客户类型、决策状态、检查命中、风险分数和审核状态如何聚合。
+25. 查看 `labs/kyc-aml-onboarding/reports/`，理解 KYC 汇总报表如何导出为 CSV 和 HTML 文件。
+26. 观察 `watchlist_version_id`，理解 KYC/AML 决策为什么要记录当时使用的名单数据版本。
+27. 观察 `policy_version_id`，理解 KYC/AML 决策为什么也要记录当时使用的策略参数版本。
+28. 观察 `kyc_version_comparison_report.csv`，理解 watchlist/policy 版本对比报表如何比较已保存决策的差异。
+29. 观察 `kyc_replay_report.csv`，理解 replay 如何用新策略或新名单重新评估已保存申请，但不改写原始决策。
+30. 观察 replay run 的 `pending_review -> approved / rejected`，理解规则或名单上线前为什么要保存评估结果和审批记录。
 
 ## 协作原则
 
