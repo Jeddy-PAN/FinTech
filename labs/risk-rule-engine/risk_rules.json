@@ -1,0 +1,18 @@
+{
+  "single_transaction_review_threshold": "1000.00",
+  "daily_user_review_threshold": "3000.00",
+  "allowed_currencies": ["USD", "EUR"],
+  "high_risk_countries": ["KP", "IR"],
+  "blocked_beneficiaries": ["beneficiary_blocked_001"],
+  "risk_score_review_threshold": 50,
+  "rule_scores": {
+    "currency_allowed": 100,
+    "ip_country_allowed": 100,
+    "beneficiary_allowed": 100,
+    "single_transaction_amount": 60,
+    "daily_user_amount": 70,
+    "new_device": 35,
+    "unusual_hour": 25,
+    "round_amount": 30
+  }
+}

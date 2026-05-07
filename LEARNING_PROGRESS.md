@@ -1,13 +1,13 @@
 # Learning Progress
 
-最后更新：2026-05-05
+最后更新：2026-05-07
 
 ## 当前状态
 
 - 学习者背景：程序员，金融和 FinTech 目前按零基础处理。
-- 当前阶段：阶段 4，进入投资组合分析基础。
-- 当前主线：用样例价格数据理解收益率、组合收益、年化波动率和最大回撤。
-- 当前仓库状态：已完成账本基础实验、支付订单实验、交易流水分析实验，以及投资组合分析第一版。
+- 当前阶段：阶段 5，进入风控规则引擎基础。
+- 当前主线：用最小规则引擎理解限额、规则命中、可解释决策、人工审核和持久化审计。
+- 当前仓库状态：已完成账本基础实验、支付订单实验、交易流水分析实验、投资组合分析实验，以及风控规则引擎、人工复核状态机、SQLite 持久化、风控审计事件日志、规则版本记录、第一组非金额风险信号、教学版风险评分、纯评分策略、可筛选规则命中统计报表、规则版本对比报表和风控报表导出。
 
 ## 学习原则
 
@@ -61,6 +61,20 @@
 - 投资组合分析支持相关性矩阵、协方差矩阵和基于协方差的组合波动率
 - 投资组合分析支持基于当前持仓、最新价格和目标权重计算再平衡交易
 - 投资组合分析支持 HTML 报告和 CSV 导出：`labs/portfolio-analysis/portfolio_reporting.py`
+- 建立风控规则引擎笔记：`docs/14-risk-rule-engine.md`
+- 实现最小风控规则引擎：`labs/risk-rule-engine/`
+- 添加风控规则引擎测试：`labs/risk-rule-engine/test_risk_rule_engine.py`
+- 风控规则引擎支持从 `risk_rules.json` 读取阈值和允许币种配置
+- 风控规则引擎支持为 `review` 决策创建人工复核案例，并流转 `pending_review -> approved / rejected`
+- 风控规则引擎支持使用 SQLite 保存风控决策、规则命中和人工审核案例：`labs/risk-rule-engine/sqlite_risk_store.py`
+- 风控规则引擎支持追加式审计事件：`risk_decision.saved`、`review_case.created`、`review_case.approved/rejected`
+- 风控规则引擎支持保存规则版本，并让风控决策关联 `rule_version_id`
+- 风控规则引擎支持非金额风险信号：`device_id`、`ip_country`、`beneficiary_id`
+- 风控规则引擎支持规则分值和总风险分数 `risk_score`
+- 风控规则引擎支持纯评分策略：`unusual_hour` 和 `round_amount` 作为弱风险信号，多个弱信号累计达到阈值后进入 `review`
+- 风控规则引擎支持规则命中统计报表：决策状态、规则命中次数、风险分数和审核状态，并可按规则版本和决策时间窗口筛选
+- 风控规则引擎支持规则版本对比报表：比较两个规则版本的决策状态、规则命中、风险分数和审核状态差异
+- 风控规则引擎支持导出 CSV 和 HTML 报表：`labs/risk-rule-engine/risk_report_export.py`
 
 ## 当前待学
 
@@ -210,6 +224,50 @@
 
 当前已完成第一版学习材料和代码实验，并加入资产相关性、协方差矩阵、基于协方差的组合波动率、组合再平衡、HTML 报告和 CSV 导出；下一步建议进入风控规则引擎。
 
+### 主题 13：风控规则引擎
+
+- 风险 risk
+- 风控规则 risk rule
+- 决策 decision
+- 规则命中 rule hit
+- 人工审核 manual review
+- 审核案例 review case
+- 审核状态 review status
+- 审核人 reviewer
+- 审核理由 review reason
+- 风控持久化 risk persistence
+- 审计追踪 audit trail
+- 审计事件 audit event
+- 追加式日志 append-only log
+- 规则版本 rule version
+- 生效时间 effective at
+- 风险信号 risk signal
+- 风险评分 risk score
+- 纯评分策略 score-only strategy
+- 弱风险信号 weak risk signal
+- 规则分值 rule score
+- 设备标识 device id
+- IP 国家/地区 IP country
+- 收款方 beneficiary
+- 决策表 risk decisions table
+- 规则命中明细表 rule hits table
+- 审计事件表 audit events table
+- 规则命中统计报表 rule hit reporting
+- 风控汇总报表 risk summary report
+- 规则版本对比报表 rule version comparison report
+- 报表导出 report export
+- CSV 报表 CSV report
+- HTML 报表 HTML report
+- 报表筛选 report filter
+- 决策时间窗口 decision time window
+- 阻断 blocked
+- 限额 limit
+- 速度规则 velocity rule
+- 币种限制 currency control
+- 规则配置 rule configuration
+
+当前已完成第一版学习材料和代码实验，支持从 JSON 配置读取规则参数，已加入最小人工复核状态机、SQLite 持久化、追加式风控审计事件、规则版本记录、第一组非金额风险信号、教学版风险评分、纯评分策略、可筛选规则命中统计报表、规则版本对比报表和风控报表导出；下一步可进入 KYC/AML/合规基础。
+
 ## 近期计划
 
 ### 第 1 周
@@ -273,6 +331,36 @@
 - 理解投资组合报告如何导出收益、风险和再平衡结果
 - 下一步进入风控规则引擎：限额、异常检测、规则命中和审核
 
+### 第 6 周
+
+- 阅读 `docs/14-risk-rule-engine.md`
+- 运行 `labs/risk-rule-engine/demo.py`
+- 理解 `approved`、`review`、`blocked` 的区别
+- 理解单笔金额限额和日累计金额限额
+- 理解为什么规则命中必须保存原因
+- 理解当前实验和真实风控系统的差距
+- 理解 `risk_rules.json` 如何把规则参数从代码里分离出来
+- 理解 `review` 决策如何创建人工复核案例
+- 理解 `pending_review -> approved / rejected` 的状态流转
+- 运行 `labs/risk-rule-engine/demo_sqlite.py`
+- 理解风控决策、规则命中和审核案例为什么要分表保存
+- 理解待审核案例如何从 SQLite 中恢复
+- 理解 `risk_audit_events` 如何记录关键动作历史
+- 理解状态表和追加式审计日志的区别
+- 理解 `risk_rule_versions` 如何保存当时使用的阈值、允许币种和生效时间
+- 理解风控决策为什么要关联 `rule_version_id`
+- 理解设备、IP 国家/地区和收款方为什么也是风险信号
+- 理解新设备、高风险国家/地区、受阻收款方三类规则的简化边界
+- 理解每条规则的 `score` 如何汇总为 `risk_score`
+- 理解当前评分和真实机器学习模型评分的区别
+- 理解 `unusual_hour` 和 `round_amount` 如何作为弱风险信号只贡献分数
+- 理解多个弱风险信号如何通过总分阈值触发 `review`
+- 理解规则命中统计报表如何汇总决策状态、规则命中次数、风险分数和审核状态
+- 理解规则命中统计报表为什么需要按规则版本和决策时间窗口筛选
+- 理解规则版本对比报表如何比较两个版本的决策状态、规则命中和风险分数差异
+- 理解风控报表导出如何把统计结果写成 CSV 和 HTML 文件
+- 下一步可进入 KYC/AML/合规基础
+
 ## 本机环境记录
 
 - 用户偏好使用 Anaconda / conda 管理 Python 环境。
@@ -335,6 +423,18 @@ conda activate fintech-lab
 & 'C:\App\Anaconda\python.exe' .\labs\portfolio-analysis\demo.py
 ```
 
+- 运行风控规则引擎 demo：
+
+```powershell
+& 'C:\App\Anaconda\python.exe' .\labs\risk-rule-engine\demo.py
+```
+
+- 运行风控规则引擎 SQLite demo：
+
+```powershell
+& 'C:\App\Anaconda\python.exe' .\labs\risk-rule-engine\demo_sqlite.py
+```
+
 - pytest 曾生成 `pytest-cache-files-*` 临时目录且当前无法删除，已通过 `.ignore` 和 `.gitignore` 忽略，避免影响 `rg --files`。
 - pytest 的默认用户临时目录曾出现访问权限问题；测试数据优先写入仓库内各实验的 `.test-data/`，并已忽略该目录。
 
@@ -382,3 +482,16 @@ conda activate fintech-lab
 | 2026-05-05 | 新增组合再平衡计算 | 根据当前持仓、最新价格和目标权重计算买卖金额；全量 pytest 77 个测试通过 |
 | 2026-05-05 | 新增投资组合报告导出 | 生成 HTML 报告和收益/风险/再平衡 CSV；全量 pytest 78 个测试通过 |
 | 2026-05-05 | 补强交易流水和投资组合学习文档 | 增加核心概念定义、真实金融使用场景和实现注意点 |
+| 2026-05-05 | 新增风控规则引擎第一版 | 支持单笔限额、日累计限额、币种限制和可解释规则命中；全量 pytest 88 个测试通过 |
+| 2026-05-05 | 新增风控规则配置文件 | 从 `risk_rules.json` 读取阈值和允许币种；全量 pytest 91 个测试通过 |
+| 2026-05-06 | 新增风控人工复核状态机 | `review` 决策可创建审核案例并流转 `pending_review -> approved / rejected`；全量 pytest 99 个测试通过 |
+| 2026-05-06 | 新增风控 SQLite 持久化 | 保存风控决策、规则命中和审核案例；SQLite demo 可运行；全量 pytest 109 个测试通过 |
+| 2026-05-06 | 新增风控审计事件日志 | 追加记录风控决策保存、审核案例创建和审核完成事件；SQLite demo 可显示事件序列；全量 pytest 111 个测试通过 |
+| 2026-05-06 | 新增风控规则版本记录 | 保存规则配置版本并让风控决策关联 `rule_version_id`；SQLite demo 可显示规则版本；全量 pytest 118 个测试通过 |
+| 2026-05-06 | 新增非金额风险信号 | 支持新设备审核、高风险 IP 国家/地区阻断、受阻收款方阻断；demo 可显示新规则命中；全量 pytest 124 个测试通过 |
+| 2026-05-06 | 新增教学版风险评分 | 规则命中带 `score`，风控决策汇总 `risk_score`，SQLite 持久化评分；全量 pytest 126 个测试通过 |
+| 2026-05-06 | 新增规则命中统计报表 | 汇总决策状态、规则命中次数、平均/最高风险分数和审核状态；风控实验 pytest 50 个测试通过；全量 pytest 128 个测试通过 |
+| 2026-05-06 | 扩展规则命中统计报表筛选 | 支持按 `rule_version_id` 和决策时间窗口筛选报表；SQLite demo 可显示筛选报表；风控实验 pytest 53 个测试通过 |
+| 2026-05-07 | 新增规则版本对比报表 | 比较两个规则版本的决策状态、规则命中、风险分数和审核状态差异；SQLite demo 可显示版本对比；风控实验 pytest 55 个测试通过；全量 pytest 133 个测试通过 |
+| 2026-05-07 | 新增风控报表导出 | 导出风险汇总 CSV、规则版本对比 CSV 和 HTML 报告；SQLite demo 可生成 `reports/` 文件；风控实验 pytest 57 个测试通过；全量 pytest 135 个测试通过 |
+| 2026-05-07 | 新增纯评分策略 | `unusual_hour` 和 `round_amount` 作为弱信号只贡献分数，累计达到阈值后触发审核；全量 pytest 138 个测试通过 |
