@@ -7,7 +7,7 @@
 - 学习对象：有编程背景，金融领域零基础。
 - 学习目标：理解金融业务、FinTech 工程系统、数据分析、风控和合规基础。
 - 学习方式：先学概念，再写最小实验，再把知识沉淀成文档。
-- 当前阶段：阶段 6，进入 KYC/AML 和合规基础。
+- 当前阶段：阶段 7，进入合规与审计基础。
 
 ## 环境和语言约定
 
@@ -48,14 +48,16 @@ PYTHONIOENCODING=utf-8
 │   ├── 12-transaction-statement-analysis.md
 │   ├── 13-portfolio-analysis.md
 │   ├── 14-risk-rule-engine.md
-│   └── 15-kyc-aml-onboarding.md
+│   ├── 15-kyc-aml-onboarding.md
+│   └── 16-compliance-audit.md
 └── labs/                      # 后续代码实验
     ├── ledger-basics/         # 第一个实验：双分录账本
     ├── payment-orders/        # 第二个实验：支付订单系统
     ├── transaction-analysis/  # 第三个实验：交易流水分析
     ├── portfolio-analysis/    # 第四个实验：投资组合分析
     ├── risk-rule-engine/      # 第五个实验：风控规则引擎
-    └── kyc-aml-onboarding/    # 第六个实验：KYC/AML 开户筛查
+    ├── kyc-aml-onboarding/    # 第六个实验：KYC/AML 开户筛查
+    └── compliance-audit/      # 第七个实验：合规审计时间线
 ```
 
 ## 建议学习顺序
@@ -90,6 +92,13 @@ PYTHONIOENCODING=utf-8
 28. 观察 `kyc_version_comparison_report.csv`，理解 watchlist/policy 版本对比报表如何比较已保存决策的差异。
 29. 观察 `kyc_replay_report.csv`，理解 replay 如何用新策略或新名单重新评估已保存申请，但不改写原始决策。
 30. 观察 replay run 的 `pending_review -> approved / rejected`，理解规则或名单上线前为什么要保存评估结果和审批记录。
+31. 读 [docs/16-compliance-audit.md](docs/16-compliance-audit.md)，理解 audit event、audit trail、actor、payload、PII 脱敏和记录留存。
+32. 运行 `labs/compliance-audit/demo.py`，观察风控和 KYC/AML 审计事件如何合并成跨系统客户时间线。
+33. 查看 `labs/compliance-audit/reports/`，理解审计事件、主体时间线和汇总结果如何导出为 CSV 和 HTML 报告。
+34. 观察 `audit_viewer`、`audit_analyst` 和 `audit_manager` 的权限差异，理解为什么查看事件、查看 payload 和导出报表应当分开授权。
+35. 观察 demo 输出的 `Audit access events`，理解为什么查看审计日志和导出审计报表本身也需要被记录。
+36. 观察 demo 输出的 `Persisted denied payload access events`，理解访问审计事件为什么需要落盘后再查询和复核。
+37. 观察 demo 输出的 `approved_by: manager_002` 和 `audit_export_approval.granted`，理解为什么敏感导出可以要求申请人与审批人分离。
 
 ## 协作原则
 

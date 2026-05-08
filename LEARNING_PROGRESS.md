@@ -1,13 +1,13 @@
 # Learning Progress
 
-最后更新：2026-05-07
+最后更新：2026-05-08
 
 ## 当前状态
 
 - 学习者背景：程序员，金融和 FinTech 目前按零基础处理。
-- 当前阶段：阶段 6，进入 KYC/AML 和合规基础。
-- 当前主线：用最小开户筛查实验理解客户身份识别、CDD、beneficial owner、名单筛查、watchlist 数据版本、policy 策略版本、版本对比报表、replay 重放分析、replay run 审批、风险评分、人工复核、持久化审计、报表观察、报表导出和可解释决策。
-- 当前仓库状态：已完成账本基础实验、支付订单实验、交易流水分析实验、投资组合分析实验、风控规则引擎实验，以及 KYC/AML 开户筛查、人工复核状态机、SQLite 持久化、审计事件、汇总报表、报表导出、watchlist 数据版本记录、KYC/AML 策略版本记录、版本对比报表、replay 重放分析和 replay run 持久化审批实验。
+- 当前阶段：阶段 7，进入合规与审计基础。
+- 当前主线：把风控和 KYC/AML 实验里的审计事件统一成跨系统 audit trail，理解 audit event、actor、payload、主体时间线、PII 脱敏、记录留存、可复核查询、报表导出、最小权限控制、访问审计、访问审计持久化和职责分离审批。
+- 当前仓库状态：已完成账本基础实验、支付订单实验、交易流水分析实验、投资组合分析实验、风控规则引擎实验、KYC/AML 开户筛查实验，以及合规审计时间线、报表导出、教学版权限模型、访问审计记录、访问审计 SQLite 持久化和审计报告导出审批实验。
 
 ## 学习原则
 
@@ -89,6 +89,9 @@
 - KYC/AML 开户筛查支持 watchlist/policy 版本对比报表，比较已保存版本下的决策状态、检查命中、风险分数和审核状态差异
 - KYC/AML 开户筛查支持 replay 报表，用新的样例 watchlist 或 policy 重新评估已保存申请，并逐客户比较原决策和重放决策
 - KYC/AML 开户筛查支持保存 replay run、逐客户 replay 明细和 `pending_review -> approved / rejected` 审批结论，并记录 replay run 审计事件
+- 建立合规与审计笔记：`docs/16-compliance-audit.md`
+- 实现最小合规审计时间线实验：`labs/compliance-audit/`
+- 合规审计实验支持合并风控和 KYC/AML 审计事件、按字段筛选、构造主体时间线、汇总事件数量、教学版 payload 脱敏、CSV/HTML 报表导出、角色权限控制、访问审计记录、访问审计 SQLite 持久化和审计报告导出审批
 - 权威资料索引新增 FinCEN 和 OFAC：`docs/00-authoritative-sources.md`
 
 ## 当前待学
@@ -339,6 +342,59 @@
 
 当前已完成第一版学习材料和代码实验，支持个人和法人客户开户申请检查、beneficial owner 信息检查、样例名单筛查、模糊匹配、样例高风险国家/地区、较高预期月交易量、风险评分和可解释决策；已加入最小人工复核状态机、SQLite 持久化、追加式审计事件、可筛选 KYC/AML 汇总报表、报表导出、watchlist 数据版本记录、KYC/AML 策略版本记录、版本对比报表、replay 重放分析、replay run 运行记录和审批结论。所有名单、国家/地区和阈值均为教学数据，不代表真实合规规则；下一步可进入合规与审计主题，继续理解权限、留痕、数据保护和记录保留。
 
+### 主题 15：合规与审计
+
+- audit log
+- audit event
+- audit trail
+- subject timeline
+- actor
+- aggregate
+- payload
+- PII
+- redaction / masking
+- record retention
+- access control
+- least privilege
+- segregation of duties
+- source system
+- event type filter
+- time window filter
+- compliance audit summary
+- compliance audit report export
+- audit events CSV
+- audit timeline CSV
+- audit summary CSV
+- least privilege
+- RBAC
+- role
+- permission
+- audit_viewer
+- audit_analyst
+- audit_manager
+- view_audit_events
+- view_audit_payload
+- export_audit_report
+- approve_audit_export
+- access audit
+- download audit
+- segregation of duties
+- maker/checker
+- AuditAccessEvent
+- AuditAccessRecorder
+- AuditExportApproval
+- SQLiteAccessAuditStore
+- audit_access.granted
+- audit_access.denied
+- audit_payload.viewed
+- audit_payload.hidden
+- audit_export_approval.granted
+- audit_export_approval.denied
+- audit_access_events
+- query_access_events
+
+当前已完成第一版学习材料和代码实验，支持把风控和 KYC/AML 的审计事件统一成 `ComplianceAuditEvent`，按来源系统、事件类型、事件前缀、主体、操作人和时间窗口筛选，构造跨系统主体时间线，汇总来源系统、事件类型和操作人数量，对 JSON payload 中常见 PII 字段做教学版脱敏，导出审计事件 CSV、主体时间线 CSV、审计汇总 CSV 和 HTML 报告，用 `audit_viewer`、`audit_analyst`、`audit_manager` 三个教学版角色控制查看事件、查看 payload、导出报表和审批导出，并记录查看事件、查看或隐藏 payload、导出报表、审批导出的访问审计事件。访问审计事件现在可以写入 SQLite 的 `audit_access_events` 表，并按操作人、权限、结果和时间窗口查询。导出函数可以要求 `AuditExportApproval`，并校验申请人与审批人不能是同一个用户。当前实验不实现真实身份认证、企业 IAM、不可篡改日志、WORM 存储、记录留存期限或监管报送；下一步可继续做“审计留存策略”或“异常访问检测”。
+
 ## 近期计划
 
 ### 第 1 周
@@ -458,6 +514,24 @@
 - 理解 replay run 审批为什么不会自动改写原始 KYC/AML 决策
 - 下一步可进入合规与审计主题，继续理解权限、留痕、数据保护和记录保留
 
+### 第 8 周
+
+- 阅读 `docs/16-compliance-audit.md`
+- 运行 `labs/compliance-audit/demo.py`
+- 理解 audit event 和普通 debug log 的区别
+- 理解状态表和 audit trail 为什么不能互相替代
+- 理解 `source_system`、`aggregate_type`、`aggregate_id`、`actor` 和 `occurred_at` 的作用
+- 理解如何把 KYC/AML 和风控事件合并成一个客户时间线
+- 理解为什么 payload 需要克制、脱敏和访问控制
+- 理解当前教学版脱敏和真实 PII 数据保护的差距
+- 理解审计事件、主体时间线和汇总结果如何导出为 CSV 和 HTML 报告
+- 理解 `audit_viewer`、`audit_analyst` 和 `audit_manager` 的权限差异
+- 理解为什么查看事件、查看 payload 和导出报表应当分开授权
+- 理解为什么查看审计日志和导出审计报表本身也需要被记录
+- 理解访问审计事件为什么需要从内存 recorder 写入 SQLite 后再查询和复核
+- 理解为什么敏感导出可以要求申请人与审批人分离
+- 下一步可进入审计留存策略或异常访问检测
+
 ## 本机环境记录
 
 - 用户偏好使用 Anaconda / conda 管理 Python 环境。
@@ -544,6 +618,12 @@ conda activate fintech-lab
 & 'C:\App\Anaconda\python.exe' .\labs\kyc-aml-onboarding\demo_sqlite.py
 ```
 
+- 运行合规审计 demo：
+
+```powershell
+& 'C:\App\Anaconda\python.exe' .\labs\compliance-audit\demo.py
+```
+
 - pytest 曾生成 `pytest-cache-files-*` 临时目录且当前无法删除，已通过 `.ignore` 和 `.gitignore` 忽略，避免影响 `rg --files`。
 - pytest 的默认用户临时目录曾出现访问权限问题；测试数据优先写入仓库内各实验的 `.test-data/`，并已忽略该目录。
 
@@ -614,3 +694,9 @@ conda activate fintech-lab
 | 2026-05-07 | 新增 KYC/AML 版本对比报表 | 比较两个 watchlist/policy 版本下已保存决策的决策状态、检查命中、风险分数和审核状态差异，并导出 `kyc_version_comparison_report.csv`；KYC/AML 实验 pytest 45 个测试通过 |
 | 2026-05-07 | 新增 KYC/AML replay 重放分析 | 用新的样例 watchlist 或 policy 重新评估已保存申请，逐客户比较原决策和重放决策，并导出 `kyc_replay_report.csv`；KYC/AML 实验 pytest 49 个测试通过 |
 | 2026-05-07 | 新增 KYC/AML replay 运行记录和审批 | 保存 replay run、逐客户变化、审批结论和审计事件；KYC/AML 实验 pytest 51 个测试通过；全量 pytest 189 个测试通过 |
+| 2026-05-08 | 新增合规审计时间线第一版 | 合并风控和 KYC/AML 审计事件，支持筛选、主体时间线、汇总和教学版 payload 脱敏；compliance-audit 实验 pytest 5 个测试通过；全量 pytest 194 个测试通过 |
+| 2026-05-08 | 新增合规审计报表导出 | 导出审计事件 CSV、主体时间线 CSV、审计汇总 CSV 和 HTML 报告；compliance-audit 实验 pytest 8 个测试通过；全量 pytest 197 个测试通过 |
+| 2026-05-08 | 新增合规审计教学版权限模型 | 使用 `audit_viewer`、`audit_analyst`、`audit_manager` 控制查看事件、查看 payload 和导出报表；compliance-audit 实验 pytest 12 个测试通过；全量 pytest 201 个测试通过 |
+| 2026-05-08 | 新增合规审计访问审计记录 | 记录查看事件、查看或隐藏 payload、导出报表的访问审计事件；compliance-audit 实验 pytest 15 个测试通过；全量 pytest 204 个测试通过 |
+| 2026-05-08 | 新增访问审计 SQLite 持久化 | `SQLiteAccessAuditStore` 保存 `AuditAccessEvent`，支持按操作人、权限、结果和时间窗口查询；demo 可显示持久化后的 denied payload 访问记录；compliance-audit 实验 pytest 20 个测试通过；全量 pytest 209 个测试通过 |
+| 2026-05-08 | 新增审计报告导出审批 | `AuditExportApproval` 支持二人审批，导出函数可要求申请人与审批人分离，并记录 `approve_audit_export` 和审批审计事件；compliance-audit 实验 pytest 24 个测试通过；全量 pytest 213 个测试通过 |
