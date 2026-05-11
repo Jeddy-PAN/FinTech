@@ -1,13 +1,13 @@
 # Learning Progress
 
-最后更新：2026-05-08
+最后更新：2026-05-11
 
 ## 当前状态
 
 - 学习者背景：程序员，金融和 FinTech 目前按零基础处理。
-- 当前阶段：阶段 7，进入合规与审计基础。
-- 当前主线：把风控和 KYC/AML 实验里的审计事件统一成跨系统 audit trail，理解 audit event、actor、payload、主体时间线、PII 脱敏、记录留存、可复核查询、报表导出、最小权限控制、访问审计、访问审计持久化和职责分离审批。
-- 当前仓库状态：已完成账本基础实验、支付订单实验、交易流水分析实验、投资组合分析实验、风控规则引擎实验、KYC/AML 开户筛查实验，以及合规审计时间线、报表导出、教学版权限模型、访问审计记录、访问审计 SQLite 持久化和审计报告导出审批实验。
+- 当前阶段：阶段 8，规划端到端 FinTech 工程作品。
+- 当前主线：把账本、支付订单、风控规则引擎、KYC/AML 开户筛查和合规审计串成一个最小端到端学习项目，理解客户开户、支付发起、风控决策、账本入账、audit trail、报表和调查工单如何协同。
+- 当前仓库状态：已完成账本基础实验、支付订单实验、交易流水分析实验、投资组合分析实验、风控规则引擎实验、KYC/AML 开户筛查实验、合规审计实验，以及阶段 7 总结与阶段 8 规划文档；下一步先设计 `labs/fintech-platform/` 的业务流程、模块边界和数据流。
 
 ## 学习原则
 
@@ -91,7 +91,8 @@
 - KYC/AML 开户筛查支持保存 replay run、逐客户 replay 明细和 `pending_review -> approved / rejected` 审批结论，并记录 replay run 审计事件
 - 建立合规与审计笔记：`docs/16-compliance-audit.md`
 - 实现最小合规审计时间线实验：`labs/compliance-audit/`
-- 合规审计实验支持合并风控和 KYC/AML 审计事件、按字段筛选、构造主体时间线、汇总事件数量、教学版 payload 脱敏、CSV/HTML 报表导出、角色权限控制、访问审计记录、访问审计 SQLite 持久化和审计报告导出审批
+- 合规审计实验支持合并风控和 KYC/AML 审计事件、按字段筛选、构造主体时间线、汇总事件数量、教学版 payload 脱敏、CSV/HTML 报表导出、角色权限控制、访问审计记录、访问审计 SQLite 持久化、审计报告导出审批、审计留存策略报告、访问异常检测、异常访问报告导出、留存报告导出、访问异常调查工单状态、工单 SQLite 持久化、调查工单报告导出和工单处理动作审计
+- 建立阶段 7 总结与阶段 8 规划文档：`docs/17-stage-7-summary-and-stage-8-plan.md`
 - 权威资料索引新增 FinCEN 和 OFAC：`docs/00-authoritative-sources.md`
 
 ## 当前待学
@@ -354,6 +355,7 @@
 - PII
 - redaction / masking
 - record retention
+- access anomaly detection
 - access control
 - least privilege
 - segregation of duties
@@ -365,7 +367,6 @@
 - audit events CSV
 - audit timeline CSV
 - audit summary CSV
-- least privilege
 - RBAC
 - role
 - permission
@@ -378,12 +379,24 @@
 - approve_audit_export
 - access audit
 - download audit
-- segregation of duties
 - maker/checker
+- archive
+- legal hold
 - AuditAccessEvent
 - AuditAccessRecorder
 - AuditExportApproval
+- AuditRetentionPolicy
+- AuditRetentionDecision
+- AuditRetentionReport
+- AuditRetentionExportPaths
+- AccessMonitoringRule
+- AccessAnomalyFinding
+- AccessAnomalyExportPaths
+- AccessAnomalyInvestigationCase
+- AccessAnomalyInvestigationService
+- InvestigationCaseExportPaths
 - SQLiteAccessAuditStore
+- SQLiteInvestigationCaseStore
 - audit_access.granted
 - audit_access.denied
 - audit_payload.viewed
@@ -392,8 +405,50 @@
 - audit_export_approval.denied
 - audit_access_events
 - query_access_events
+- active
+- archive_due
+- delete_due
+- held
+- repeated_denied_access
+- unauthorized_export_attempt
+- repeated_payload_view
+- access_anomaly_findings.csv
+- access_anomaly_report.html
+- audit_retention_decisions.csv
+- audit_retention_report.html
+- investigation case
+- open
+- investigating
+- resolved
+- false_positive
+- access_investigation_cases
+- access_investigation_case_events
+- save_case
+- get_case
+- open_cases
+- access_investigation_cases.csv
+- access_investigation_report.html
+- access_investigation_case.created
+- access_investigation_case.started
+- access_investigation_case.resolved
+- access_investigation_case.false_positive
 
-当前已完成第一版学习材料和代码实验，支持把风控和 KYC/AML 的审计事件统一成 `ComplianceAuditEvent`，按来源系统、事件类型、事件前缀、主体、操作人和时间窗口筛选，构造跨系统主体时间线，汇总来源系统、事件类型和操作人数量，对 JSON payload 中常见 PII 字段做教学版脱敏，导出审计事件 CSV、主体时间线 CSV、审计汇总 CSV 和 HTML 报告，用 `audit_viewer`、`audit_analyst`、`audit_manager` 三个教学版角色控制查看事件、查看 payload、导出报表和审批导出，并记录查看事件、查看或隐藏 payload、导出报表、审批导出的访问审计事件。访问审计事件现在可以写入 SQLite 的 `audit_access_events` 表，并按操作人、权限、结果和时间窗口查询。导出函数可以要求 `AuditExportApproval`，并校验申请人与审批人不能是同一个用户。当前实验不实现真实身份认证、企业 IAM、不可篡改日志、WORM 存储、记录留存期限或监管报送；下一步可继续做“审计留存策略”或“异常访问检测”。
+当前已完成第一版学习材料和代码实验，支持把风控和 KYC/AML 的审计事件统一成 `ComplianceAuditEvent`，按来源系统、事件类型、事件前缀、主体、操作人和时间窗口筛选，构造跨系统主体时间线，汇总来源系统、事件类型和操作人数量，对 JSON payload 中常见 PII 字段做教学版脱敏，导出审计事件 CSV、主体时间线 CSV、审计汇总 CSV 和 HTML 报告，用 `audit_viewer`、`audit_analyst`、`audit_manager` 三个教学版角色控制查看事件、查看 payload、导出报表和审批导出，并记录查看事件、查看或隐藏 payload、导出报表、审批导出的访问审计事件。访问审计事件现在可以写入 SQLite 的 `audit_access_events` 表，并按操作人、权限、结果和时间窗口查询。导出函数可以要求 `AuditExportApproval`，并校验申请人与审批人不能是同一个用户。留存策略可以按事件类型前缀生成 `active`、`archive_due`、`delete_due` 和 `held` 状态报告，并导出 `audit_retention_decisions.csv` 与 `audit_retention_report.html`。访问异常检测可以基于 `AuditAccessEvent` 生成 repeated denied、unauthorized export attempt 和 repeated payload view finding，并导出 `access_anomaly_findings.csv` 与 `access_anomaly_report.html`。访问异常发现项现在可以转成 `AccessAnomalyInvestigationCase`，流转 `open -> investigating -> resolved / false_positive`，通过 `SQLiteInvestigationCaseStore` 写入 `access_investigation_cases` 和 `access_investigation_case_events` 表，导出 `access_investigation_cases.csv` 与 `access_investigation_report.html`，并生成 `access_investigation_case.created/started/resolved/false_positive` 工单处理动作审计事件。当前实验不实现真实身份认证、企业 IAM、不可篡改日志、WORM 存储、真实记录留存期限、真实安全监控、真实工单系统或监管报送；阶段 7 已总结，下一步进入端到端 FinTech 工程作品规划。
+
+### 主题 16：端到端 FinTech 工程作品
+
+- customer onboarding
+- KYC/AML decision
+- payment order
+- risk decision
+- ledger posting
+- audit trail
+- orchestration
+- consistency boundary
+- module boundary
+- `labs/fintech-platform/`
+
+当前已完成阶段 7 总结与阶段 8 规划文档。下一步先设计综合实验的 README、最小业务流程、模块依赖和数据流，再实现 orchestration 代码。
 
 ## 近期计划
 
@@ -530,7 +585,28 @@
 - 理解为什么查看审计日志和导出审计报表本身也需要被记录
 - 理解访问审计事件为什么需要从内存 recorder 写入 SQLite 后再查询和复核
 - 理解为什么敏感导出可以要求申请人与审批人分离
-- 下一步可进入审计留存策略或异常访问检测
+- 理解教学版留存策略如何把事件分成 active、archive_due、delete_due 和 held
+- 理解访问审计数据如何进一步生成可疑访问模式线索
+- 理解异常访问发现项如何导出为 CSV 和 HTML 报告
+- 理解留存决策如何导出为 CSV 和 HTML 报告，但不真的删除或归档任何记录
+- 理解访问异常 finding 为什么需要进入 investigation case 处理闭环
+- 理解 open、investigating、resolved 和 false_positive 的状态流转
+- 理解 investigation case 为什么需要写入 SQLite 后再查询未关闭工单
+- 理解 investigation case 如何导出为 CSV 和 HTML 报告
+- 理解 investigation case 创建、接手和关闭动作为什么也要生成审计事件
+- 阅读 `docs/17-stage-7-summary-and-stage-8-plan.md`
+- 总结阶段 7 的关键工程结论：状态表和 audit trail 的区别、payload 克制、报表导出权限、finding 到 investigation case 的闭环
+- 确认阶段 8 主线：customer onboarding -> KYC/AML decision -> payment order -> risk decision -> ledger posting -> audit trail -> reports / investigation
+- 下一步先设计 `labs/fintech-platform/` 的最小业务流程、模块边界和数据流
+
+### 第 9 周
+
+- 新建 `labs/fintech-platform/README.md`
+- 设计端到端场景：已通过 KYC 的客户发起支付，风控审核通过后入账，并生成审计时间线
+- 画清楚模块依赖：KYC/AML、payment-orders、risk-rule-engine、ledger-basics、compliance-audit
+- 定义最小数据流：customer、account、payment_order、risk_decision、ledger_transaction、audit_event
+- 明确暂不实现范围：真实 API、真实身份认证、生产级一致性、真实监管规则和投资建议
+- 下一步再写 orchestration 代码，优先复用现有实验模块
 
 ## 本机环境记录
 
@@ -636,6 +712,7 @@ conda activate fintech-lab
 5. 风控规则引擎：理解异常检测、额度、评分和审核。
 6. KYC/AML 开户筛查：理解身份识别、CDD、beneficial owner、名单筛查和可解释决策。
 7. 合规与审计：理解日志、权限、数据保护、记录留存和复核流程。
+8. 端到端 FinTech 工程作品：串联开户、支付、风控、账本和审计，理解跨模块流程和一致性边界。
 
 ## 交接给后续 AI 终端
 
@@ -700,3 +777,12 @@ conda activate fintech-lab
 | 2026-05-08 | 新增合规审计访问审计记录 | 记录查看事件、查看或隐藏 payload、导出报表的访问审计事件；compliance-audit 实验 pytest 15 个测试通过；全量 pytest 204 个测试通过 |
 | 2026-05-08 | 新增访问审计 SQLite 持久化 | `SQLiteAccessAuditStore` 保存 `AuditAccessEvent`，支持按操作人、权限、结果和时间窗口查询；demo 可显示持久化后的 denied payload 访问记录；compliance-audit 实验 pytest 20 个测试通过；全量 pytest 209 个测试通过 |
 | 2026-05-08 | 新增审计报告导出审批 | `AuditExportApproval` 支持二人审批，导出函数可要求申请人与审批人分离，并记录 `approve_audit_export` 和审批审计事件；compliance-audit 实验 pytest 24 个测试通过；全量 pytest 213 个测试通过 |
+| 2026-05-08 | 新增审计留存策略报告 | `AuditRetentionPolicy` 按事件类型前缀生成 active、archive_due、delete_due 和 held 留存状态；demo 可显示 `Audit retention summary`；compliance-audit 实验 pytest 29 个测试通过；全量 pytest 218 个测试通过 |
+| 2026-05-08 | 新增访问异常检测 | `AccessMonitoringRule` 和 `AccessAnomalyFinding` 基于访问审计事件识别 repeated denied、非 manager 导出尝试和重复 payload 查看；demo 可显示 `Access anomaly findings`；compliance-audit 实验 pytest 35 个测试通过；全量 pytest 224 个测试通过 |
+| 2026-05-11 | 新增访问异常报告导出 | `export_access_anomaly_report` 导出 `access_anomaly_findings.csv` 和 `access_anomaly_report.html`，HTML 会转义用户可控字段；compliance-audit 实验 pytest 38 个测试通过；全量 pytest 227 个测试通过 |
+| 2026-05-11 | 新增审计留存报告导出 | `export_audit_retention_report` 导出 `audit_retention_decisions.csv` 和 `audit_retention_report.html`，HTML 会转义事件和策略字段；compliance-audit 实验 pytest 41 个测试通过；全量 pytest 230 个测试通过 |
+| 2026-05-11 | 新增访问异常调查工单状态 | `AccessAnomalyInvestigationService` 把 access anomaly finding 转成 investigation case，并支持 `open -> investigating -> resolved / false_positive`；compliance-audit 实验 pytest 48 个测试通过；全量 pytest 237 个测试通过 |
+| 2026-05-11 | 新增访问异常调查工单 SQLite 持久化 | `SQLiteInvestigationCaseStore` 保存 investigation case 和关联 access events，支持按状态、分派人和 finding actor 查询；compliance-audit 实验 pytest 53 个测试通过；全量 pytest 242 个测试通过 |
+| 2026-05-11 | 新增访问异常调查工单报告导出 | `export_investigation_case_report` 导出 `access_investigation_cases.csv` 和 `access_investigation_report.html`，HTML 会转义工单和 finding 字段；compliance-audit 实验 pytest 56 个测试通过；全量 pytest 245 个测试通过 |
+| 2026-05-11 | 新增访问异常调查工单处理动作审计 | `AccessAnomalyInvestigationService` 为 investigation case 创建、开始调查、关闭为 resolved/false_positive 生成 `access_investigation_case.*` 审计事件；compliance-audit 实验 pytest 56 个测试通过；全量 pytest 245 个测试通过 |
+| 2026-05-11 | 新增阶段 7 总结与阶段 8 规划 | `docs/17-stage-7-summary-and-stage-8-plan.md` 总结合规审计阶段的工程结论，并把下一阶段定位为端到端 FinTech 工程作品规划；下一步设计 `labs/fintech-platform/` |

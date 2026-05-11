@@ -1,6 +1,6 @@
 # 合规与审计：日志、时间线、脱敏和记录留存
 
-最后更新：2026-05-08
+最后更新：2026-05-11
 
 本篇进入“合规与审计”主题。目标不是解释某个国家或地区的完整监管义务，也不是替代法务、合规或审计人员判断，而是把前面风控和 KYC/AML 实验里已经产生的审计事件串起来，理解金融系统为什么需要可查询、可解释、可复核的 audit trail。
 
@@ -41,6 +41,11 @@ occurred_at
 - 可选要求另一名具备审批权限的用户审批审计报告导出，演示职责分离。
 - 记录教学版访问审计事件，用于追踪谁查看了事件、谁查看了 payload、谁导出了报表。
 - 使用 SQLite 持久化访问审计事件，并按操作人、权限、结果和时间窗口查询。
+- 使用教学版留存策略生成审计留存报告，区分 active、archive_due、delete_due 和 held。
+- 使用教学版访问异常检测规则生成 access anomaly findings。
+- 导出审计留存决策 CSV 和 HTML 报告，便于人工复核哪些事件仍活跃、应归档、可删除或处于 hold。
+- 把访问异常发现项转成教学版 investigation case，并演示 open、investigating、resolved 和 false_positive 状态。
+- 使用 SQLite 持久化 investigation case，并支持按状态、分派人和 finding actor 查询。
 
 当前实验不改变风控或 KYC/AML 的原始表，也不新增真实 IAM 系统。它先解决一个基础问题：当一个客户经历开户筛查、人工复核、后续交易风控审核时，系统能否按时间顺序回答“发生过什么”。
 
@@ -100,6 +105,67 @@ audit_export_approval.granted / audit_export_approval.denied
 
 当前实验还把访问审计事件写入 SQLite 的 `audit_access_events` 表。内存里的 `AuditAccessRecorder` 适合在一次请求或一次 demo 运行中收集事件；SQLite 存储则说明真实系统里为什么要把这些访问记录落盘，否则进程结束后就无法复核“谁看过日志、谁被拒绝查看 payload”。
 
+当前实验还加入了教学版记录留存 record retention。它不采用任何真实监管期限，只用样例策略说明工程形状：不同事件类型可以有不同保留期、归档阈值和 legal hold 标记。demo 会生成 `Audit retention summary`，展示哪些事件仍在活跃窗口，哪些应归档，哪些到期可删除，哪些因为 hold 不能删除。
+
+当前实验还可以把留存决策导出为：
+
+```text
+audit_retention_decisions.csv
+audit_retention_report.html
+```
+
+CSV 记录每条审计事件匹配到的策略、状态、年龄、归档到期时间、删除到期时间和原因；HTML 报告包含状态汇总和明细表。这里仍然只是教学版报告导出，不会真的删除、归档、冻结或迁移任何审计事件，也不代表任何真实监管留存期限。
+
+当前实验还加入了教学版访问异常检测 access anomaly detection。它读取 `AuditAccessEvent`，用简单规则发现三类模式：
+
+```text
+repeated_denied_access
+unauthorized_export_attempt
+repeated_payload_view
+```
+
+demo 会输出 `Access anomaly findings`。这一步不是机器学习，也不是安全监控产品，只是说明：访问审计落盘之后，可以进一步做复核、告警和调查线索生成。
+
+当前实验还可以把访问异常发现项导出为：
+
+```text
+access_anomaly_findings.csv
+access_anomaly_report.html
+```
+
+CSV 适合复核、排序和导入其他分析工具；HTML 适合人工查看。HTML 报告会转义 actor、reason、permission 等字段，避免把访问审计内容当成页面代码执行。
+
+当前实验还加入了教学版访问异常调查工单 investigation case。检测规则只负责说“这里有可疑模式”；调查工单负责记录“谁接手、是否开始调查、最后如何关闭”。demo 会把 access anomaly findings 转成 `AccessAnomalyInvestigationCase`，并演示：
+
+```text
+open -> investigating -> resolved
+open -> investigating -> false_positive
+```
+
+这不是完整工单系统，只是把“发现线索”和“处理闭环”分开：finding 可以由规则生成，case 则需要人或流程来确认、分派和关闭。
+
+当前实验还可以把 investigation case 写入 SQLite 的 `access_investigation_cases` 和 `access_investigation_case_events` 表。demo 会关闭并重开 SQLite 连接，再输出 `Persisted open investigation cases`，说明工单状态不只存在于内存里，进程重启后仍可以查询未关闭的调查。
+
+当前实验还可以把 investigation case 导出为：
+
+```text
+access_investigation_cases.csv
+access_investigation_report.html
+```
+
+CSV 记录工单状态、finding 类型、actor、severity、负责人、关闭原因和关联权限/目标；HTML 报告包含状态汇总和工单明细。它适合复核调查处理进度，但仍不替代真实工单系统或合规调查流程。
+
+当前实验还会为 investigation case 的处理动作生成审计事件：
+
+```text
+access_investigation_case.created
+access_investigation_case.started
+access_investigation_case.resolved
+access_investigation_case.false_positive
+```
+
+这一步回答的是“谁创建了调查、谁接手、谁关闭、用什么理由关闭”。也就是说，异常访问调查本身也进入 audit trail，而不只是业务系统和审计报表导出被记录。
+
 ## 中文定义
 
 审计日志 audit log，是系统对关键动作的记录。它通常保存“谁在什么时候对什么对象做了什么，以及理由和上下文是什么”。
@@ -123,9 +189,14 @@ audit_export_approval.granted / audit_export_approval.denied
 - 职责分离：segregation of duties
 - 访问审计：access audit
 - 下载审计：download audit
-- 职责分离：segregation of duties
 - 发起人与复核人：maker/checker
 - 审批：approval
+- 归档：archive
+- 法律/调查冻结：legal hold
+- 访问异常检测：access anomaly detection
+- 调查工单：investigation case
+- 告警/发现项：finding
+- 严重程度：severity
 
 ### least privilege
 
@@ -198,6 +269,121 @@ approval.reason is required
 ```
 
 程序员实现时要注意，职责分离不是只在 UI 上隐藏按钮。后端导出函数必须校验申请人、审批人、权限、审批时间和理由，并把授权与审批结果写入访问审计。
+
+### record retention
+
+Record retention，记录留存，表示系统需要按规则保留、归档、冻结或清理记录。审计日志不是“越久越好”这么简单：保留太短会影响复核和追溯，保留太久又可能增加敏感数据暴露面和存储成本。
+
+当前实验新增 `AuditRetentionPolicy`，用教学字段描述一个留存策略：
+
+```text
+policy_id
+event_type_prefix
+retention_days
+archive_after_days
+legal_hold
+```
+
+`build_retention_report` 会为每条 `ComplianceAuditEvent` 生成一个 `AuditRetentionDecision`：
+
+```text
+active       still inside active retention window
+archive_due  archive threshold has been reached
+delete_due   retention period has ended
+held         policy is under legal hold
+```
+
+如果多个策略都能匹配同一个事件类型，实验会选择 `event_type_prefix` 最长的策略。例如 `kyc_review_case.` 会优先于更宽泛的 `kyc_`。这可以表达“某类复核事件比普通 KYC 事件更敏感，需要特殊处理”。
+
+程序员实现时要注意：真实 retention policy 属于法律、监管、合规和数据治理问题，需要按业务所在地、产品类型、客户类型、数据类型和调查状态确认。本实验里的 `30`、`45`、`90` 天只是样例数字，不代表任何真实要求。
+
+### access anomaly detection
+
+Access anomaly detection，访问异常检测，是在访问审计事件上寻找可疑模式。它不只看单条事件，而是把同一个 actor 在一个时间窗口内的行为聚合起来。
+
+当前实验新增 `AccessMonitoringRule` 和 `AccessAnomalyFinding`。默认规则包括：
+
+```text
+repeated_denied_access
+unauthorized_export_attempt
+repeated_payload_view
+```
+
+每个 finding 会记录：
+
+```text
+finding_type
+actor
+severity
+event_count
+reason
+first_occurred_at
+last_occurred_at
+events
+```
+
+程序员实现时要注意，异常检测规则要可解释、可调参，并且需要控制误报。比如当前实验用 `manager_` 前缀简化识别 manager，只是为了教学；真实系统应使用 IAM、组织架构、角色授权和会话上下文。
+
+### investigation case
+
+Investigation case，调查工单，是把 finding 交给人或流程处理的跟踪对象。它不等同于 finding：finding 是规则输出的线索，case 是处理这条线索的工作记录。
+
+当前实验新增 `AccessAnomalyInvestigationCase` 和 `AccessAnomalyInvestigationService`。每个 case 记录：
+
+```text
+case_id
+finding
+status
+created_at
+opened_by
+assigned_to
+investigation_started_at
+closed_by
+closed_at
+resolution_reason
+```
+
+状态包括：
+
+```text
+open
+investigating
+resolved
+false_positive
+```
+
+程序员实现时要注意：真实工单系统还会包含 SLA、优先级、评论、附件、证据链、权限、通知、升级路径和更完整的审计历史。当前实验只保留最小状态机和处理动作审计事件，用来理解为什么 anomaly finding 不应该停留在一份静态报告里。
+
+当前实验还新增 `SQLiteInvestigationCaseStore`，把 case 和相关 access events 分表保存：
+
+```text
+access_investigation_cases
+access_investigation_case_events
+```
+
+它支持：
+
+```text
+save_case
+get_case
+cases
+open_cases
+query_cases
+```
+
+`query_cases` 可以按 `status`、`assigned_to` 和 finding 的 `actor` 查询。这里的持久化仍是教学版：它不实现工单评论、附件、权限模型、审计历史表或 SLA 计时。
+
+`AccessAnomalyInvestigationService` 还会在内存中维护 `audit_events`，用于查看工单处理动作：
+
+```text
+audit_events
+access_investigation_case.created
+access_investigation_case.started
+access_investigation_case.resolved
+access_investigation_case.false_positive
+```
+
+当前这些工单审计事件还没有写入单独 SQLite 审计表；demo 先直接打印它们，帮助理解“调查动作本身也要可追踪”。
 
 ## 核心概念逐个解释
 
@@ -390,6 +576,39 @@ approved_at
 reason
 ```
 
+留存策略：
+
+```text
+AuditRetentionPolicy
+policy_id
+event_type_prefix
+retention_days
+archive_after_days
+legal_hold
+```
+
+留存决策：
+
+```text
+AuditRetentionDecision
+event
+policy
+status
+age_days
+archive_due_at
+delete_due_at
+reason
+```
+
+留存报告：
+
+```text
+AuditRetentionReport
+generated_at
+decisions
+status_counts
+```
+
 导出文件：
 
 ```text
@@ -397,6 +616,12 @@ labs/compliance-audit/reports/compliance_audit_events.csv
 labs/compliance-audit/reports/compliance_audit_summary.csv
 labs/compliance-audit/reports/compliance_audit_timeline.csv
 labs/compliance-audit/reports/compliance_audit_report.html
+labs/compliance-audit/reports/access_anomaly_findings.csv
+labs/compliance-audit/reports/access_anomaly_report.html
+labs/compliance-audit/reports/audit_retention_decisions.csv
+labs/compliance-audit/reports/audit_retention_report.html
+labs/compliance-audit/reports/access_investigation_cases.csv
+labs/compliance-audit/reports/access_investigation_report.html
 ```
 
 ## 当前简化了什么
@@ -406,24 +631,41 @@ labs/compliance-audit/reports/compliance_audit_report.html
 - 不实现真实合规管理系统。
 - 只实现教学版角色权限和导出审批，不接真实身份认证、企业 IAM、复杂审批矩阵、工单系统和组织架构。
 - 不实现防篡改日志、签名、WORM 存储或集中日志平台。
-- 不实现真实记录留存期限、删除冻结、法律保全和监管报送。
+- 不实现真实记录留存期限、删除冻结、法律保全和监管报送；当前 retention policy 只使用教学样例天数。
 - 不接 SIEM、数据仓库或对象存储。
 - 不自动发现客户和交易关系，只通过 `aggregate_links` 显式传入。
 - 只做教学版 JSON payload 脱敏，不保证覆盖所有敏感字段。
 - 报表导出只生成本地 CSV 和 HTML，并只检查教学版 `export_audit_report` 与可选 `approve_audit_export`；不实现下载审计、工单审批、归档保留和监管模板。
+- 留存报告只计算和导出状态，不真的删除、归档、加密迁移或冻结任何文件/数据库记录。
 - 访问审计事件可以写入教学版 SQLite 表，但不接集中日志平台、安全监控、签名、防篡改存储或长期留存策略。
+- 访问异常检测和报告只做教学版规则匹配与本地文件导出，不接真实告警、工单、SIEM、身份上下文、设备指纹或 IP 情报。
+- 访问异常调查工单只做教学版状态机、SQLite 持久化、本地报告导出和内存版处理动作审计事件，不接真实工单系统、SLA、通知、升级路径、证据附件、权限模型或完整审计历史。
 - 不把任何样例日志解释为法律、监管、税务、会计或合规建议。
 
 ## 当前实验新增了什么
 
 - `labs/compliance-audit/compliance_audit.py`
+- `labs/compliance-audit/compliance_access_monitoring.py`
+- `labs/compliance-audit/compliance_access_report_export.py`
 - `labs/compliance-audit/compliance_audit_export.py`
+- `labs/compliance-audit/compliance_investigation_cases.py`
+- `labs/compliance-audit/compliance_investigation_report_export.py`
+- `labs/compliance-audit/compliance_retention.py`
+- `labs/compliance-audit/compliance_retention_export.py`
 - `labs/compliance-audit/demo.py`
 - `labs/compliance-audit/README.md`
 - `labs/compliance-audit/sqlite_access_audit_store.py`
+- `labs/compliance-audit/sqlite_investigation_case_store.py`
 - `labs/compliance-audit/test_compliance_audit.py`
+- `labs/compliance-audit/test_compliance_access_monitoring.py`
+- `labs/compliance-audit/test_compliance_access_report_export.py`
 - `labs/compliance-audit/test_compliance_audit_export.py`
+- `labs/compliance-audit/test_compliance_investigation_cases.py`
+- `labs/compliance-audit/test_compliance_investigation_report_export.py`
+- `labs/compliance-audit/test_compliance_retention.py`
+- `labs/compliance-audit/test_compliance_retention_export.py`
 - `labs/compliance-audit/test_sqlite_access_audit_store.py`
+- `labs/compliance-audit/test_sqlite_investigation_case_store.py`
 - `ComplianceAuditEvent`
 - `AuditEventFilter`
 - `AuditTimeline`
@@ -432,9 +674,20 @@ labs/compliance-audit/reports/compliance_audit_report.html
 - `AuditAccessEvent`
 - `AuditAccessRecorder`
 - `AuditExportApproval`
+- `AuditRetentionPolicy`
+- `AuditRetentionDecision`
+- `AuditRetentionReport`
+- `AccessMonitoringRule`
+- `AccessAnomalyFinding`
+- `AccessAnomalyInvestigationCase`
+- `AccessAnomalyInvestigationService`
 - `ComplianceAuditError`
 - `ComplianceAuditExportPaths`
+- `AccessAnomalyExportPaths`
+- `AuditRetentionExportPaths`
+- `InvestigationCaseExportPaths`
 - `SQLiteAccessAuditStore`
+- `SQLiteInvestigationCaseStore`
 - `collect_audit_events`
 - `filter_audit_events`
 - `build_audit_timeline`
@@ -447,6 +700,18 @@ labs/compliance-audit/reports/compliance_audit_report.html
 - `validate_export_approval`
 - `visible_events_for_user`
 - `export_compliance_audit_report`
+- `export_access_anomaly_report`
+- `export_audit_retention_report`
+- `export_investigation_case_report`
+- `detect_access_anomalies`
+- `default_access_monitoring_rules`
+- `investigation_case_id`
+- `save_case`
+- `get_case`
+- `open_cases`
+- `query_cases`
+- `build_retention_report`
+- `evaluate_retention`
 - `save_event`
 - `save_events`
 - `access_events`
@@ -455,6 +720,23 @@ labs/compliance-audit/reports/compliance_audit_report.html
 - `view_audit_payload`
 - `export_audit_report`
 - `approve_audit_export`
+- `active`
+- `archive_due`
+- `delete_due`
+- `held`
+- `repeated_denied_access`
+- `unauthorized_export_attempt`
+- `repeated_payload_view`
+- `open`
+- `investigating`
+- `resolved`
+- `false_positive`
+- `access_investigation_case.created`
+- `access_investigation_case.started`
+- `access_investigation_case.resolved`
+- `access_investigation_case.false_positive`
+- `access_investigation_cases.csv`
+- `access_investigation_report.html`
 
 运行 demo：
 

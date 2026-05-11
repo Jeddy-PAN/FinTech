@@ -7,7 +7,7 @@
 - 学习对象：有编程背景，金融领域零基础。
 - 学习目标：理解金融业务、FinTech 工程系统、数据分析、风控和合规基础。
 - 学习方式：先学概念，再写最小实验，再把知识沉淀成文档。
-- 当前阶段：阶段 7，进入合规与审计基础。
+- 当前阶段：阶段 8，规划端到端 FinTech 工程作品。
 
 ## 环境和语言约定
 
@@ -49,7 +49,8 @@ PYTHONIOENCODING=utf-8
 │   ├── 13-portfolio-analysis.md
 │   ├── 14-risk-rule-engine.md
 │   ├── 15-kyc-aml-onboarding.md
-│   └── 16-compliance-audit.md
+│   ├── 16-compliance-audit.md
+│   └── 17-stage-7-summary-and-stage-8-plan.md
 └── labs/                      # 后续代码实验
     ├── ledger-basics/         # 第一个实验：双分录账本
     ├── payment-orders/        # 第二个实验：支付订单系统
@@ -99,6 +100,16 @@ PYTHONIOENCODING=utf-8
 35. 观察 demo 输出的 `Audit access events`，理解为什么查看审计日志和导出审计报表本身也需要被记录。
 36. 观察 demo 输出的 `Persisted denied payload access events`，理解访问审计事件为什么需要落盘后再查询和复核。
 37. 观察 demo 输出的 `approved_by: manager_002` 和 `audit_export_approval.granted`，理解为什么敏感导出可以要求申请人与审批人分离。
+38. 观察 demo 输出的 `Audit retention summary`，理解样例留存策略如何把审计事件分成 active、archive_due、delete_due 和 held。
+39. 观察 demo 输出的 `Access anomaly findings`，理解访问审计数据如何进一步生成可疑访问模式线索。
+40. 查看 `labs/compliance-audit/reports/access_anomaly_findings.csv` 和 `access_anomaly_report.html`，理解异常访问发现项如何导出为可复核报告。
+41. 查看 `labs/compliance-audit/reports/audit_retention_decisions.csv` 和 `audit_retention_report.html`，理解留存决策如何导出为可复核报告，但不会真的删除或归档任何记录。
+42. 观察 demo 输出的 `Access anomaly investigation cases`，理解 finding 如何进入 open、investigating、resolved 或 false_positive 的处理闭环。
+43. 观察 demo 输出的 `Persisted open investigation cases`，理解 investigation case 为什么需要落盘后再查询未关闭工单。
+44. 查看 `labs/compliance-audit/reports/access_investigation_cases.csv` 和 `access_investigation_report.html`，理解调查工单状态如何导出为可复核报告。
+45. 观察 demo 输出的 `Investigation case audit events`，理解调查工单创建、接手和关闭动作本身也需要进入 audit trail。
+46. 读 [docs/17-stage-7-summary-and-stage-8-plan.md](docs/17-stage-7-summary-and-stage-8-plan.md)，确认阶段 7 的工程结论和阶段 8 的端到端项目方向。
+47. 下一步先设计 `labs/fintech-platform/` 的最小业务流程、模块边界和数据流，再开始写综合实验代码。
 
 ## 协作原则
 
