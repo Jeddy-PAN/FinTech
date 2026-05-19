@@ -1,13 +1,13 @@
 # Learning Progress
 
-最后更新：2026-05-11
+最后更新：2026-05-18
 
 ## 当前状态
 
 - 学习者背景：程序员，金融和 FinTech 目前按零基础处理。
 - 当前阶段：阶段 8，规划端到端 FinTech 工程作品。
 - 当前主线：把账本、支付订单、风控规则引擎、KYC/AML 开户筛查和合规审计串成一个最小端到端学习项目，理解客户开户、支付发起、风控决策、账本入账、audit trail、报表和调查工单如何协同。
-- 当前仓库状态：已完成账本基础实验、支付订单实验、交易流水分析实验、投资组合分析实验、风控规则引擎实验、KYC/AML 开户筛查实验、合规审计实验，以及阶段 7 总结与阶段 8 规划文档；下一步先设计 `labs/fintech-platform/` 的业务流程、模块边界和数据流。
+- 当前仓库状态：已完成账本基础实验、支付订单实验、交易流水分析实验、投资组合分析实验、风控规则引擎实验、KYC/AML 开户筛查实验、合规审计实验、阶段 7 总结与阶段 8 规划文档、阶段 8 总结与验收清单、`labs/fintech-platform/README.md` 综合平台设计、最小 orchestration 入口、综合平台报表导出、综合平台 SQLite 持久化、历史运行报表、risk review 后续处理、教学版一致性检查、平台报表访问控制和访问审计、平台访问异常检测，以及平台访问异常调查工单；阶段 8 收尾已经完成，下一步可考虑 API 服务化或最小前端查看页。
 
 ## 学习原则
 
@@ -93,6 +93,18 @@
 - 实现最小合规审计时间线实验：`labs/compliance-audit/`
 - 合规审计实验支持合并风控和 KYC/AML 审计事件、按字段筛选、构造主体时间线、汇总事件数量、教学版 payload 脱敏、CSV/HTML 报表导出、角色权限控制、访问审计记录、访问审计 SQLite 持久化、审计报告导出审批、审计留存策略报告、访问异常检测、异常访问报告导出、留存报告导出、访问异常调查工单状态、工单 SQLite 持久化、调查工单报告导出和工单处理动作审计
 - 建立阶段 7 总结与阶段 8 规划文档：`docs/17-stage-7-summary-and-stage-8-plan.md`
+- 建立阶段 8 总结与验收清单：`docs/18-stage-8-summary-and-acceptance.md`
+- 建立端到端 FinTech 工程作品设计：`labs/fintech-platform/README.md`
+- 实现端到端 FinTech 最小 orchestration：`labs/fintech-platform/fintech_platform.py`
+- 新增端到端 FinTech demo 和测试：`labs/fintech-platform/demo.py`、`labs/fintech-platform/test_fintech_platform.py`
+- 新增端到端 FinTech 综合报表导出：`labs/fintech-platform/platform_report_export.py`
+- 新增端到端 FinTech SQLite 持久化：`labs/fintech-platform/sqlite_platform_store.py`
+- 新增端到端 FinTech 历史运行报表：`labs/fintech-platform/platform_history_report_export.py`
+- 端到端 FinTech 综合平台支持 risk review 后续处理：人工通过后支付成功并入账，人工拒绝后支付失败且不入账
+- 新增端到端 FinTech 一致性检查报表：`labs/fintech-platform/platform_consistency_report.py`
+- 新增端到端 FinTech 平台报表访问控制和访问审计：`labs/fintech-platform/platform_report_access.py`
+- 新增端到端 FinTech 平台访问异常检测和报告导出：`labs/fintech-platform/platform_access_anomaly_report.py`
+- 新增端到端 FinTech 平台访问异常调查工单：`labs/fintech-platform/platform_investigation_cases.py`
 - 权威资料索引新增 FinCEN 和 OFAC：`docs/00-authoritative-sources.md`
 
 ## 当前待学
@@ -447,8 +459,53 @@
 - consistency boundary
 - module boundary
 - `labs/fintech-platform/`
+- FinTechPlatform
+- PlatformPaymentRequest
+- PlatformPaymentResult
+- PlatformPaymentStatus
+- kyc_decision.saved
+- payment_order.created
+- risk_decision.saved
+- payment_order.succeeded
+- payment_order.failed
+- review_case.created
+- review_case.approved
+- review_case.rejected
+- ledger_transaction.posted
+- risk_review_rejected
+- PlatformReportExportPaths
+- export_platform_report
+- platform_payment_result.csv
+- platform_audit_timeline.csv
+- platform_report.html
+- SQLitePlatformStore
+- PlatformRunRecord
+- PlatformRunSnapshot
+- platform_runs
+- platform_run_audit_events
+- PlatformHistoryReportExportPaths
+- export_platform_history_report
+- platform_run_history.csv
+- platform_run_audit_events.csv
+- platform_run_history.html
+- PlatformConsistencyFinding
+- evaluate_platform_run_consistency
+- export_platform_consistency_report
+- platform_consistency_findings.csv
+- platform_consistency_report.html
+- export_platform_report_with_access
+- export_platform_history_report_with_access
+- export_platform_consistency_report_with_access
+- detect_platform_report_access_anomalies
+- export_platform_access_anomaly_report
+- platform_access_anomaly_findings.csv
+- platform_access_anomaly_report.html
+- open_platform_access_investigation_cases
+- export_platform_access_investigation_report
+- platform_access_investigation_cases.csv
+- platform_access_investigation_report.html
 
-当前已完成阶段 7 总结与阶段 8 规划文档。下一步先设计综合实验的 README、最小业务流程、模块依赖和数据流，再实现 orchestration 代码。
+当前已完成阶段 7 总结与阶段 8 规划文档，新增 `labs/fintech-platform/README.md` 作为阶段 8 综合平台设计，并实现 `FinTechPlatform.process_payment()` 最小 orchestration。它可以串起 KYC/AML、payment order、risk decision、ledger posting 和 audit trail，并覆盖 KYC blocked、risk blocked、risk review 和 approved posting 场景。综合平台现在还能导出 `platform_payment_result.csv`、`platform_audit_timeline.csv` 和 `platform_report.html`，通过 `SQLitePlatformStore` 保存 platform run 快照和对应 customer audit timeline，并导出 `platform_run_history.csv`、`platform_run_audit_events.csv` 和 `platform_run_history.html` 历史运行报表。risk review 后续处理也已完成：人工通过会追加 `review_case.approved`、推进订单成功并写入账本；人工拒绝会追加 `review_case.rejected`、推进订单失败且不入账。教学版一致性检查也已完成，可以导出 `platform_consistency_findings.csv` 和 `platform_consistency_report.html`，用于观察 platform status、payment order status、ledger transaction 和 audit events 是否互相吻合。平台报表访问控制和访问审计也已完成，可以授权、拒绝、二人审批并将访问记录写入 SQLite。平台访问异常检测也已完成，可以把非授权导出尝试和重复拒绝访问转成 finding，并导出 `platform_access_anomaly_findings.csv` 和 `platform_access_anomaly_report.html`。平台访问异常调查工单也已完成，可以把平台 finding 转成 investigation case，流转 `open -> investigating -> resolved / false_positive`，写入 SQLite，导出 `platform_access_investigation_cases.csv` 与 `platform_access_investigation_report.html`，并生成工单动作审计事件。下一步可以做阶段 8 小结和端到端验收清单。
 
 ## 近期计划
 
@@ -597,7 +654,7 @@
 - 阅读 `docs/17-stage-7-summary-and-stage-8-plan.md`
 - 总结阶段 7 的关键工程结论：状态表和 audit trail 的区别、payload 克制、报表导出权限、finding 到 investigation case 的闭环
 - 确认阶段 8 主线：customer onboarding -> KYC/AML decision -> payment order -> risk decision -> ledger posting -> audit trail -> reports / investigation
-- 下一步先设计 `labs/fintech-platform/` 的最小业务流程、模块边界和数据流
+- 已完成 `labs/fintech-platform/README.md` 的最小业务流程、模块边界和数据流设计
 
 ### 第 9 周
 
@@ -606,7 +663,30 @@
 - 画清楚模块依赖：KYC/AML、payment-orders、risk-rule-engine、ledger-basics、compliance-audit
 - 定义最小数据流：customer、account、payment_order、risk_decision、ledger_transaction、audit_event
 - 明确暂不实现范围：真实 API、真实身份认证、生产级一致性、真实监管规则和投资建议
-- 下一步再写 orchestration 代码，优先复用现有实验模块
+- 已实现最小 orchestration 代码，优先复用现有实验模块
+- 运行 `labs/fintech-platform/demo.py`，观察一条 approved 链路如何生成 payment order、risk decision、ledger transaction 和 customer audit timeline
+- 查看 `labs/fintech-platform/reports/platform_payment_result.csv`、`platform_audit_timeline.csv` 和 `platform_report.html`
+- 理解端到端平台状态、KYC/Risk/Payment/Ledger 结果和 customer audit timeline 如何导出为可复核报告
+- 理解 `SQLitePlatformStore` 如何把 platform run 结果和 customer audit timeline 写入 `platform_runs` 与 `platform_run_audit_events`
+- 观察 demo 输出的 `Persisted platform run`
+- 查看 `labs/fintech-platform/reports/platform_run_history.csv`、`platform_run_audit_events.csv` 和 `platform_run_history.html`
+- 理解多次 platform run 如何从 SQLite 快照导出为历史运行报表
+- 观察 demo 输出的 `Risk review completion`
+- 理解 `risk_review_required -> completed` 如何经过人工通过、支付成功和账本入账形成闭环
+- 查看 `labs/fintech-platform/reports/platform_consistency_findings.csv` 和 `platform_consistency_report.html`
+- 理解 platform status、payment order status、ledger transaction 和 audit events 为什么需要互相吻合
+- 观察 demo 输出的 `Platform report access audit events`
+- 理解谁导出了平台报表、导出目标是什么、访问记录如何落到 SQLite
+- 观察 demo 输出的 `Platform access anomaly findings`
+- 查看 `labs/fintech-platform/reports/platform_access_anomaly_findings.csv` 和 `platform_access_anomaly_report.html`
+- 理解非授权导出尝试和重复拒绝访问如何变成 finding
+- 观察 demo 输出的 `Platform access investigation cases`
+- 观察 demo 输出的 `Persisted open platform investigation cases`
+- 查看 `labs/fintech-platform/reports/platform_access_investigation_cases.csv` 和 `platform_access_investigation_report.html`
+- 理解平台 access anomaly finding 如何进入 investigation case，以及工单动作为什么也要进入 audit trail
+- 读 `docs/18-stage-8-summary-and-acceptance.md`
+- 理解阶段 8 的端到端链路、验收清单和后续路线
+- 下一步可以考虑 API 服务化或最小前端查看页
 
 ## 本机环境记录
 
@@ -786,3 +866,14 @@ conda activate fintech-lab
 | 2026-05-11 | 新增访问异常调查工单报告导出 | `export_investigation_case_report` 导出 `access_investigation_cases.csv` 和 `access_investigation_report.html`，HTML 会转义工单和 finding 字段；compliance-audit 实验 pytest 56 个测试通过；全量 pytest 245 个测试通过 |
 | 2026-05-11 | 新增访问异常调查工单处理动作审计 | `AccessAnomalyInvestigationService` 为 investigation case 创建、开始调查、关闭为 resolved/false_positive 生成 `access_investigation_case.*` 审计事件；compliance-audit 实验 pytest 56 个测试通过；全量 pytest 245 个测试通过 |
 | 2026-05-11 | 新增阶段 7 总结与阶段 8 规划 | `docs/17-stage-7-summary-and-stage-8-plan.md` 总结合规审计阶段的工程结论，并把下一阶段定位为端到端 FinTech 工程作品规划；下一步设计 `labs/fintech-platform/` |
+| 2026-05-18 | 新增阶段 8 综合平台设计 | `labs/fintech-platform/README.md` 定义端到端场景、复用模块、综合平台职责、数据对象、一致性边界和暂不实现范围；下一步实现最小 orchestration 入口 |
+| 2026-05-18 | 新增阶段 8 最小 orchestration | `FinTechPlatform.process_payment()` 串起 KYC/AML、payment order、risk decision、ledger posting 和 customer audit timeline；覆盖 approved、KYC blocked、risk blocked、risk review 场景；fintech-platform 实验 pytest 4 个测试通过；全量 pytest 249 个测试通过 |
+| 2026-05-18 | 新增阶段 8 综合报表导出 | `export_platform_report` 导出 `platform_payment_result.csv`、`platform_audit_timeline.csv` 和 `platform_report.html`，HTML 会转义页面字段；fintech-platform 实验 pytest 7 个测试通过；全量 pytest 252 个测试通过 |
+| 2026-05-18 | 新增阶段 8 SQLite 持久化 | `SQLitePlatformStore` 保存 platform run 快照和 customer audit timeline，支持按 `run_id` 取回、列出 runs、按状态或客户查询；fintech-platform 实验 pytest 11 个测试通过；全量 pytest 256 个测试通过 |
+| 2026-05-18 | 新增阶段 8 历史运行报表 | `export_platform_history_report` 从 `PlatformRunSnapshot` 导出 `platform_run_history.csv`、`platform_run_audit_events.csv` 和 `platform_run_history.html`，HTML 会转义页面字段；fintech-platform 实验 pytest 13 个测试通过；全量 pytest 258 个测试通过 |
+| 2026-05-18 | 新增阶段 8 risk review 后续处理 | `FinTechPlatform.approve_risk_review()` 支持人工通过后支付成功并入账，`reject_risk_review()` 支持人工拒绝后支付失败且不入账；demo 可显示 `Risk review completion`；fintech-platform 实验 pytest 17 个测试通过；全量 pytest 262 个测试通过 |
+| 2026-05-18 | 新增阶段 8 一致性检查报表 | `evaluate_platform_run_consistency()` 检查 platform status、payment order status、ledger transaction 和 audit events 是否吻合，`export_platform_consistency_report()` 导出 CSV/HTML；demo 可生成 `platform_consistency_findings.csv` 和 `platform_consistency_report.html`；fintech-platform 实验 pytest 21 个测试通过；全量 pytest 266 个测试通过 |
+| 2026-05-18 | 新增阶段 8 平台报表访问控制和访问审计 | `platform_report_access.py` 复用 `AuditUser`、`export_audit_report` 权限、`AuditAccessRecorder` 和 `AuditExportApproval`，为平台 payment/history/consistency 报表提供授权、拒绝、二人审批和 SQLite 访问审计持久化；demo 可显示 `Platform report access audit events`；fintech-platform 实验 pytest 27 个测试通过；全量 pytest 272 个测试通过 |
+| 2026-05-18 | 新增阶段 8 平台访问异常检测 | `detect_platform_report_access_anomalies()` 只分析平台报表访问事件，并复用 `detect_access_anomalies()` 生成 `unauthorized_export_attempt` 和 `repeated_denied_access` finding；`export_platform_access_anomaly_report()` 导出 CSV/HTML；demo 可显示 `Platform access anomaly findings`；fintech-platform 实验 pytest 31 个测试通过；全量 pytest 276 个测试通过 |
+| 2026-05-18 | 新增阶段 8 平台访问异常调查工单 | `open_platform_access_investigation_cases()` 把平台 access anomaly finding 转成 investigation case，复用 `AccessAnomalyInvestigationService`、`SQLiteInvestigationCaseStore` 和工单动作审计事件，并导出 `platform_access_investigation_cases.csv` 与 `platform_access_investigation_report.html`；demo 可显示 `Platform access investigation cases`；fintech-platform 实验 pytest 36 个测试通过 |
+| 2026-05-18 | 新增阶段 8 总结与验收清单 | `docs/18-stage-8-summary-and-acceptance.md` 总结端到端链路、已完成资产、工程结论、验收清单、当前边界和后续 API 服务化或前端查看页路线；fintech-platform 实验 pytest 36 个测试通过 |

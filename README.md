@@ -58,7 +58,8 @@ PYTHONIOENCODING=utf-8
     ├── portfolio-analysis/    # 第四个实验：投资组合分析
     ├── risk-rule-engine/      # 第五个实验：风控规则引擎
     ├── kyc-aml-onboarding/    # 第六个实验：KYC/AML 开户筛查
-    └── compliance-audit/      # 第七个实验：合规审计时间线
+    ├── compliance-audit/      # 第七个实验：合规审计时间线
+    └── fintech-platform/      # 第八个实验：端到端 FinTech 工程作品
 ```
 
 ## 建议学习顺序
@@ -109,7 +110,22 @@ PYTHONIOENCODING=utf-8
 44. 查看 `labs/compliance-audit/reports/access_investigation_cases.csv` 和 `access_investigation_report.html`，理解调查工单状态如何导出为可复核报告。
 45. 观察 demo 输出的 `Investigation case audit events`，理解调查工单创建、接手和关闭动作本身也需要进入 audit trail。
 46. 读 [docs/17-stage-7-summary-and-stage-8-plan.md](docs/17-stage-7-summary-and-stage-8-plan.md)，确认阶段 7 的工程结论和阶段 8 的端到端项目方向。
-47. 下一步先设计 `labs/fintech-platform/` 的最小业务流程、模块边界和数据流，再开始写综合实验代码。
+47. 读 [docs/18-stage-8-summary-and-acceptance.md](docs/18-stage-8-summary-and-acceptance.md)，查看阶段 8 的收尾总结、验收清单和后续路线。
+48. 读 [labs/fintech-platform/README.md](labs/fintech-platform/README.md)，理解综合平台的最小业务流程、模块边界、数据对象和一致性边界。
+49. 运行 `labs/fintech-platform/demo.py`，观察 KYC/AML、payment order、risk decision、ledger posting 和 audit trail 如何串成一条端到端链路。
+50. 查看 `labs/fintech-platform/reports/platform_payment_result.csv`、`platform_audit_timeline.csv` 和 `platform_report.html`，理解端到端结果如何导出为可复核报告。
+51. 观察 demo 输出的 `Persisted platform run`，理解端到端运行结果和 customer audit timeline 为什么需要落盘后再查询。
+52. 查看 `labs/fintech-platform/reports/platform_run_history.csv`、`platform_run_audit_events.csv` 和 `platform_run_history.html`，理解多次端到端运行如何导出为历史运行报表。
+53. 观察 demo 输出的 `Risk review completion`，理解 `risk_review_required -> completed` 如何经过人工通过、支付成功和账本入账形成闭环。
+54. 查看 `labs/fintech-platform/reports/platform_consistency_findings.csv` 和 `platform_consistency_report.html`，理解 platform status、payment order status、ledger transaction 和 audit events 为什么需要互相吻合。
+55. 观察 demo 输出的 `Platform report access audit events`，理解谁导出了平台报表、导出目标是什么、访问记录如何落到 SQLite。
+56. 观察 demo 输出的 `Platform access anomaly findings`，理解非授权导出尝试和重复拒绝访问如何变成 finding。
+57. 查看 `labs/fintech-platform/reports/platform_access_anomaly_findings.csv` 和 `platform_access_anomaly_report.html`，理解平台访问异常如何导出为可复核报告。
+58. 观察 demo 输出的 `Platform access investigation cases`，理解平台 access anomaly finding 如何进入调查工单闭环。
+59. 观察 demo 输出的 `Persisted open platform investigation cases`，理解平台调查工单为什么需要落盘后再查询未关闭工单。
+60. 查看 `labs/fintech-platform/reports/platform_access_investigation_cases.csv` 和 `platform_access_investigation_report.html`，理解平台调查工单状态如何导出为可复核报告。
+61. 观察 demo 输出的 `Platform investigation case audit events`，理解工单创建、接手和关闭动作为什么也要进入 audit trail。
+62. 阶段 8 的收尾已经完成，接下来可以把这套学习平台拆成一个简单的 API 服务或补一个最小前端查看页。
 
 ## 协作原则
 

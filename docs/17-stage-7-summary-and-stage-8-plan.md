@@ -1,6 +1,6 @@
 # 阶段 7 总结与阶段 8 规划
 
-最后更新：2026-05-11
+最后更新：2026-05-18
 
 本篇不是新的金融概念笔记，而是阶段交接文档。阶段 7 已经完成“合规与审计基础”的第一轮学习和实验；阶段 8 建议开始把前面分散的实验整理成一个端到端 FinTech 工程作品。
 
@@ -131,4 +131,4 @@ labs/fintech-platform/
 
 ## 下一步
 
-下一步建议编写 `labs/fintech-platform/README.md` 和一个最小架构草图，先把端到端场景、模块依赖、数据流和暂不实现范围写清楚，再进入代码实现。
+`labs/fintech-platform/README.md`、最小 orchestration 入口、综合报表导出、SQLite 持久化、历史运行报表、risk review 后续处理、教学版一致性检查、平台报表访问控制和访问审计、平台访问异常检测，以及平台访问异常调查工单已经完成。当前综合平台已经可以观察 `risk_review_required -> completed / risk_review_rejected` 的人工复核闭环，通过 `platform_consistency_report.py` 检查 platform status、payment order status、ledger transaction 和 audit events 是否互相吻合，通过 `platform_report_access.py` 记录谁导出了平台报表，通过 `platform_access_anomaly_report.py` 把非授权导出尝试和重复拒绝访问转成 finding，并通过 `platform_investigation_cases.py` 把 finding 转成 investigation case，观察 `open -> investigating -> resolved / false_positive` 的处理闭环。下一步建议做阶段 8 小结和端到端验收清单，确认这个学习作品已经覆盖哪些金融系统工程能力，以及后续是否进入 API 服务化或前端化。
