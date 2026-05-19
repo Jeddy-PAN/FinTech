@@ -5,3 +5,7 @@ dependencies:
   - python=3.13
   - pandas
   - pytest
+  - pip
+  - pip:
+      - fastapi
+      - uvicorn

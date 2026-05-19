@@ -1,13 +1,13 @@
 # Learning Progress
 
-最后更新：2026-05-18
+最后更新：2026-05-19
 
 ## 当前状态
 
 - 学习者背景：程序员，金融和 FinTech 目前按零基础处理。
-- 当前阶段：阶段 8，规划端到端 FinTech 工程作品。
-- 当前主线：把账本、支付订单、风控规则引擎、KYC/AML 开户筛查和合规审计串成一个最小端到端学习项目，理解客户开户、支付发起、风控决策、账本入账、audit trail、报表和调查工单如何协同。
-- 当前仓库状态：已完成账本基础实验、支付订单实验、交易流水分析实验、投资组合分析实验、风控规则引擎实验、KYC/AML 开户筛查实验、合规审计实验、阶段 7 总结与阶段 8 规划文档、阶段 8 总结与验收清单、`labs/fintech-platform/README.md` 综合平台设计、最小 orchestration 入口、综合平台报表导出、综合平台 SQLite 持久化、历史运行报表、risk review 后续处理、教学版一致性检查、平台报表访问控制和访问审计、平台访问异常检测，以及平台访问异常调查工单；阶段 8 收尾已经完成，下一步可考虑 API 服务化或最小前端查看页。
+- 当前阶段：阶段 9 已完成小结，准备进入阶段 10。
+- 当前主线：把账本、支付订单、风控规则引擎、KYC/AML 开户筛查和合规审计串成一个最小端到端学习项目，并把这条链路放到 API service 边界后面，理解外部请求、幂等、状态查询、audit trail、报表和调查工单如何协同。
+- 当前仓库状态：已完成账本基础实验、支付订单实验、交易流水分析实验、投资组合分析实验、风控规则引擎实验、KYC/AML 开户筛查实验、合规审计实验、阶段 7 总结与阶段 8 规划文档、阶段 8 总结与验收清单、`labs/fintech-platform/README.md` 综合平台设计、阶段 8 综合平台能力，以及阶段 9 API 服务化计划、纯 Python API service 第一版、FastAPI 路由层第一版、API 访问审计、API 访问异常检测、API 访问异常调查工单、API 工单 HTTP 查询接口、API 工单状态流转 HTTP 接口、最小前端查看页和阶段 9 总结；下一步建议进入阶段 10：事件驱动与异步任务。
 
 ## 学习原则
 
@@ -105,6 +105,16 @@
 - 新增端到端 FinTech 平台报表访问控制和访问审计：`labs/fintech-platform/platform_report_access.py`
 - 新增端到端 FinTech 平台访问异常检测和报告导出：`labs/fintech-platform/platform_access_anomaly_report.py`
 - 新增端到端 FinTech 平台访问异常调查工单：`labs/fintech-platform/platform_investigation_cases.py`
+- 建立阶段 9 平台 API 服务化计划：`docs/19-stage-9-platform-api-plan.md`
+- 新增端到端 FinTech 平台 API service 边界：`labs/fintech-platform/platform_api_service.py`
+- 新增端到端 FinTech 平台 FastAPI 路由层：`labs/fintech-platform/platform_api_app.py`
+- 新增端到端 FinTech 平台 API 访问审计：FastAPI 路由会把 health、创建 payment run、查询 payment run、列出 runs 和查询 API access events 写入 `SQLiteAccessAuditStore`
+- 新增端到端 FinTech 平台 API 访问异常检测：`labs/fintech-platform/platform_api_access_anomaly_report.py` 只分析 `fintech_platform_api_` 目标，并导出 API access anomaly CSV/HTML 报告
+- 新增端到端 FinTech 平台 API 访问异常调查工单：`labs/fintech-platform/platform_api_investigation_cases.py` 把 API access anomaly finding 转成 investigation case，并导出 API 专用工单 CSV/HTML 报告
+- 新增端到端 FinTech 平台 API 工单 HTTP 查询接口：`platform_api_app.py` 支持列出 API access anomaly findings、从 findings 开工单、按状态/actor/assignee 查询 API investigation cases 和查询单个 case
+- 新增端到端 FinTech 平台 API 工单状态流转 HTTP 接口：`platform_api_app.py` 支持 start、resolve 和 false-positive，并继续记录接口访问审计
+- 新增阶段 9 最小前端查看页：`platform_api_app.py` 支持 `GET /`、`GET /platform` 和 `GET /platform/view`，渲染 `FinTech Platform Console`，只读展示 payment runs、API access anomalies、investigation cases 和 recent API access events，并记录 `view_platform_console` 访问审计
+- 建立阶段 9 总结与阶段 10 路线：`docs/20-stage-9-summary-and-stage-10-plan.md`
 - 权威资料索引新增 FinCEN 和 OFAC：`docs/00-authoritative-sources.md`
 
 ## 当前待学
@@ -686,7 +696,29 @@
 - 理解平台 access anomaly finding 如何进入 investigation case，以及工单动作为什么也要进入 audit trail
 - 读 `docs/18-stage-8-summary-and-acceptance.md`
 - 理解阶段 8 的端到端链路、验收清单和后续路线
-- 下一步可以考虑 API 服务化或最小前端查看页
+- 读 `docs/19-stage-9-platform-api-plan.md`
+- 理解为什么阶段 9 先做纯 Python API service 边界，再考虑 FastAPI 路由层
+- 查看 `labs/fintech-platform/platform_api_service.py`
+- 理解 `run_id` 和 request fingerprint 如何一起支持教学版幂等
+- 查看 `labs/fintech-platform/platform_api_app.py`
+- 理解 FastAPI 路由层如何调用 `PlatformApiService`，并把业务错误映射成 HTTP 状态码
+- 理解 API 调用本身也需要 access audit：成功调用记录 `audit_access.granted`，业务错误或缺失资源记录 `audit_access.denied`
+- 调用 `GET /platform/api-access-events`，按 actor、permission 或 outcome 查询 API 访问审计事件
+- 查看 `labs/fintech-platform/platform_api_access_anomaly_report.py`
+- 理解 API 访问审计如何被筛选为 `fintech_platform_api_` 事件，并复用 access monitoring 规则生成 repeated denied access finding
+- 查看 `labs/fintech-platform/reports/platform_api_access_anomaly_findings.csv` 和 `platform_api_access_anomaly_report.html`
+- 查看 `labs/fintech-platform/platform_api_investigation_cases.py`
+- 理解 API access anomaly finding 如何进入 `open -> investigating -> resolved / false_positive` 工单闭环
+- 查看 `labs/fintech-platform/reports/platform_api_access_investigation_cases.csv` 和 `platform_api_access_investigation_report.html`
+- 调用 `GET /platform/api-access-anomaly-findings`，观察 API access audit 如何通过 HTTP 形成 finding 视图
+- 调用 `POST /platform/api-access-investigation-cases`，观察 API finding 如何通过 HTTP 开成 investigation case 并落盘
+- 调用 `GET /platform/api-access-investigation-cases` 和 `GET /platform/api-access-investigation-cases/{case_id}`，观察工单持久化查询
+- 调用 `PATCH /platform/api-access-investigation-cases/{case_id}/start`
+- 调用 `PATCH /platform/api-access-investigation-cases/{case_id}/resolve` 或 `/false-positive`，观察 API 工单状态流转和访问审计记录
+- 运行 `python -m uvicorn platform_api_app:app --app-dir .\labs\fintech-platform --reload`
+- 读 `docs/20-stage-9-summary-and-stage-10-plan.md`
+- 理解阶段 9 的 API service、幂等、访问审计、API access anomaly、investigation case 和最小 console 的工程结论
+- 下一步建议进入阶段 10：事件驱动与异步任务
 
 ## 本机环境记录
 
@@ -877,3 +909,13 @@ conda activate fintech-lab
 | 2026-05-18 | 新增阶段 8 平台访问异常检测 | `detect_platform_report_access_anomalies()` 只分析平台报表访问事件，并复用 `detect_access_anomalies()` 生成 `unauthorized_export_attempt` 和 `repeated_denied_access` finding；`export_platform_access_anomaly_report()` 导出 CSV/HTML；demo 可显示 `Platform access anomaly findings`；fintech-platform 实验 pytest 31 个测试通过；全量 pytest 276 个测试通过 |
 | 2026-05-18 | 新增阶段 8 平台访问异常调查工单 | `open_platform_access_investigation_cases()` 把平台 access anomaly finding 转成 investigation case，复用 `AccessAnomalyInvestigationService`、`SQLiteInvestigationCaseStore` 和工单动作审计事件，并导出 `platform_access_investigation_cases.csv` 与 `platform_access_investigation_report.html`；demo 可显示 `Platform access investigation cases`；fintech-platform 实验 pytest 36 个测试通过 |
 | 2026-05-18 | 新增阶段 8 总结与验收清单 | `docs/18-stage-8-summary-and-acceptance.md` 总结端到端链路、已完成资产、工程结论、验收清单、当前边界和后续 API 服务化或前端查看页路线；fintech-platform 实验 pytest 36 个测试通过 |
+| 2026-05-19 | 新增阶段 9 平台 API 服务化计划 | `docs/19-stage-9-platform-api-plan.md` 说明阶段 9 继续基于综合平台构建 API service，不另起小项目；当前环境尚未安装 FastAPI/uvicorn，因此先做纯 Python service 边界 |
+| 2026-05-19 | 新增平台 API service 第一版 | `PlatformApiService` 支持创建 payment run、查询单个 run、按状态或客户筛选 runs，用 `run_id` 和 request fingerprint 做教学版幂等校验，并把结果保存到 `SQLitePlatformStore`；fintech-platform API service pytest 7 个测试通过 |
+| 2026-05-19 | 新增平台 FastAPI 路由层第一版 | `platform_api_app.py` 提供 `GET /health`、`POST /platform/payment-runs`、`GET /platform/payment-runs/{run_id}` 和 `GET /platform/payment-runs`，路由层只负责请求/响应和 HTTP 状态码映射；FastAPI 路由 pytest 5 个测试通过 |
+| 2026-05-19 | 新增平台 API 访问审计 | `platform_api_app.py` 复用 `AuditAccessEvent` 和 `SQLiteAccessAuditStore`，记录 API 调用的 granted/denied access audit，并新增 `GET /platform/api-access-events` 查询接口；FastAPI 路由 pytest 6 个测试通过 |
+| 2026-05-19 | 新增平台 API 访问异常检测 | `platform_api_access_anomaly_report.py` 筛选 `fintech_platform_api_` 访问事件，复用 access monitoring 规则识别 repeated denied access，并导出 `platform_api_access_anomaly_findings.csv` 与 HTML 报告；fintech-platform API anomaly pytest 4 个测试通过 |
+| 2026-05-19 | 新增平台 API 访问异常调查工单 | `platform_api_investigation_cases.py` 把 API access anomaly finding 转成 investigation case，支持状态流转、SQLite 持久化、工单动作审计和 API 专用 CSV/HTML 报告；fintech-platform API investigation pytest 5 个测试通过 |
+| 2026-05-19 | 新增平台 API 工单 HTTP 查询接口 | `platform_api_app.py` 新增 API anomaly findings 查询、API investigation case 创建、列表筛选和单个 case 查询接口，继续记录接口访问审计；fintech-platform API investigation endpoint pytest 3 个测试通过 |
+| 2026-05-19 | 新增平台 API 工单状态流转 HTTP 接口 | `platform_api_app.py` 新增 start、resolve 和 false-positive PATCH 接口，状态流转结果写回 SQLite，并记录 granted/denied API access audit；fintech-platform API investigation endpoint pytest 6 个测试通过；全量 pytest 309 个测试通过 |
+| 2026-05-19 | 新增阶段 9 最小前端查看页 | `platform_api_app.py` 新增 `GET /`、`GET /platform` 和 `GET /platform/view`，渲染 `FinTech Platform Console`，只读展示 payment runs、API access anomalies、investigation cases 和 recent API access events，并记录 `view_platform_console` 访问审计；fintech-platform pytest 66 个测试通过；全量 pytest 311 个测试通过 |
+| 2026-05-19 | 新增阶段 9 总结与阶段 10 路线 | `docs/20-stage-9-summary-and-stage-10-plan.md` 总结 API service、幂等、HTTP 状态、访问审计、API access anomaly、investigation case 和最小 console 的工程结论，并建议阶段 10 优先进入事件驱动与异步任务；全量 pytest 311 个测试通过 |

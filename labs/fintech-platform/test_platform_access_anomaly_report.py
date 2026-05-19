@@ -35,6 +35,13 @@ def test_detect_platform_report_access_anomalies_filters_to_platform_targets() -
                 outcome="denied",
                 occurred_at=datetime(2026, 5, 18, 12, 1, tzinfo=timezone.utc),
             ),
+            _access_event(
+                actor="api_viewer_001",
+                permission="view_platform_payment_run",
+                target="fintech_platform_api_payment_runs/missing_run",
+                outcome="denied",
+                occurred_at=datetime(2026, 5, 18, 12, 2, tzinfo=timezone.utc),
+            ),
         )
     )
 

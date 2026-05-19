@@ -17,6 +17,14 @@ from platform_access_anomaly_report import (
     detect_platform_report_access_anomalies,
     export_platform_access_anomaly_report,
 )
+from platform_api_access_anomaly_report import (
+    detect_platform_api_access_anomalies,
+    export_platform_api_access_anomaly_report,
+)
+from platform_api_investigation_cases import (
+    export_platform_api_access_investigation_report,
+    open_platform_api_access_investigation_cases,
+)
 from platform_investigation_cases import (
     export_platform_access_investigation_report,
     open_platform_access_investigation_cases,
@@ -215,6 +223,7 @@ def main() -> None:
     access_audit_store = SQLiteAccessAuditStore(access_audit_database_path)
     try:
         _seed_sample_platform_access_anomalies(access_recorder)
+        _seed_sample_platform_api_access_anomalies(access_recorder)
         access_audit_store.save_events(access_recorder.events)
         print("\nPlatform report access audit events")
         for event in access_audit_store.query_access_events(
@@ -242,6 +251,91 @@ def main() -> None:
         print("Exported platform access anomaly reports:")
         print(f"- {platform_anomaly_paths.findings_csv}")
         print(f"- {platform_anomaly_paths.html_report}")
+
+        platform_api_findings = detect_platform_api_access_anomalies(
+            access_audit_store.access_events,
+        )
+        print("\nPlatform API access anomaly findings")
+        for finding in platform_api_findings:
+            print(
+                f"- {finding.finding_type} actor={finding.actor} "
+                f"severity={finding.severity} event_count={finding.event_count} "
+                f"target={finding.events[0].target}"
+            )
+        platform_api_anomaly_paths = export_platform_api_access_anomaly_report(
+            LAB_DIR / "reports",
+            findings=platform_api_findings,
+        )
+        print("Exported platform API access anomaly reports:")
+        print(f"- {platform_api_anomaly_paths.findings_csv}")
+        print(f"- {platform_api_anomaly_paths.html_report}")
+
+        api_investigation_service = AccessAnomalyInvestigationService()
+        api_investigation_cases = open_platform_api_access_investigation_cases(
+            platform_api_findings,
+            opened_by="api_compliance_lead_001",
+            created_at=datetime(2026, 5, 18, 13, 5, tzinfo=timezone.utc),
+            service=api_investigation_service,
+        )
+        if api_investigation_cases:
+            first_api_case = api_investigation_cases[0]
+            api_investigation_service.start_investigation(
+                first_api_case.case_id,
+                assigned_to="api_investigator_001",
+                started_at=datetime(2026, 5, 18, 13, 15, tzinfo=timezone.utc),
+            )
+            api_investigation_service.mark_false_positive(
+                first_api_case.case_id,
+                closed_by="api_investigator_001",
+                reason="Reviewed sample platform API access anomaly",
+                closed_at=datetime(2026, 5, 18, 14, 10, tzinfo=timezone.utc),
+            )
+
+        print("\nPlatform API access investigation cases")
+        for investigation_case in api_investigation_service.cases:
+            print(
+                f"- {investigation_case.case_id} "
+                f"status={investigation_case.status} "
+                f"actor={investigation_case.finding.actor}"
+            )
+
+        api_investigation_database_path = (
+            LAB_DIR / ".test-data" / "demo_platform_api_investigation_cases.db"
+        )
+        if api_investigation_database_path.exists():
+            api_investigation_database_path.unlink()
+        api_investigation_store = SQLiteInvestigationCaseStore(
+            api_investigation_database_path
+        )
+        try:
+            for investigation_case in api_investigation_service.cases:
+                api_investigation_store.save_case(investigation_case)
+
+            print("\nPersisted open platform API investigation cases")
+            for investigation_case in api_investigation_store.open_cases:
+                print(
+                    f"- {investigation_case.case_id} "
+                    f"status={investigation_case.status} "
+                    f"actor={investigation_case.finding.actor}"
+                )
+        finally:
+            api_investigation_store.close()
+
+        api_investigation_paths = export_platform_api_access_investigation_report(
+            LAB_DIR / "reports",
+            cases=api_investigation_service.cases,
+        )
+        print("Exported platform API access investigation reports:")
+        print(f"- {api_investigation_paths.cases_csv}")
+        print(f"- {api_investigation_paths.html_report}")
+
+        print("\nPlatform API investigation case audit events")
+        for event in api_investigation_service.audit_events:
+            print(
+                f"- {event.occurred_at.isoformat()} "
+                f"{event.event_type} actor={event.actor} "
+                f"aggregate={event.aggregate_id}"
+            )
 
         investigation_service = AccessAnomalyInvestigationService()
         investigation_cases = open_platform_access_investigation_cases(
@@ -333,6 +427,21 @@ def _seed_sample_platform_access_anomalies(
         occurred_at=datetime(2026, 5, 18, 12, 35, tzinfo=timezone.utc),
         reason="Sample analyst export attempt",
     )
+
+
+def _seed_sample_platform_api_access_anomalies(
+    recorder: AuditAccessRecorder,
+) -> None:
+    for minute, run_id in ((40, "missing_001"), (44, "missing_002"), (48, "missing_003")):
+        recorder.record(
+            event_type="audit_access.denied",
+            actor="api_viewer_404",
+            permission="view_platform_payment_run",
+            target=f"fintech_platform_api_payment_runs/{run_id}",
+            outcome="denied",
+            occurred_at=datetime(2026, 5, 18, 12, minute, tzinfo=timezone.utc),
+            reason="Sample missing platform payment run lookup",
+        )
 
 
 if __name__ == "__main__":

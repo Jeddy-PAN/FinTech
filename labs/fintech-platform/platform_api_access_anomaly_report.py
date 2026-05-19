@@ -21,51 +21,49 @@ from compliance_access_monitoring import (  # noqa: E402
 from compliance_audit import AuditAccessEvent  # noqa: E402
 
 
-PLATFORM_REPORT_TARGET_PREFIX = "fintech_platform_"
 PLATFORM_API_ACCESS_TARGET_PREFIX = "fintech_platform_api_"
 
 
 @dataclass(frozen=True)
-class PlatformAccessAnomalyExportPaths:
+class PlatformApiAccessAnomalyExportPaths:
     findings_csv: Path
     html_report: Path
 
 
-def detect_platform_report_access_anomalies(
+def detect_platform_api_access_anomalies(
     events: tuple[AuditAccessEvent, ...],
     *,
     rules: tuple[AccessMonitoringRule, ...] | None = None,
     manager_actor_prefixes: tuple[str, ...] = ("manager_",),
 ) -> tuple[AccessAnomalyFinding, ...]:
-    platform_events = tuple(
+    api_events = tuple(
         event
         for event in events
-        if event.target.startswith(PLATFORM_REPORT_TARGET_PREFIX)
-        and not event.target.startswith(PLATFORM_API_ACCESS_TARGET_PREFIX)
+        if event.target.startswith(PLATFORM_API_ACCESS_TARGET_PREFIX)
     )
     return detect_access_anomalies(
-        platform_events,
+        api_events,
         rules=rules,
         manager_actor_prefixes=manager_actor_prefixes,
     )
 
 
-def export_platform_access_anomaly_report(
+def export_platform_api_access_anomaly_report(
     output_directory: str | Path,
     *,
     findings: tuple[AccessAnomalyFinding, ...],
-) -> PlatformAccessAnomalyExportPaths:
+) -> PlatformApiAccessAnomalyExportPaths:
     output_path = Path(output_directory)
     output_path.mkdir(parents=True, exist_ok=True)
 
-    findings_csv = output_path / "platform_access_anomaly_findings.csv"
-    html_report = output_path / "platform_access_anomaly_report.html"
+    findings_csv = output_path / "platform_api_access_anomaly_findings.csv"
+    html_report = output_path / "platform_api_access_anomaly_report.html"
 
     sorted_findings = tuple(sorted(findings, key=_finding_sort_key))
     _write_findings_csv(findings_csv, sorted_findings)
     html_report.write_text(_render_html_report(sorted_findings), encoding="utf-8")
 
-    return PlatformAccessAnomalyExportPaths(
+    return PlatformApiAccessAnomalyExportPaths(
         findings_csv=findings_csv,
         html_report=html_report,
     )
@@ -113,14 +111,14 @@ def _render_html_report(findings: tuple[AccessAnomalyFinding, ...]) -> str:
     findings_section = (
         _findings_to_html(findings)
         if findings
-        else "<p>No platform access anomaly findings were detected.</p>"
+        else "<p>No platform API access anomaly findings were detected.</p>"
     )
     return f"""<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>FinTech Platform Access Anomaly Report</title>
+  <title>FinTech Platform API Access Anomaly Report</title>
   <style>
     body {{
       color: #1f2937;
@@ -150,7 +148,7 @@ def _render_html_report(findings: tuple[AccessAnomalyFinding, ...]) -> str:
   </style>
 </head>
 <body>
-  <h1>FinTech Platform Access Anomaly Report</h1>
+  <h1>FinTech Platform API Access Anomaly Report</h1>
   <div class="meta">Generated at {html.escape(generated_at)}</div>
   <h2>Findings</h2>
   {findings_section}

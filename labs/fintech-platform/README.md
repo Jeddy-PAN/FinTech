@@ -232,8 +232,12 @@ labs/fintech-platform/reports/platform_consistency_findings.csv
 labs/fintech-platform/reports/platform_consistency_report.html
 labs/fintech-platform/reports/platform_access_anomaly_findings.csv
 labs/fintech-platform/reports/platform_access_anomaly_report.html
+labs/fintech-platform/reports/platform_api_access_anomaly_findings.csv
+labs/fintech-platform/reports/platform_api_access_anomaly_report.html
 labs/fintech-platform/reports/platform_access_investigation_cases.csv
 labs/fintech-platform/reports/platform_access_investigation_report.html
+labs/fintech-platform/reports/platform_api_access_investigation_cases.csv
+labs/fintech-platform/reports/platform_api_access_investigation_report.html
 ```
 
 demo 还会输出 `Risk review completion`，用于观察 `risk_review_required -> completed` 的人工复核通过闭环。
@@ -244,6 +248,7 @@ demo 还会写入并重新读取：
 labs/fintech-platform/.test-data/demo_platform_runs.db
 labs/fintech-platform/.test-data/demo_platform_access_audit.db
 labs/fintech-platform/.test-data/demo_platform_investigation_cases.db
+labs/fintech-platform/.test-data/demo_platform_api_investigation_cases.db
 ```
 
 ## 运行测试
@@ -255,3 +260,83 @@ labs/fintech-platform/.test-data/demo_platform_investigation_cases.db
 ## 当前状态
 
 这个目录已经包含第一版综合平台设计、最小 orchestration、demo、综合报表导出、SQLite 持久化、历史运行报表、risk review 后续处理、教学版一致性检查、平台报表访问控制与访问审计、平台访问异常检测、平台访问异常调查工单，以及测试。阶段 8 的目标仍然是把已有实验组合成一个清晰的学习平台，而不是立即扩成生产级系统。
+
+阶段 9 已经开始在这个目录上做 API 服务化的第一步：
+
+```text
+platform_api_service.py
+platform_api_app.py
+```
+
+当前先实现纯 Python service 边界，支持创建 payment run、查询 payment run、按状态或客户筛选 runs，并用 `run_id` 加 request fingerprint 做教学版幂等校验。FastAPI 路由层已经接入，提供 `GET /health`、`POST /platform/payment-runs`、`GET /platform/payment-runs/{run_id}` 和带筛选参数的 `GET /platform/payment-runs`。
+
+FastAPI 路由层现在也会记录教学版 API 访问审计：
+
+```text
+SQLiteAccessAuditStore
+audit_access.granted
+audit_access.denied
+GET /platform/api-access-events
+```
+
+创建、查询和列出 payment runs 会记录调用者、权限、目标、结果和发生时间。查询类接口可以通过 `x-actor-id` 请求头传入 actor；如果没有传，则记录为 `anonymous_api_client`。创建 payment run 沿用请求体中的 `actor`。这只是教学版 access audit，不等于真实认证、授权或 API gateway。
+
+API access audit 现在也能进入平台 API 访问异常检测：
+
+```text
+platform_api_access_anomaly_report.py
+platform_api_access_anomaly_findings.csv
+platform_api_access_anomaly_report.html
+```
+
+它只分析 `target` 以 `fintech_platform_api_` 开头的访问审计事件，并复用合规审计阶段的 access monitoring 规则。当前 demo 会构造短时间内重复查询不存在 payment run 的样例，生成 repeated denied access finding，并导出 CSV/HTML 报告。这是离线教学检测，不代表生产级实时安全告警。
+
+API access anomaly 现在也能进入单独的调查工单闭环：
+
+```text
+platform_api_investigation_cases.py
+platform_api_access_investigation_cases.csv
+platform_api_access_investigation_report.html
+```
+
+这层继续复用合规审计实验里的 `AccessAnomalyInvestigationService` 和 `SQLiteInvestigationCaseStore`，但导出 API 专用的工单报告。demo 会创建一个 API access investigation case，演示 `open -> investigating -> false_positive`，写入 SQLite，并输出工单处理动作审计事件。这仍是教学版闭环，不代表真实工单系统、SLA 或自动封禁。
+
+FastAPI 也已经暴露 API anomaly 和 API investigation case 的最小查询入口：
+
+```text
+GET  /platform/api-access-anomaly-findings
+POST /platform/api-access-investigation-cases
+GET  /platform/api-access-investigation-cases
+GET  /platform/api-access-investigation-cases/{case_id}
+PATCH /platform/api-access-investigation-cases/{case_id}/start
+PATCH /platform/api-access-investigation-cases/{case_id}/resolve
+PATCH /platform/api-access-investigation-cases/{case_id}/false-positive
+```
+
+这些接口用于观察“访问审计事件 -> finding -> investigation case -> 持久化查询 -> 状态流转”的链路。它们不包含真实权限、分页、锁定认领、审批或 SLA。
+
+FastAPI 现在也提供一个最小前端查看页：
+
+```text
+GET /
+GET /platform
+GET /platform/view
+```
+
+页面标题是 `FinTech Platform Console`，只读展示 payment runs、API access anomalies、investigation cases 和 recent API access events。它不引入单独前端项目、模板框架、登录态或真实 IAM；访问查看页本身会记录 `view_platform_console` access audit，用来观察运营查看动作也应进入审计轨迹。
+
+运行 API 示例：
+
+```powershell
+& 'C:\App\Anaconda\python.exe' -m uvicorn platform_api_app:app --app-dir .\labs\fintech-platform --reload
+```
+
+服务启动后，可以访问 `http://127.0.0.1:8000/` 查看最小页面，或访问 `http://127.0.0.1:8000/docs` 查看 FastAPI 自动生成的接口文档。
+
+阶段 9 已经形成收尾总结：
+
+```text
+docs/20-stage-9-summary-and-stage-10-plan.md
+```
+
+该文档总结 API service、幂等、访问审计、API access anomaly、investigation case 和最小 console 的工程结论，并建议阶段 10 优先进入事件驱动与异步任务主题。

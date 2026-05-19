@@ -7,7 +7,7 @@
 - 学习对象：有编程背景，金融领域零基础。
 - 学习目标：理解金融业务、FinTech 工程系统、数据分析、风控和合规基础。
 - 学习方式：先学概念，再写最小实验，再把知识沉淀成文档。
-- 当前阶段：阶段 8，规划端到端 FinTech 工程作品。
+- 当前阶段：阶段 9 已完成小结，准备进入阶段 10：事件驱动与异步任务。
 
 ## 环境和语言约定
 
@@ -50,7 +50,10 @@ PYTHONIOENCODING=utf-8
 │   ├── 14-risk-rule-engine.md
 │   ├── 15-kyc-aml-onboarding.md
 │   ├── 16-compliance-audit.md
-│   └── 17-stage-7-summary-and-stage-8-plan.md
+│   ├── 17-stage-7-summary-and-stage-8-plan.md
+│   ├── 18-stage-8-summary-and-acceptance.md
+│   ├── 19-stage-9-platform-api-plan.md
+│   └── 20-stage-9-summary-and-stage-10-plan.md
 └── labs/                      # 后续代码实验
     ├── ledger-basics/         # 第一个实验：双分录账本
     ├── payment-orders/        # 第二个实验：支付订单系统
@@ -125,7 +128,18 @@ PYTHONIOENCODING=utf-8
 59. 观察 demo 输出的 `Persisted open platform investigation cases`，理解平台调查工单为什么需要落盘后再查询未关闭工单。
 60. 查看 `labs/fintech-platform/reports/platform_access_investigation_cases.csv` 和 `platform_access_investigation_report.html`，理解平台调查工单状态如何导出为可复核报告。
 61. 观察 demo 输出的 `Platform investigation case audit events`，理解工单创建、接手和关闭动作为什么也要进入 audit trail。
-62. 阶段 8 的收尾已经完成，接下来可以把这套学习平台拆成一个简单的 API 服务或补一个最小前端查看页。
+62. 阶段 8 的收尾已经完成，接下来进入 [docs/19-stage-9-platform-api-plan.md](docs/19-stage-9-platform-api-plan.md)，把这套学习平台拆成一个简单的 API service。
+63. 查看 `labs/fintech-platform/platform_api_service.py`，理解外部请求如何被转换成 `PlatformPaymentRequest`，并保存成 platform run。
+64. 观察 `run_id` 和 request fingerprint 如何配合，理解 API 层幂等为什么不能只看一个 key。
+65. 查看 `labs/fintech-platform/platform_api_app.py`，理解 FastAPI 路由层如何保持很薄，只负责请求/响应和状态码映射。
+66. 运行 `python -m uvicorn platform_api_app:app --app-dir .\labs\fintech-platform --reload`，观察 HTTP 请求如何驱动平台链路。
+67. 调用 `GET /platform/api-access-events`，理解 API 调用本身为什么也需要形成 access audit trail。
+68. 查看 `labs/fintech-platform/reports/platform_api_access_anomaly_findings.csv`，理解 API 访问审计如何进一步生成 repeated denied access finding。
+69. 查看 `labs/fintech-platform/reports/platform_api_access_investigation_cases.csv`，理解 API access anomaly 如何进入 investigation case 处理闭环。
+70. 调用 `GET /platform/api-access-investigation-cases`，理解 API 工单如何通过 HTTP 查询持久化结果。
+71. 调用 `PATCH /platform/api-access-investigation-cases/{case_id}/start` 和 `/resolve`，理解 API 工单状态流转如何也进入访问审计。
+72. 访问 `http://127.0.0.1:8000/` 或 `/platform/view`，观察最小前端查看页如何把 payment runs、API access anomalies、investigation cases 和 recent API access events 放在一个只读页面里。
+73. 读 [docs/20-stage-9-summary-and-stage-10-plan.md](docs/20-stage-9-summary-and-stage-10-plan.md)，确认阶段 9 的工程结论、验收清单和阶段 10 候选路线。
 
 ## 协作原则
 

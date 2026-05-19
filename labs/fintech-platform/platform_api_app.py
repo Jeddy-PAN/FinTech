@@ -1,0 +1,1006 @@
+from __future__ import annotations
+
+import html
+from datetime import date, datetime, timezone
+from pathlib import Path
+import sys
+
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, status
+from fastapi.responses import HTMLResponse
+from pydantic import BaseModel, Field
+
+
+LAB_DIR = Path(__file__).resolve().parent
+COMPLIANCE_LAB_DIR = LAB_DIR.parent / "compliance-audit"
+if str(COMPLIANCE_LAB_DIR) not in sys.path:
+    sys.path.insert(0, str(COMPLIANCE_LAB_DIR))
+
+from compliance_audit import AuditAccessEvent, ComplianceAuditError  # noqa: E402
+from compliance_access_monitoring import AccessAnomalyFinding  # noqa: E402
+from compliance_investigation_cases import (  # noqa: E402
+    AccessAnomalyInvestigationCase,
+    AccessAnomalyInvestigationService,
+)
+from platform_api_service import (
+    PlatformApiPaymentRequest,
+    PlatformApiService,
+    PlatformApiServiceError,
+    service_error_response,
+)
+from platform_api_access_anomaly_report import (  # noqa: E402
+    detect_platform_api_access_anomalies,
+)
+from platform_api_investigation_cases import (  # noqa: E402
+    open_platform_api_access_investigation_cases,
+)
+from sqlite_access_audit_store import SQLiteAccessAuditStore  # noqa: E402
+from sqlite_investigation_case_store import SQLiteInvestigationCaseStore  # noqa: E402
+from sqlite_platform_store import SQLitePlatformStore, SQLitePlatformStoreError  # noqa: E402
+
+
+DEFAULT_DATABASE_PATH = LAB_DIR / ".test-data" / "platform_api.db"
+DEFAULT_ACCESS_AUDIT_DATABASE_PATH = (
+    LAB_DIR / ".test-data" / "platform_api_access_audit.db"
+)
+DEFAULT_INVESTIGATION_DATABASE_PATH = (
+    LAB_DIR / ".test-data" / "platform_api_investigation_cases.db"
+)
+
+CREATE_PLATFORM_PAYMENT_RUN = "create_platform_payment_run"
+VIEW_PLATFORM_PAYMENT_RUN = "view_platform_payment_run"
+LIST_PLATFORM_PAYMENT_RUNS = "list_platform_payment_runs"
+VIEW_PLATFORM_API_ACCESS_EVENTS = "view_platform_api_access_events"
+VIEW_PLATFORM_API_ACCESS_ANOMALY_FINDINGS = "view_platform_api_access_anomaly_findings"
+CREATE_PLATFORM_API_INVESTIGATION_CASES = "create_platform_api_investigation_cases"
+VIEW_PLATFORM_API_INVESTIGATION_CASES = "view_platform_api_investigation_cases"
+UPDATE_PLATFORM_API_INVESTIGATION_CASES = "update_platform_api_investigation_cases"
+VIEW_PLATFORM_CONSOLE = "view_platform_console"
+CHECK_PLATFORM_API_HEALTH = "check_platform_api_health"
+
+PLATFORM_API_HEALTH_TARGET = "fintech_platform_api_health"
+PLATFORM_API_PAYMENT_RUNS_TARGET = "fintech_platform_api_payment_runs"
+PLATFORM_API_ACCESS_EVENTS_TARGET = "fintech_platform_api_access_events"
+PLATFORM_API_ACCESS_ANOMALY_FINDINGS_TARGET = (
+    "fintech_platform_api_access_anomaly_findings"
+)
+PLATFORM_API_INVESTIGATION_CASES_TARGET = (
+    "fintech_platform_api_investigation_cases"
+)
+PLATFORM_CONSOLE_TARGET = "fintech_platform_api_console"
+ANONYMOUS_API_CLIENT = "anonymous_api_client"
+
+
+class PaymentRunRequest(BaseModel):
+    run_id: str = Field(min_length=1)
+    customer_id: str = Field(min_length=1)
+    full_name: str = Field(min_length=1)
+    date_of_birth: date
+    country: str = Field(min_length=1)
+    address: str = Field(min_length=1)
+    identification_number: str = Field(min_length=1)
+    expected_monthly_volume_cents: int = Field(gt=0)
+    amount: str = Field(min_length=1)
+    currency: str = Field(default="USD", min_length=1)
+    order_id: str = Field(min_length=1)
+    requested_at: datetime
+    device_id: str = Field(default="device_default", min_length=1)
+    ip_country: str = Field(default="US", min_length=1)
+    beneficiary_id: str = Field(default="beneficiary_default", min_length=1)
+    actor: str = Field(default="api_client", min_length=1)
+
+
+class StartInvestigationRequest(BaseModel):
+    assigned_to: str = Field(min_length=1)
+    started_at: datetime
+
+
+class CloseInvestigationRequest(BaseModel):
+    closed_by: str = Field(min_length=1)
+    reason: str = Field(min_length=1)
+    closed_at: datetime
+
+
+def create_app(
+    *,
+    database_path: str | Path = DEFAULT_DATABASE_PATH,
+    access_audit_database_path: str | Path = DEFAULT_ACCESS_AUDIT_DATABASE_PATH,
+    investigation_database_path: str | Path = DEFAULT_INVESTIGATION_DATABASE_PATH,
+) -> FastAPI:
+    app = FastAPI(title="FinTech Platform API", version="0.1.0")
+    app.state.database_path = Path(database_path)
+    app.state.access_audit_database_path = Path(access_audit_database_path)
+    app.state.investigation_database_path = Path(investigation_database_path)
+
+    def get_service() -> PlatformApiService:
+        app.state.database_path.parent.mkdir(parents=True, exist_ok=True)
+        store = SQLitePlatformStore(app.state.database_path)
+        return PlatformApiService(store=store)
+
+    @app.get("/", response_class=HTMLResponse)
+    @app.get("/platform", response_class=HTMLResponse)
+    @app.get("/platform/view", response_class=HTMLResponse)
+    def platform_console(
+        x_actor_id: str | None = Header(default=None),
+    ) -> HTMLResponse:
+        actor = _api_actor(x_actor_id)
+        html_body = _render_platform_console_html(app)
+        _record_api_access(
+            app,
+            actor=actor,
+            permission=VIEW_PLATFORM_CONSOLE,
+            target=PLATFORM_CONSOLE_TARGET,
+            outcome="granted",
+        )
+        return HTMLResponse(content=html_body)
+
+    @app.get("/health")
+    def health(x_actor_id: str | None = Header(default=None)) -> dict:
+        _record_api_access(
+            app,
+            actor=_api_actor(x_actor_id),
+            permission=CHECK_PLATFORM_API_HEALTH,
+            target=PLATFORM_API_HEALTH_TARGET,
+            outcome="granted",
+        )
+        return {"status": "ok"}
+
+    @app.post(
+        "/platform/payment-runs",
+        status_code=status.HTTP_201_CREATED,
+    )
+    def create_payment_run(
+        request: PaymentRunRequest,
+        service: PlatformApiService = Depends(get_service),
+    ) -> dict:
+        try:
+            response = service.create_payment_run(_service_request(request))
+        except PlatformApiServiceError as error:
+            _record_api_access(
+                app,
+                actor=request.actor,
+                permission=CREATE_PLATFORM_PAYMENT_RUN,
+                target=PLATFORM_API_PAYMENT_RUNS_TARGET,
+                outcome="denied",
+                reason=f"400 {type(error).__name__}: {error}",
+            )
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=service_error_response(error),
+            ) from error
+        finally:
+            service.store.close()
+
+        _record_api_access(
+            app,
+            actor=request.actor,
+            permission=CREATE_PLATFORM_PAYMENT_RUN,
+            target=PLATFORM_API_PAYMENT_RUNS_TARGET,
+            outcome="granted",
+            reason="idempotent_replay" if response["idempotent_replay"] else None,
+        )
+        if response["idempotent_replay"]:
+            response["http_status"] = "idempotent_replay"
+        return response
+
+    @app.get("/platform/payment-runs/{run_id}")
+    def get_payment_run(
+        run_id: str,
+        x_actor_id: str | None = Header(default=None),
+        service: PlatformApiService = Depends(get_service),
+    ) -> dict:
+        actor = _api_actor(x_actor_id)
+        target = _payment_run_target(run_id)
+        try:
+            response = service.get_payment_run(run_id)
+        except SQLitePlatformStoreError as error:
+            _record_api_access(
+                app,
+                actor=actor,
+                permission=VIEW_PLATFORM_PAYMENT_RUN,
+                target=target,
+                outcome="denied",
+                reason=f"404 {type(error).__name__}: {error}",
+            )
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=service_error_response(error),
+            ) from error
+        except PlatformApiServiceError as error:
+            _record_api_access(
+                app,
+                actor=actor,
+                permission=VIEW_PLATFORM_PAYMENT_RUN,
+                target=target,
+                outcome="denied",
+                reason=f"400 {type(error).__name__}: {error}",
+            )
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=service_error_response(error),
+            ) from error
+        finally:
+            service.store.close()
+        _record_api_access(
+            app,
+            actor=actor,
+            permission=VIEW_PLATFORM_PAYMENT_RUN,
+            target=target,
+            outcome="granted",
+        )
+        return response
+
+    @app.get("/platform/payment-runs")
+    def list_payment_runs(
+        status_filter: str | None = Query(default=None, alias="status"),
+        customer_id: str | None = None,
+        x_actor_id: str | None = Header(default=None),
+        service: PlatformApiService = Depends(get_service),
+    ) -> dict:
+        try:
+            runs = service.list_payment_runs(
+                status=status_filter,
+                customer_id=customer_id,
+            )
+        finally:
+            service.store.close()
+        _record_api_access(
+            app,
+            actor=_api_actor(x_actor_id),
+            permission=LIST_PLATFORM_PAYMENT_RUNS,
+            target=PLATFORM_API_PAYMENT_RUNS_TARGET,
+            outcome="granted",
+        )
+        return {"runs": list(runs)}
+
+    @app.get("/platform/api-access-events")
+    def list_api_access_events(
+        actor: str | None = None,
+        permission: str | None = None,
+        outcome: str | None = None,
+        x_actor_id: str | None = Header(default=None),
+    ) -> dict:
+        store = _access_audit_store(app)
+        try:
+            events = store.query_access_events(
+                actor=actor,
+                permission=permission,
+                outcome=outcome,
+            )
+        finally:
+            store.close()
+        _record_api_access(
+            app,
+            actor=_api_actor(x_actor_id),
+            permission=VIEW_PLATFORM_API_ACCESS_EVENTS,
+            target=PLATFORM_API_ACCESS_EVENTS_TARGET,
+            outcome="granted",
+        )
+        return {"events": [_access_event_response(event) for event in events]}
+
+    @app.get("/platform/api-access-anomaly-findings")
+    def list_api_access_anomaly_findings(
+        x_actor_id: str | None = Header(default=None),
+    ) -> dict:
+        access_events = _access_events(app)
+        findings = detect_platform_api_access_anomalies(access_events)
+        _record_api_access(
+            app,
+            actor=_api_actor(x_actor_id),
+            permission=VIEW_PLATFORM_API_ACCESS_ANOMALY_FINDINGS,
+            target=PLATFORM_API_ACCESS_ANOMALY_FINDINGS_TARGET,
+            outcome="granted",
+        )
+        return {"findings": [_finding_response(finding) for finding in findings]}
+
+    @app.post("/platform/api-access-investigation-cases")
+    def create_api_access_investigation_cases(
+        x_actor_id: str | None = Header(default=None),
+    ) -> dict:
+        actor = _api_actor(x_actor_id)
+        access_events = _access_events(app)
+        findings = detect_platform_api_access_anomalies(access_events)
+        cases = _persist_platform_api_investigation_cases(
+            app,
+            findings=findings,
+            opened_by=actor,
+        )
+        _record_api_access(
+            app,
+            actor=actor,
+            permission=CREATE_PLATFORM_API_INVESTIGATION_CASES,
+            target=PLATFORM_API_INVESTIGATION_CASES_TARGET,
+            outcome="granted",
+            reason=f"cases={len(cases)}",
+        )
+        return {"cases": [_investigation_case_response(case) for case in cases]}
+
+    @app.get("/platform/api-access-investigation-cases")
+    def list_api_access_investigation_cases(
+        status_filter: str | None = Query(default=None, alias="status"),
+        actor: str | None = None,
+        assigned_to: str | None = None,
+        x_actor_id: str | None = Header(default=None),
+    ) -> dict:
+        store = _investigation_store(app)
+        try:
+            cases = store.query_cases(
+                status=status_filter,
+                actor=actor,
+                assigned_to=assigned_to,
+            )
+        finally:
+            store.close()
+        _record_api_access(
+            app,
+            actor=_api_actor(x_actor_id),
+            permission=VIEW_PLATFORM_API_INVESTIGATION_CASES,
+            target=PLATFORM_API_INVESTIGATION_CASES_TARGET,
+            outcome="granted",
+        )
+        return {"cases": [_investigation_case_response(case) for case in cases]}
+
+    @app.get("/platform/api-access-investigation-cases/{case_id}")
+    def get_api_access_investigation_case(
+        case_id: str,
+        x_actor_id: str | None = Header(default=None),
+    ) -> dict:
+        store = _investigation_store(app)
+        try:
+            case = store.get_case(case_id)
+        except ComplianceAuditError as error:
+            _record_api_access(
+                app,
+                actor=_api_actor(x_actor_id),
+                permission=VIEW_PLATFORM_API_INVESTIGATION_CASES,
+                target=f"{PLATFORM_API_INVESTIGATION_CASES_TARGET}/{case_id}",
+                outcome="denied",
+                reason=f"404 {type(error).__name__}: {error}",
+            )
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={
+                    "error": type(error).__name__,
+                    "message": str(error),
+                },
+            ) from error
+        finally:
+            store.close()
+        _record_api_access(
+            app,
+            actor=_api_actor(x_actor_id),
+            permission=VIEW_PLATFORM_API_INVESTIGATION_CASES,
+            target=f"{PLATFORM_API_INVESTIGATION_CASES_TARGET}/{case_id}",
+            outcome="granted",
+        )
+        return {"case": _investigation_case_response(case)}
+
+    @app.patch("/platform/api-access-investigation-cases/{case_id}/start")
+    def start_api_access_investigation_case(
+        case_id: str,
+        request: StartInvestigationRequest,
+        x_actor_id: str | None = Header(default=None),
+    ) -> dict:
+        try:
+            case = _update_investigation_case(
+                app,
+                case_id=case_id,
+                update=lambda service: service.start_investigation(
+                    case_id,
+                    assigned_to=request.assigned_to,
+                    started_at=_aware_timestamp(request.started_at),
+                ),
+            )
+        except ComplianceAuditError as error:
+            _record_case_update_denial(app, case_id, x_actor_id, error)
+            raise _http_exception_from_compliance_error(error) from error
+        _record_api_access(
+            app,
+            actor=_api_actor(x_actor_id),
+            permission=UPDATE_PLATFORM_API_INVESTIGATION_CASES,
+            target=f"{PLATFORM_API_INVESTIGATION_CASES_TARGET}/{case_id}",
+            outcome="granted",
+            reason="started",
+        )
+        return {"case": _investigation_case_response(case)}
+
+    @app.patch("/platform/api-access-investigation-cases/{case_id}/resolve")
+    def resolve_api_access_investigation_case(
+        case_id: str,
+        request: CloseInvestigationRequest,
+        x_actor_id: str | None = Header(default=None),
+    ) -> dict:
+        try:
+            case = _update_investigation_case(
+                app,
+                case_id=case_id,
+                update=lambda service: service.resolve(
+                    case_id,
+                    closed_by=request.closed_by,
+                    reason=request.reason,
+                    closed_at=_aware_timestamp(request.closed_at),
+                ),
+            )
+        except ComplianceAuditError as error:
+            _record_case_update_denial(app, case_id, x_actor_id, error)
+            raise _http_exception_from_compliance_error(error) from error
+        _record_api_access(
+            app,
+            actor=_api_actor(x_actor_id),
+            permission=UPDATE_PLATFORM_API_INVESTIGATION_CASES,
+            target=f"{PLATFORM_API_INVESTIGATION_CASES_TARGET}/{case_id}",
+            outcome="granted",
+            reason="resolved",
+        )
+        return {"case": _investigation_case_response(case)}
+
+    @app.patch("/platform/api-access-investigation-cases/{case_id}/false-positive")
+    def mark_api_access_investigation_case_false_positive(
+        case_id: str,
+        request: CloseInvestigationRequest,
+        x_actor_id: str | None = Header(default=None),
+    ) -> dict:
+        try:
+            case = _update_investigation_case(
+                app,
+                case_id=case_id,
+                update=lambda service: service.mark_false_positive(
+                    case_id,
+                    closed_by=request.closed_by,
+                    reason=request.reason,
+                    closed_at=_aware_timestamp(request.closed_at),
+                ),
+            )
+        except ComplianceAuditError as error:
+            _record_case_update_denial(app, case_id, x_actor_id, error)
+            raise _http_exception_from_compliance_error(error) from error
+        _record_api_access(
+            app,
+            actor=_api_actor(x_actor_id),
+            permission=UPDATE_PLATFORM_API_INVESTIGATION_CASES,
+            target=f"{PLATFORM_API_INVESTIGATION_CASES_TARGET}/{case_id}",
+            outcome="granted",
+            reason="false_positive",
+        )
+        return {"case": _investigation_case_response(case)}
+
+    return app
+
+
+def _service_request(request: PaymentRunRequest) -> PlatformApiPaymentRequest:
+    requested_at = request.requested_at
+    if requested_at.tzinfo is None or requested_at.utcoffset() is None:
+        requested_at = requested_at.replace(tzinfo=timezone.utc)
+    return PlatformApiPaymentRequest(
+        run_id=request.run_id,
+        customer_id=request.customer_id,
+        full_name=request.full_name,
+        date_of_birth=request.date_of_birth,
+        country=request.country,
+        address=request.address,
+        identification_number=request.identification_number,
+        expected_monthly_volume_cents=request.expected_monthly_volume_cents,
+        amount=request.amount,
+        currency=request.currency,
+        order_id=request.order_id,
+        requested_at=requested_at,
+        device_id=request.device_id,
+        ip_country=request.ip_country,
+        beneficiary_id=request.beneficiary_id,
+        actor=request.actor,
+    )
+
+
+def _access_audit_store(app: FastAPI) -> SQLiteAccessAuditStore:
+    app.state.access_audit_database_path.parent.mkdir(parents=True, exist_ok=True)
+    return SQLiteAccessAuditStore(app.state.access_audit_database_path)
+
+
+def _investigation_store(app: FastAPI) -> SQLiteInvestigationCaseStore:
+    app.state.investigation_database_path.parent.mkdir(parents=True, exist_ok=True)
+    return SQLiteInvestigationCaseStore(app.state.investigation_database_path)
+
+
+def _access_events(app: FastAPI) -> tuple[AuditAccessEvent, ...]:
+    store = _access_audit_store(app)
+    try:
+        return store.access_events
+    finally:
+        store.close()
+
+
+def _persist_platform_api_investigation_cases(
+    app: FastAPI,
+    *,
+    findings: tuple[AccessAnomalyFinding, ...],
+    opened_by: str,
+) -> tuple[AccessAnomalyInvestigationCase, ...]:
+    if not findings:
+        return ()
+    cases = open_platform_api_access_investigation_cases(
+        findings,
+        opened_by=opened_by,
+        created_at=datetime.now(timezone.utc),
+    )
+    store = _investigation_store(app)
+    try:
+        for investigation_case in cases:
+            store.save_case(investigation_case)
+    finally:
+        store.close()
+    return cases
+
+
+def _update_investigation_case(
+    app: FastAPI,
+    *,
+    case_id: str,
+    update,
+) -> AccessAnomalyInvestigationCase:
+    store = _investigation_store(app)
+    try:
+        existing_case = store.get_case(case_id)
+        service = AccessAnomalyInvestigationService()
+        service.create_case(
+            existing_case.finding,
+            opened_by=existing_case.opened_by,
+            created_at=existing_case.created_at,
+        )
+        if existing_case.status != "open":
+            service.start_investigation(
+                existing_case.case_id,
+                assigned_to=existing_case.assigned_to or "unknown_assignee",
+                started_at=existing_case.investigation_started_at
+                or existing_case.created_at,
+            )
+        if existing_case.status == "resolved":
+            service.resolve(
+                existing_case.case_id,
+                closed_by=existing_case.closed_by or "unknown_closer",
+                reason=existing_case.resolution_reason or "Persisted resolution",
+                closed_at=existing_case.closed_at or existing_case.created_at,
+            )
+        elif existing_case.status == "false_positive":
+            service.mark_false_positive(
+                existing_case.case_id,
+                closed_by=existing_case.closed_by or "unknown_closer",
+                reason=existing_case.resolution_reason or "Persisted false positive",
+                closed_at=existing_case.closed_at or existing_case.created_at,
+            )
+        updated_case = update(service)
+        store.save_case(updated_case)
+        return updated_case
+    finally:
+        store.close()
+
+
+def _record_case_update_denial(
+    app: FastAPI,
+    case_id: str,
+    actor: str | None,
+    error: ComplianceAuditError,
+) -> None:
+    _record_api_access(
+        app,
+        actor=_api_actor(actor),
+        permission=UPDATE_PLATFORM_API_INVESTIGATION_CASES,
+        target=f"{PLATFORM_API_INVESTIGATION_CASES_TARGET}/{case_id}",
+        outcome="denied",
+        reason=f"{_status_for_compliance_error(error)} {type(error).__name__}: {error}",
+    )
+
+
+def _http_exception_from_compliance_error(error: ComplianceAuditError) -> HTTPException:
+    return HTTPException(
+        status_code=_status_for_compliance_error(error),
+        detail={
+            "error": type(error).__name__,
+            "message": str(error),
+        },
+    )
+
+
+def _status_for_compliance_error(error: ComplianceAuditError) -> int:
+    if str(error).startswith("Unknown investigation case:"):
+        return status.HTTP_404_NOT_FOUND
+    return status.HTTP_400_BAD_REQUEST
+
+
+def _record_api_access(
+    app: FastAPI,
+    *,
+    actor: str,
+    permission: str,
+    target: str,
+    outcome: str,
+    reason: str | None = None,
+) -> None:
+    store = _access_audit_store(app)
+    try:
+        store.save_event(
+            AuditAccessEvent(
+                event_type=(
+                    "audit_access.granted"
+                    if outcome == "granted"
+                    else "audit_access.denied"
+                ),
+                actor=_api_actor(actor),
+                permission=permission,
+                target=target,
+                outcome=outcome,
+                occurred_at=datetime.now(timezone.utc),
+                reason=reason,
+            )
+        )
+    finally:
+        store.close()
+
+
+def _api_actor(value: str | None) -> str:
+    if value is None:
+        return ANONYMOUS_API_CLIENT
+    normalized = value.strip()
+    return normalized or ANONYMOUS_API_CLIENT
+
+
+def _payment_run_target(run_id: str) -> str:
+    return f"{PLATFORM_API_PAYMENT_RUNS_TARGET}/{run_id}"
+
+
+def _aware_timestamp(value: datetime) -> datetime:
+    if value.tzinfo is None or value.utcoffset() is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value
+
+
+def _access_event_response(event: AuditAccessEvent) -> dict:
+    return {
+        "event_type": event.event_type,
+        "actor": event.actor,
+        "permission": event.permission,
+        "target": event.target,
+        "outcome": event.outcome,
+        "occurred_at": event.occurred_at.isoformat(),
+        "reason": event.reason,
+    }
+
+
+def _finding_response(finding: AccessAnomalyFinding) -> dict:
+    return {
+        "finding_type": finding.finding_type,
+        "actor": finding.actor,
+        "severity": finding.severity,
+        "event_count": finding.event_count,
+        "reason": finding.reason,
+        "first_occurred_at": finding.first_occurred_at.isoformat(),
+        "last_occurred_at": finding.last_occurred_at.isoformat(),
+        "events": [_access_event_response(event) for event in finding.events],
+    }
+
+
+def _investigation_case_response(case: AccessAnomalyInvestigationCase) -> dict:
+    return {
+        "case_id": case.case_id,
+        "status": case.status,
+        "created_at": case.created_at.isoformat(),
+        "opened_by": case.opened_by,
+        "assigned_to": case.assigned_to,
+        "investigation_started_at": (
+            case.investigation_started_at.isoformat()
+            if case.investigation_started_at is not None
+            else None
+        ),
+        "closed_by": case.closed_by,
+        "closed_at": (
+            case.closed_at.isoformat() if case.closed_at is not None else None
+        ),
+        "resolution_reason": case.resolution_reason,
+        "finding": _finding_response(case.finding),
+    }
+
+
+def _render_platform_console_html(app: FastAPI) -> str:
+    app.state.database_path.parent.mkdir(parents=True, exist_ok=True)
+    service = PlatformApiService(
+        store=SQLitePlatformStore(app.state.database_path),
+    )
+    try:
+        runs = service.list_payment_runs()
+    finally:
+        service.store.close()
+
+    access_events = _access_events(app)
+    findings = detect_platform_api_access_anomalies(access_events)
+    cases = _investigation_cases(app)
+
+    summary_rows = [
+        ("Payment runs", str(len(runs))),
+        ("Completed runs", str(_count_by_status(runs, "completed"))),
+        ("Risk review runs", str(_count_by_status(runs, "risk_review_required"))),
+        ("API access events", str(len(access_events))),
+        ("API access anomalies", str(len(findings))),
+        ("Investigation cases", str(len(cases))),
+        ("Open cases", str(_count_case_status(cases, "open"))),
+        ("Investigating cases", str(_count_case_status(cases, "investigating"))),
+    ]
+
+    return f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>FinTech Platform Console</title>
+  <style>
+    body {{
+      color: #1f2937;
+      font-family: Arial, sans-serif;
+      line-height: 1.5;
+      margin: 24px;
+      max-width: 1320px;
+    }}
+    h1, h2 {{
+      margin: 0 0 12px;
+    }}
+    h2 {{
+      margin-top: 28px;
+    }}
+    .meta {{
+      color: #6b7280;
+      font-size: 14px;
+      margin-bottom: 18px;
+    }}
+    .summary {{
+      display: grid;
+      gap: 12px;
+      grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+      margin-top: 12px;
+    }}
+    .metric {{
+      border: 1px solid #d1d5db;
+      border-radius: 6px;
+      padding: 12px;
+    }}
+    .metric-label {{
+      color: #6b7280;
+      font-size: 13px;
+      margin-bottom: 6px;
+    }}
+    .metric-value {{
+      font-size: 24px;
+      font-weight: 700;
+    }}
+    table {{
+      border-collapse: collapse;
+      margin-top: 8px;
+      width: 100%;
+    }}
+    th, td {{
+      border: 1px solid #d1d5db;
+      padding: 8px 10px;
+      text-align: left;
+      vertical-align: top;
+    }}
+    th {{
+      background: #f3f4f6;
+    }}
+    .section {{
+      margin-top: 24px;
+    }}
+    .muted {{
+      color: #6b7280;
+      font-size: 14px;
+    }}
+    code {{
+      background: #f3f4f6;
+      border-radius: 4px;
+      padding: 2px 4px;
+    }}
+  </style>
+</head>
+<body>
+  <h1>FinTech Platform Console</h1>
+  <div class="meta">
+    Minimal read-only view for the stage 9 learning platform.
+    API docs remain available at <code>/docs</code>.
+  </div>
+
+  <div class="summary">
+    {''.join(_metric_html(label, value) for label, value in summary_rows)}
+  </div>
+
+  <div class="section">
+    <h2>Recent Payment Runs</h2>
+    {_table(
+        [
+            "run_id",
+            "customer_id",
+            "status",
+            "payment_order_status",
+            "risk_status",
+            "audit_event_count",
+            "created_at",
+        ],
+        [
+            (
+                run["run_id"],
+                run["customer_id"],
+                run["status"],
+                run["payment_order_status"] or "",
+                run["risk_status"] or "",
+                run["audit_event_count"],
+                run["created_at"],
+            )
+            for run in _latest_rows(runs, key="created_at")
+        ],
+        empty_message="No payment runs have been recorded yet.",
+    )}
+  </div>
+
+  <div class="section">
+    <h2>API Access Anomalies</h2>
+    {_table(
+        [
+            "finding_type",
+            "actor",
+            "severity",
+            "event_count",
+            "reason",
+            "first_occurred_at",
+            "last_occurred_at",
+        ],
+        [
+            (
+                finding.finding_type,
+                finding.actor,
+                finding.severity,
+                finding.event_count,
+                finding.reason,
+                finding.first_occurred_at.isoformat(),
+                finding.last_occurred_at.isoformat(),
+            )
+            for finding in _latest_findings(findings)
+        ],
+        empty_message="No API access anomalies have been detected yet.",
+    )}
+  </div>
+
+  <div class="section">
+    <h2>Investigation Cases</h2>
+    {_table(
+        [
+            "case_id",
+            "status",
+            "actor",
+            "opened_by",
+            "assigned_to",
+            "resolution_reason",
+            "created_at",
+        ],
+        [
+            (
+                case.case_id,
+                case.status,
+                case.finding.actor,
+                case.opened_by,
+                case.assigned_to or "",
+                case.resolution_reason or "",
+                case.created_at.isoformat(),
+            )
+            for case in _latest_cases(cases)
+        ],
+        empty_message="No investigation cases have been created yet.",
+    )}
+  </div>
+
+  <div class="section">
+    <h2>Recent API Access Events</h2>
+    {_table(
+        [
+            "occurred_at",
+            "actor",
+            "permission",
+            "target",
+            "outcome",
+            "reason",
+        ],
+        [
+            (
+                event.occurred_at.isoformat(),
+                event.actor,
+                event.permission,
+                event.target,
+                event.outcome,
+                event.reason or "",
+            )
+            for event in _latest_access_events(access_events)
+        ],
+        empty_message="No API access events have been recorded yet.",
+    )}
+  </div>
+</body>
+</html>
+"""
+
+
+def _metric_html(label: str, value: str) -> str:
+    return f"""
+      <div class="metric">
+        <div class="metric-label">{html.escape(label)}</div>
+        <div class="metric-value">{html.escape(value)}</div>
+      </div>
+    """
+
+
+def _table(
+    headers: list[str],
+    rows: list[tuple[object, ...]],
+    *,
+    empty_message: str,
+) -> str:
+    if not rows:
+        return f'<div class="muted">{html.escape(empty_message)}</div>'
+    header_html = "".join(f"<th>{html.escape(header)}</th>" for header in headers)
+    row_html = []
+    for row in rows:
+        cells = "".join(f"<td>{html.escape(str(value))}</td>" for value in row)
+        row_html.append(f"<tr>{cells}</tr>")
+    return (
+        f"<table><thead><tr>{header_html}</tr></thead>"
+        f"<tbody>{''.join(row_html)}</tbody></table>"
+    )
+
+
+def _latest_rows(rows: tuple[dict, ...], *, key: str, limit: int = 5) -> tuple[dict, ...]:
+    return tuple(sorted(rows, key=lambda row: row[key], reverse=True)[:limit])
+
+
+def _latest_findings(
+    findings: tuple[AccessAnomalyFinding, ...],
+    limit: int = 5,
+) -> tuple[AccessAnomalyFinding, ...]:
+    return tuple(
+        sorted(
+            findings,
+            key=lambda finding: (
+                finding.last_occurred_at,
+                finding.event_count,
+                finding.actor,
+            ),
+            reverse=True,
+        )[:limit]
+    )
+
+
+def _latest_cases(
+    cases: tuple[AccessAnomalyInvestigationCase, ...],
+    limit: int = 5,
+) -> tuple[AccessAnomalyInvestigationCase, ...]:
+    return tuple(sorted(cases, key=lambda case: case.created_at, reverse=True)[:limit])
+
+
+def _latest_access_events(
+    events: tuple[AuditAccessEvent, ...],
+    limit: int = 10,
+) -> tuple[AuditAccessEvent, ...]:
+    return tuple(sorted(events, key=lambda event: event.occurred_at, reverse=True)[:limit])
+
+
+def _count_by_status(runs: tuple[dict, ...], status_name: str) -> int:
+    return sum(1 for run in runs if run["status"] == status_name)
+
+
+def _count_case_status(
+    cases: tuple[AccessAnomalyInvestigationCase, ...],
+    status_name: str,
+) -> int:
+    return sum(1 for case in cases if case.status == status_name)
+
+
+def _investigation_cases(app: FastAPI) -> tuple[AccessAnomalyInvestigationCase, ...]:
+    store = _investigation_store(app)
+    try:
+        return store.cases
+    finally:
+        store.close()
+
+
+app = create_app()
