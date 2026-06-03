@@ -1,13 +1,13 @@
 # Learning Progress
 
-最后更新：2026-05-19
+最后更新：2026-06-03
 
 ## 当前状态
 
 - 学习者背景：程序员，金融和 FinTech 目前按零基础处理。
-- 当前阶段：阶段 9 已完成小结，准备进入阶段 10。
-- 当前主线：把账本、支付订单、风控规则引擎、KYC/AML 开户筛查和合规审计串成一个最小端到端学习项目，并把这条链路放到 API service 边界后面，理解外部请求、幂等、状态查询、audit trail、报表和调查工单如何协同。
-- 当前仓库状态：已完成账本基础实验、支付订单实验、交易流水分析实验、投资组合分析实验、风控规则引擎实验、KYC/AML 开户筛查实验、合规审计实验、阶段 7 总结与阶段 8 规划文档、阶段 8 总结与验收清单、`labs/fintech-platform/README.md` 综合平台设计、阶段 8 综合平台能力，以及阶段 9 API 服务化计划、纯 Python API service 第一版、FastAPI 路由层第一版、API 访问审计、API 访问异常检测、API 访问异常调查工单、API 工单 HTTP 查询接口、API 工单状态流转 HTTP 接口、最小前端查看页和阶段 9 总结；下一步建议进入阶段 10：事件驱动与异步任务。
+- 当前阶段：阶段 10 已收尾，完成教学版事件驱动与异步任务边界；下一阶段建议进入运营控制台增强。
+- 当前主线：把账本、支付订单、风控规则引擎、KYC/AML 开户筛查和合规审计串成一个最小端到端学习项目，并把这条链路放到 API service 和异步 worker 边界后面，理解外部请求、幂等、状态查询、后台处理、retry、audit trail、报表和调查工单如何协同。
+- 当前仓库状态：已完成账本基础实验、支付订单实验、交易流水分析实验、投资组合分析实验、风控规则引擎实验、KYC/AML 开户筛查实验、合规审计实验、阶段 7 总结与阶段 8 规划文档、阶段 8 总结与验收清单、`labs/fintech-platform/README.md` 综合平台设计、阶段 8 综合平台能力，以及阶段 9 API 服务化计划、纯 Python API service 第一版、FastAPI 路由层第一版、API 访问审计、API 访问异常检测、API 访问异常调查工单、API 工单 HTTP 查询接口、API 工单状态流转 HTTP 接口、最小前端查看页和阶段 9 总结；阶段 10 已完成事件驱动与异步任务设计文档、最小 async run store、最小 async worker、FastAPI async endpoints、async demo 和阶段 10 总结与验收清单，下一步进入阶段 11 运营控制台增强设计。
 
 ## 学习原则
 
@@ -115,6 +115,12 @@
 - 新增端到端 FinTech 平台 API 工单状态流转 HTTP 接口：`platform_api_app.py` 支持 start、resolve 和 false-positive，并继续记录接口访问审计
 - 新增阶段 9 最小前端查看页：`platform_api_app.py` 支持 `GET /`、`GET /platform` 和 `GET /platform/view`，渲染 `FinTech Platform Console`，只读展示 payment runs、API access anomalies、investigation cases 和 recent API access events，并记录 `view_platform_console` 访问审计
 - 建立阶段 9 总结与阶段 10 路线：`docs/20-stage-9-summary-and-stage-10-plan.md`
+- 建立阶段 10 事件驱动与异步任务设计：`docs/21-stage-10-event-driven-async-plan.md`
+- 新增阶段 10 最小 async run store：`labs/fintech-platform/platform_async_service.py`
+- 新增阶段 10 最小 async worker：`PlatformAsyncWorker`
+- 新增阶段 10 FastAPI async endpoints：创建 async run、查询 async run、按状态列表和教学版 worker 触发
+- 新增阶段 10 demo 展示：通过 FastAPI 创建 async run、触发 worker、查询最终 platform result 和 API access audit
+- 建立阶段 10 总结与验收清单：`docs/22-stage-10-summary-and-acceptance.md`
 - 权威资料索引新增 FinCEN 和 OFAC：`docs/00-authoritative-sources.md`
 
 ## 当前待学
@@ -515,7 +521,25 @@
 - platform_access_investigation_cases.csv
 - platform_access_investigation_report.html
 
-当前已完成阶段 7 总结与阶段 8 规划文档，新增 `labs/fintech-platform/README.md` 作为阶段 8 综合平台设计，并实现 `FinTechPlatform.process_payment()` 最小 orchestration。它可以串起 KYC/AML、payment order、risk decision、ledger posting 和 audit trail，并覆盖 KYC blocked、risk blocked、risk review 和 approved posting 场景。综合平台现在还能导出 `platform_payment_result.csv`、`platform_audit_timeline.csv` 和 `platform_report.html`，通过 `SQLitePlatformStore` 保存 platform run 快照和对应 customer audit timeline，并导出 `platform_run_history.csv`、`platform_run_audit_events.csv` 和 `platform_run_history.html` 历史运行报表。risk review 后续处理也已完成：人工通过会追加 `review_case.approved`、推进订单成功并写入账本；人工拒绝会追加 `review_case.rejected`、推进订单失败且不入账。教学版一致性检查也已完成，可以导出 `platform_consistency_findings.csv` 和 `platform_consistency_report.html`，用于观察 platform status、payment order status、ledger transaction 和 audit events 是否互相吻合。平台报表访问控制和访问审计也已完成，可以授权、拒绝、二人审批并将访问记录写入 SQLite。平台访问异常检测也已完成，可以把非授权导出尝试和重复拒绝访问转成 finding，并导出 `platform_access_anomaly_findings.csv` 和 `platform_access_anomaly_report.html`。平台访问异常调查工单也已完成，可以把平台 finding 转成 investigation case，流转 `open -> investigating -> resolved / false_positive`，写入 SQLite，导出 `platform_access_investigation_cases.csv` 与 `platform_access_investigation_report.html`，并生成工单动作审计事件。下一步可以做阶段 8 小结和端到端验收清单。
+当前已完成阶段 7 总结与阶段 8 规划文档，新增 `labs/fintech-platform/README.md` 作为阶段 8 综合平台设计，并实现 `FinTechPlatform.process_payment()` 最小 orchestration。它可以串起 KYC/AML、payment order、risk decision、ledger posting 和 audit trail，并覆盖 KYC blocked、risk blocked、risk review 和 approved posting 场景。综合平台现在还能导出 `platform_payment_result.csv`、`platform_audit_timeline.csv` 和 `platform_report.html`，通过 `SQLitePlatformStore` 保存 platform run 快照和对应 customer audit timeline，并导出 `platform_run_history.csv`、`platform_run_audit_events.csv` 和 `platform_run_history.html` 历史运行报表。risk review 后续处理也已完成：人工通过会追加 `review_case.approved`、推进订单成功并写入账本；人工拒绝会追加 `review_case.rejected`、推进订单失败且不入账。教学版一致性检查也已完成，可以导出 `platform_consistency_findings.csv` 和 `platform_consistency_report.html`，用于观察 platform status、payment order status、ledger transaction 和 audit events 是否互相吻合。平台报表访问控制和访问审计也已完成，可以授权、拒绝、二人审批并将访问记录写入 SQLite。平台访问异常检测也已完成，可以把非授权导出尝试和重复拒绝访问转成 finding，并导出 `platform_access_anomaly_findings.csv` 和 `platform_access_anomaly_report.html`。平台访问异常调查工单也已完成，可以把平台 finding 转成 investigation case，流转 `open -> investigating -> resolved / false_positive`，写入 SQLite，导出 `platform_access_investigation_cases.csv` 与 `platform_access_investigation_report.html`，并生成工单动作审计事件。阶段 9 已完成 API service、API access audit、API access anomaly、API investigation case 和最小 console；阶段 10 已完成 async run store、最小 worker、FastAPI async endpoints、demo 展示和阶段总结，下一步进入阶段 11 运营控制台增强设计。
+
+### 主题 17：事件驱动与异步任务
+
+- event-driven architecture
+- async run
+- worker
+- accepted / processing / completed / failed
+- retry
+- attempt_count
+- last_error
+- request_fingerprint
+- outbox
+- at-least-once delivery
+- idempotent consumer
+- `docs/21-stage-10-event-driven-async-plan.md`
+- `docs/22-stage-10-summary-and-acceptance.md`
+
+当前已完成阶段 10 设计文档、SQLite async run store、最小 `PlatformAsyncWorker`、FastAPI async endpoints、demo 展示和阶段 10 总结与验收清单，覆盖创建任务、查询任务、按状态筛选、幂等重放、request fingerprint 冲突、重开数据库读取、request payload 重建、worker 成功处理、失败重试、达到上限后失败、批量处理、HTTP `202 Accepted` 响应、教学版 worker 触发、最终 platform result 查询和 API access audit。下一步进入阶段 11 运营控制台增强设计，把 payment runs、async runs、API access events 和 investigation cases 放到更完整的只读运营视图里。
 
 ## 近期计划
 
@@ -718,7 +742,9 @@
 - 运行 `python -m uvicorn platform_api_app:app --app-dir .\labs\fintech-platform --reload`
 - 读 `docs/20-stage-9-summary-and-stage-10-plan.md`
 - 理解阶段 9 的 API service、幂等、访问审计、API access anomaly、investigation case 和最小 console 的工程结论
-- 下一步建议进入阶段 10：事件驱动与异步任务
+- 读 `docs/21-stage-10-event-driven-async-plan.md`
+- 读 `docs/22-stage-10-summary-and-acceptance.md`
+- 下一步进入阶段 11 运营控制台增强设计：展示 async runs、run 详情、状态筛选和失败原因
 
 ## 本机环境记录
 
@@ -919,3 +945,9 @@ conda activate fintech-lab
 | 2026-05-19 | 新增平台 API 工单状态流转 HTTP 接口 | `platform_api_app.py` 新增 start、resolve 和 false-positive PATCH 接口，状态流转结果写回 SQLite，并记录 granted/denied API access audit；fintech-platform API investigation endpoint pytest 6 个测试通过；全量 pytest 309 个测试通过 |
 | 2026-05-19 | 新增阶段 9 最小前端查看页 | `platform_api_app.py` 新增 `GET /`、`GET /platform` 和 `GET /platform/view`，渲染 `FinTech Platform Console`，只读展示 payment runs、API access anomalies、investigation cases 和 recent API access events，并记录 `view_platform_console` 访问审计；fintech-platform pytest 66 个测试通过；全量 pytest 311 个测试通过 |
 | 2026-05-19 | 新增阶段 9 总结与阶段 10 路线 | `docs/20-stage-9-summary-and-stage-10-plan.md` 总结 API service、幂等、HTTP 状态、访问审计、API access anomaly、investigation case 和最小 console 的工程结论，并建议阶段 10 优先进入事件驱动与异步任务；全量 pytest 311 个测试通过 |
+| 2026-05-20 | 新增阶段 10 事件驱动与异步任务设计 | `docs/21-stage-10-event-driven-async-plan.md` 明确阶段 10 不另起项目，而是在现有 API service 后增加 async run store、worker、retry 和状态查询边界；下一步实现 `platform_async_service.py` |
+| 2026-06-02 | 新增阶段 10 最小 async run store | `platform_async_service.py` 新增 `PlatformAsyncRun`、`SQLitePlatformAsyncRunStore` 和 `platform_async_runs` 表，支持创建 accepted run、查询、按状态筛选、`run_id` + request fingerprint 幂等重放和冲突检测；`test_platform_async_service.py` 6 个测试通过；fintech-platform pytest 72 个测试通过 |
+| 2026-06-03 | 新增阶段 10 最小 async worker | `PlatformAsyncWorker` 支持读取 accepted async run、推进 `processing -> completed`、调用现有 `PlatformApiService` 写入最终 `SQLitePlatformStore`，并支持失败重试、达到 `max_attempts` 后标记 failed、批量处理 pending runs；`test_platform_async_service.py` 11 个测试通过；fintech-platform pytest 77 个测试通过 |
+| 2026-06-03 | 新增阶段 10 FastAPI async endpoints | `platform_api_app.py` 新增 `POST /platform/async-payment-runs`、async run 查询/列表、`POST /platform/async-worker/process-next` 和 `process-pending`，支持 `202 Accepted`、幂等重放、fingerprint 冲突、worker 触发、最终 platform result 查询和 API access audit；fintech-platform pytest 82 个测试通过 |
+| 2026-06-03 | 更新阶段 10 demo 展示 async HTTP 路径 | `demo.py` 通过 in-process FastAPI client 展示 async run 创建、状态查询、worker 处理、最终 platform result、幂等重放和 async API access audit；demo 可运行 |
+| 2026-06-03 | 新增阶段 10 总结与验收清单 | `docs/22-stage-10-summary-and-acceptance.md` 总结 async run、worker、HTTP `202`、retry、idempotency、任务状态与业务状态分离、audit trail、验收清单和当前边界；下一步建议阶段 11 进入运营控制台增强 |

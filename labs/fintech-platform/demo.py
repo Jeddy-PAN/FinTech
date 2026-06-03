@@ -4,6 +4,8 @@ import sys
 from datetime import date, datetime, timezone
 from pathlib import Path
 
+from fastapi.testclient import TestClient
+
 LAB_DIR = Path(__file__).resolve().parent
 COMPLIANCE_LAB_DIR = LAB_DIR.parent / "compliance-audit"
 if str(COMPLIANCE_LAB_DIR) not in sys.path:
@@ -25,6 +27,7 @@ from platform_api_investigation_cases import (
     export_platform_api_access_investigation_report,
     open_platform_api_access_investigation_cases,
 )
+from platform_api_app import create_app
 from platform_investigation_cases import (
     export_platform_access_investigation_report,
     open_platform_access_investigation_cases,
@@ -216,6 +219,94 @@ def main() -> None:
         print(f"- {consistency_paths.html_report}")
     finally:
         store.close()
+
+    async_database_path = LAB_DIR / ".test-data" / "demo_platform_async_runs.db"
+    api_access_audit_database_path = (
+        LAB_DIR / ".test-data" / "demo_platform_api_access_audit.db"
+    )
+    for path in (async_database_path, api_access_audit_database_path):
+        if path.exists():
+            path.unlink()
+
+    api_app = create_app(
+        database_path=database_path,
+        access_audit_database_path=api_access_audit_database_path,
+        async_database_path=async_database_path,
+    )
+    async_payload = {
+        "run_id": "run_demo_async_001",
+        "customer_id": "cust_async_001",
+        "full_name": "Taylor Lee",
+        "date_of_birth": "1990-07-15",
+        "country": "US",
+        "address": "200 Market Street",
+        "identification_number": "ID-ASYNC-1001",
+        "expected_monthly_volume_cents": 250_000,
+        "amount": "125.00",
+        "currency": "USD",
+        "order_id": "order_async_001",
+        "requested_at": "2026-05-18T15:00:00Z",
+        "device_id": "device_known",
+        "ip_country": "US",
+        "beneficiary_id": "beneficiary_001",
+        "actor": "api_client_async_001",
+    }
+    with TestClient(api_app) as client:
+        accepted_response = client.post(
+            "/platform/async-payment-runs",
+            json=async_payload,
+        )
+        accepted_body = accepted_response.json()
+        before_worker_body = client.get(
+            "/platform/async-payment-runs/run_demo_async_001",
+            headers={"x-actor-id": "async_status_viewer_001"},
+        ).json()
+        worker_body = client.post(
+            "/platform/async-worker/process-next",
+            headers={"x-actor-id": "async_worker_001"},
+        ).json()
+        completed_body = client.get(
+            "/platform/async-payment-runs/run_demo_async_001",
+            headers={"x-actor-id": "async_status_viewer_001"},
+        ).json()
+        final_platform_body = client.get(
+            "/platform/payment-runs/run_demo_async_001",
+            headers={"x-actor-id": "api_viewer_async_001"},
+        ).json()
+        replay_body = client.post(
+            "/platform/async-payment-runs",
+            json=async_payload,
+        ).json()
+
+    print("\nAsync payment run via FastAPI")
+    print(f"- Create HTTP style: {accepted_body['http_status']}")
+    print(f"- Accepted async status: {before_worker_body['status']}")
+    print(
+        f"- Worker processed: {worker_body['result']['processed']} "
+        f"async_status={worker_body['result']['async_status']} "
+        f"platform_status={worker_body['result']['platform_status']}"
+    )
+    print(f"- Completed async status: {completed_body['status']}")
+    print(
+        f"- Final platform result: {final_platform_body['run_id']} "
+        f"status={final_platform_body['status']} "
+        f"payment_order={final_platform_body['payment_order_id']}"
+    )
+    print(
+        f"- Idempotent replay: {replay_body['idempotent_replay']} "
+        f"http_status={replay_body['http_status']}"
+    )
+
+    async_access_store = SQLiteAccessAuditStore(api_access_audit_database_path)
+    try:
+        print("\nAsync API access audit events")
+        for event in async_access_store.access_events:
+            print(
+                f"- {event.occurred_at.isoformat()} actor={event.actor} "
+                f"permission={event.permission} outcome={event.outcome}"
+            )
+    finally:
+        async_access_store.close()
 
     access_audit_database_path = LAB_DIR / ".test-data" / "demo_platform_access_audit.db"
     if access_audit_database_path.exists():

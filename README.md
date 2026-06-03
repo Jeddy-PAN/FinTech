@@ -7,7 +7,7 @@
 - 学习对象：有编程背景，金融领域零基础。
 - 学习目标：理解金融业务、FinTech 工程系统、数据分析、风控和合规基础。
 - 学习方式：先学概念，再写最小实验，再把知识沉淀成文档。
-- 当前阶段：阶段 9 已完成小结，准备进入阶段 10：事件驱动与异步任务。
+- 当前阶段：阶段 10 已收尾，完成教学版事件驱动与异步任务边界；下一阶段建议进入运营控制台增强。
 
 ## 环境和语言约定
 
@@ -53,7 +53,9 @@ PYTHONIOENCODING=utf-8
 │   ├── 17-stage-7-summary-and-stage-8-plan.md
 │   ├── 18-stage-8-summary-and-acceptance.md
 │   ├── 19-stage-9-platform-api-plan.md
-│   └── 20-stage-9-summary-and-stage-10-plan.md
+│   ├── 20-stage-9-summary-and-stage-10-plan.md
+│   ├── 21-stage-10-event-driven-async-plan.md
+│   └── 22-stage-10-summary-and-acceptance.md
 └── labs/                      # 后续代码实验
     ├── ledger-basics/         # 第一个实验：双分录账本
     ├── payment-orders/        # 第二个实验：支付订单系统
@@ -140,6 +142,9 @@ PYTHONIOENCODING=utf-8
 71. 调用 `PATCH /platform/api-access-investigation-cases/{case_id}/start` 和 `/resolve`，理解 API 工单状态流转如何也进入访问审计。
 72. 访问 `http://127.0.0.1:8000/` 或 `/platform/view`，观察最小前端查看页如何把 payment runs、API access anomalies、investigation cases 和 recent API access events 放在一个只读页面里。
 73. 读 [docs/20-stage-9-summary-and-stage-10-plan.md](docs/20-stage-9-summary-and-stage-10-plan.md)，确认阶段 9 的工程结论、验收清单和阶段 10 候选路线。
+74. 读 [docs/21-stage-10-event-driven-async-plan.md](docs/21-stage-10-event-driven-async-plan.md)，理解阶段 10 如何把同步 API service 拆成 accepted async run、后台 worker、状态查询、重试和幂等边界。
+75. 调用 `POST /platform/async-payment-runs`、`POST /platform/async-worker/process-next` 和 `GET /platform/async-payment-runs/{run_id}`，观察 `accepted -> completed` 与最终 platform run 的关系。
+76. 读 [docs/22-stage-10-summary-and-acceptance.md](docs/22-stage-10-summary-and-acceptance.md)，确认阶段 10 的工程结论、验收清单、当前边界和阶段 11 候选路线。
 
 ## 协作原则
 

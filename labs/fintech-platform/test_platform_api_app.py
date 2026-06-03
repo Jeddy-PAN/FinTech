@@ -6,8 +6,11 @@ from uuid import uuid4
 from fastapi.testclient import TestClient
 
 from platform_api_app import (
+    CREATE_PLATFORM_ASYNC_PAYMENT_RUN,
     CREATE_PLATFORM_PAYMENT_RUN,
     LIST_PLATFORM_PAYMENT_RUNS,
+    PROCESS_PLATFORM_ASYNC_PAYMENT_RUNS,
+    VIEW_PLATFORM_ASYNC_PAYMENT_RUN,
     VIEW_PLATFORM_PAYMENT_RUN,
     create_app,
 )
@@ -160,6 +163,218 @@ def test_platform_api_lists_payment_runs_with_filters() -> None:
         client.close()
         _remove_database(database_path)
         _remove_database(access_audit_database_path)
+
+
+def test_platform_api_creates_and_gets_async_payment_run() -> None:
+    client, database_path, access_audit_database_path, async_database_path = (
+        _client_with_async()
+    )
+    try:
+        created = client.post(
+            "/platform/async-payment-runs",
+            json=_payload(run_id="run_async_http_001", order_id="order_async_http_001"),
+        )
+
+        assert created.status_code == 202
+        created_body = created.json()
+        assert created_body["run_id"] == "run_async_http_001"
+        assert created_body["status"] == "accepted"
+        assert created_body["attempt_count"] == 0
+        assert created_body["idempotent_replay"] is False
+        assert created_body["http_status"] == "accepted"
+        assert created_body["platform_result"] is None
+        assert created_body["request"]["customer_id"] == "cust_001"
+
+        fetched = client.get(
+            "/platform/async-payment-runs/run_async_http_001",
+            headers={"x-actor-id": "api_async_viewer_001"},
+        )
+
+        assert fetched.status_code == 200
+        fetched_body = fetched.json()
+        assert fetched_body["run_id"] == "run_async_http_001"
+        assert fetched_body["status"] == "accepted"
+        assert fetched_body["platform_result"] is None
+
+        events = _access_events(access_audit_database_path)
+        assert [(event.actor, event.permission, event.outcome) for event in events] == [
+            ("api_client_001", CREATE_PLATFORM_ASYNC_PAYMENT_RUN, "granted"),
+            ("api_async_viewer_001", VIEW_PLATFORM_ASYNC_PAYMENT_RUN, "granted"),
+        ]
+    finally:
+        client.close()
+        _remove_database(database_path)
+        _remove_database(access_audit_database_path)
+        _remove_database(async_database_path)
+
+
+def test_platform_api_replays_async_run_and_rejects_fingerprint_conflict() -> None:
+    client, database_path, access_audit_database_path, async_database_path = (
+        _client_with_async()
+    )
+    try:
+        first = client.post(
+            "/platform/async-payment-runs",
+            json=_payload(run_id="run_async_http_001", order_id="order_async_http_001"),
+        )
+        replay = client.post(
+            "/platform/async-payment-runs",
+            json=_payload(run_id="run_async_http_001", order_id="order_async_http_001"),
+        )
+        conflict = client.post(
+            "/platform/async-payment-runs",
+            json=_payload(
+                run_id="run_async_http_001",
+                order_id="order_changed",
+                amount="999.00",
+            ),
+        )
+
+        assert first.status_code == 202
+        assert replay.status_code == 202
+        assert replay.json()["idempotent_replay"] is True
+        assert replay.json()["http_status"] == "idempotent_replay"
+        assert conflict.status_code == 400
+        assert conflict.json()["detail"]["error"] == "PlatformAsyncRunStoreError"
+        assert "different request fingerprint" in conflict.json()["detail"]["message"]
+
+        events = _access_events(access_audit_database_path)
+        assert [event.outcome for event in events] == [
+            "granted",
+            "granted",
+            "denied",
+        ]
+        assert events[1].reason == "idempotent_replay"
+        assert events[2].permission == CREATE_PLATFORM_ASYNC_PAYMENT_RUN
+        assert "different request fingerprint" in events[2].reason
+    finally:
+        client.close()
+        _remove_database(database_path)
+        _remove_database(access_audit_database_path)
+        _remove_database(async_database_path)
+
+
+def test_platform_api_worker_processes_async_run_to_platform_result() -> None:
+    client, database_path, access_audit_database_path, async_database_path = (
+        _client_with_async()
+    )
+    try:
+        accepted = client.post(
+            "/platform/async-payment-runs",
+            json=_payload(run_id="run_async_http_001", order_id="order_async_http_001"),
+        )
+        processed = client.post(
+            "/platform/async-worker/process-next",
+            headers={"x-actor-id": "async_worker_001"},
+        )
+        fetched_async = client.get("/platform/async-payment-runs/run_async_http_001")
+        fetched_platform = client.get("/platform/payment-runs/run_async_http_001")
+
+        assert accepted.status_code == 202
+        assert processed.status_code == 200
+        assert processed.json()["result"] == {
+            "processed": True,
+            "run_id": "run_async_http_001",
+            "async_status": "completed",
+            "platform_status": "completed",
+            "error": None,
+        }
+
+        async_body = fetched_async.json()
+        assert async_body["status"] == "completed"
+        assert async_body["attempt_count"] == 1
+        assert async_body["platform_result"]["run_id"] == "run_async_http_001"
+        assert async_body["platform_result"]["status"] == "completed"
+
+        assert fetched_platform.status_code == 200
+        assert fetched_platform.json()["payment_order_id"] == "order_async_http_001"
+
+        worker_events = [
+            event
+            for event in _access_events(access_audit_database_path)
+            if event.permission == PROCESS_PLATFORM_ASYNC_PAYMENT_RUNS
+        ]
+        assert len(worker_events) == 1
+        assert worker_events[0].actor == "async_worker_001"
+        assert worker_events[0].outcome == "granted"
+        assert "run_async_http_001" in worker_events[0].reason
+    finally:
+        client.close()
+        _remove_database(database_path)
+        _remove_database(access_audit_database_path)
+        _remove_database(async_database_path)
+
+
+def test_platform_api_lists_async_runs_and_processes_pending_limit() -> None:
+    client, database_path, access_audit_database_path, async_database_path = (
+        _client_with_async()
+    )
+    try:
+        client.post(
+            "/platform/async-payment-runs",
+            json=_payload(run_id="run_async_http_001", order_id="order_async_http_001"),
+        )
+        client.post(
+            "/platform/async-payment-runs",
+            json=_payload(run_id="run_async_http_002", order_id="order_async_http_002"),
+        )
+
+        accepted_before = client.get(
+            "/platform/async-payment-runs?status=accepted",
+            headers={"x-actor-id": "api_async_viewer_002"},
+        )
+        processed = client.post(
+            "/platform/async-worker/process-pending?limit=1",
+            headers={"x-actor-id": "async_worker_001"},
+        )
+        accepted_after = client.get("/platform/async-payment-runs?status=accepted")
+
+        assert accepted_before.status_code == 200
+        assert [run["run_id"] for run in accepted_before.json()["runs"]] == [
+            "run_async_http_001",
+            "run_async_http_002",
+        ]
+        assert processed.status_code == 200
+        assert [result["run_id"] for result in processed.json()["results"]] == [
+            "run_async_http_001",
+        ]
+        assert [run["run_id"] for run in accepted_after.json()["runs"]] == [
+            "run_async_http_002",
+        ]
+    finally:
+        client.close()
+        _remove_database(database_path)
+        _remove_database(access_audit_database_path)
+        _remove_database(async_database_path)
+
+
+def test_platform_api_worker_reports_no_pending_async_run() -> None:
+    client, database_path, access_audit_database_path, async_database_path = (
+        _client_with_async()
+    )
+    try:
+        response = client.post(
+            "/platform/async-worker/process-next",
+            headers={"x-actor-id": "async_worker_001"},
+        )
+
+        assert response.status_code == 200
+        assert response.json()["result"] == {
+            "processed": False,
+            "run_id": None,
+            "async_status": None,
+            "platform_status": None,
+            "error": None,
+        }
+
+        events = _access_events(access_audit_database_path)
+        assert events[0].permission == PROCESS_PLATFORM_ASYNC_PAYMENT_RUNS
+        assert events[0].reason == "processed=0"
+    finally:
+        client.close()
+        _remove_database(database_path)
+        _remove_database(access_audit_database_path)
+        _remove_database(async_database_path)
 
 
 def test_platform_api_returns_404_for_missing_run() -> None:
@@ -319,6 +534,24 @@ def _client_with_investigation():
     )
 
 
+def _client_with_async():
+    database_path = _database_path()
+    access_audit_database_path = _access_audit_database_path()
+    async_database_path = _async_database_path()
+    return (
+        TestClient(
+            create_app(
+                database_path=database_path,
+                access_audit_database_path=access_audit_database_path,
+                async_database_path=async_database_path,
+            )
+        ),
+        database_path,
+        access_audit_database_path,
+        async_database_path,
+    )
+
+
 def _payload(
     *,
     run_id: str = "run_http_001",
@@ -351,6 +584,10 @@ def _database_path() -> Path:
 
 def _access_audit_database_path() -> Path:
     return _test_data_directory() / f"platform-api-app-access-audit-{uuid4()}.db"
+
+
+def _async_database_path() -> Path:
+    return _test_data_directory() / f"platform-api-app-async-{uuid4()}.db"
 
 
 def _test_data_directory() -> Path:

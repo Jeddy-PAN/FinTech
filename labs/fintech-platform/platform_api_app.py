@@ -27,6 +27,13 @@ from platform_api_service import (
     PlatformApiServiceError,
     service_error_response,
 )
+from platform_async_service import (  # noqa: E402
+    PlatformAsyncRun,
+    PlatformAsyncRunStoreError,
+    PlatformAsyncWorker,
+    PlatformAsyncWorkerResult,
+    SQLitePlatformAsyncRunStore,
+)
 from platform_api_access_anomaly_report import (  # noqa: E402
     detect_platform_api_access_anomalies,
 )
@@ -42,6 +49,7 @@ DEFAULT_DATABASE_PATH = LAB_DIR / ".test-data" / "platform_api.db"
 DEFAULT_ACCESS_AUDIT_DATABASE_PATH = (
     LAB_DIR / ".test-data" / "platform_api_access_audit.db"
 )
+DEFAULT_ASYNC_DATABASE_PATH = LAB_DIR / ".test-data" / "platform_api_async_runs.db"
 DEFAULT_INVESTIGATION_DATABASE_PATH = (
     LAB_DIR / ".test-data" / "platform_api_investigation_cases.db"
 )
@@ -49,6 +57,10 @@ DEFAULT_INVESTIGATION_DATABASE_PATH = (
 CREATE_PLATFORM_PAYMENT_RUN = "create_platform_payment_run"
 VIEW_PLATFORM_PAYMENT_RUN = "view_platform_payment_run"
 LIST_PLATFORM_PAYMENT_RUNS = "list_platform_payment_runs"
+CREATE_PLATFORM_ASYNC_PAYMENT_RUN = "create_platform_async_payment_run"
+VIEW_PLATFORM_ASYNC_PAYMENT_RUN = "view_platform_async_payment_run"
+LIST_PLATFORM_ASYNC_PAYMENT_RUNS = "list_platform_async_payment_runs"
+PROCESS_PLATFORM_ASYNC_PAYMENT_RUNS = "process_platform_async_payment_runs"
 VIEW_PLATFORM_API_ACCESS_EVENTS = "view_platform_api_access_events"
 VIEW_PLATFORM_API_ACCESS_ANOMALY_FINDINGS = "view_platform_api_access_anomaly_findings"
 CREATE_PLATFORM_API_INVESTIGATION_CASES = "create_platform_api_investigation_cases"
@@ -59,6 +71,8 @@ CHECK_PLATFORM_API_HEALTH = "check_platform_api_health"
 
 PLATFORM_API_HEALTH_TARGET = "fintech_platform_api_health"
 PLATFORM_API_PAYMENT_RUNS_TARGET = "fintech_platform_api_payment_runs"
+PLATFORM_API_ASYNC_PAYMENT_RUNS_TARGET = "fintech_platform_api_async_payment_runs"
+PLATFORM_API_ASYNC_WORKER_TARGET = "fintech_platform_api_async_worker"
 PLATFORM_API_ACCESS_EVENTS_TARGET = "fintech_platform_api_access_events"
 PLATFORM_API_ACCESS_ANOMALY_FINDINGS_TARGET = (
     "fintech_platform_api_access_anomaly_findings"
@@ -104,17 +118,23 @@ def create_app(
     *,
     database_path: str | Path = DEFAULT_DATABASE_PATH,
     access_audit_database_path: str | Path = DEFAULT_ACCESS_AUDIT_DATABASE_PATH,
+    async_database_path: str | Path = DEFAULT_ASYNC_DATABASE_PATH,
     investigation_database_path: str | Path = DEFAULT_INVESTIGATION_DATABASE_PATH,
 ) -> FastAPI:
     app = FastAPI(title="FinTech Platform API", version="0.1.0")
     app.state.database_path = Path(database_path)
     app.state.access_audit_database_path = Path(access_audit_database_path)
+    app.state.async_database_path = Path(async_database_path)
     app.state.investigation_database_path = Path(investigation_database_path)
 
     def get_service() -> PlatformApiService:
         app.state.database_path.parent.mkdir(parents=True, exist_ok=True)
         store = SQLitePlatformStore(app.state.database_path)
         return PlatformApiService(store=store)
+
+    def get_async_store() -> SQLitePlatformAsyncRunStore:
+        app.state.async_database_path.parent.mkdir(parents=True, exist_ok=True)
+        return SQLitePlatformAsyncRunStore(app.state.async_database_path)
 
     @app.get("/", response_class=HTMLResponse)
     @app.get("/platform", response_class=HTMLResponse)
@@ -251,6 +271,161 @@ def create_app(
             outcome="granted",
         )
         return {"runs": list(runs)}
+
+    @app.post(
+        "/platform/async-payment-runs",
+        status_code=status.HTTP_202_ACCEPTED,
+    )
+    def create_async_payment_run(
+        request: PaymentRunRequest,
+        async_store: SQLitePlatformAsyncRunStore = Depends(get_async_store),
+    ) -> dict:
+        try:
+            result = async_store.create_run(_service_request(request))
+        except PlatformAsyncRunStoreError as error:
+            _record_api_access(
+                app,
+                actor=request.actor,
+                permission=CREATE_PLATFORM_ASYNC_PAYMENT_RUN,
+                target=PLATFORM_API_ASYNC_PAYMENT_RUNS_TARGET,
+                outcome="denied",
+                reason=f"400 {type(error).__name__}: {error}",
+            )
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={
+                    "error": type(error).__name__,
+                    "message": str(error),
+                },
+            ) from error
+        finally:
+            async_store.close()
+
+        _record_api_access(
+            app,
+            actor=request.actor,
+            permission=CREATE_PLATFORM_ASYNC_PAYMENT_RUN,
+            target=PLATFORM_API_ASYNC_PAYMENT_RUNS_TARGET,
+            outcome="granted",
+            reason="idempotent_replay" if result.idempotent_replay else None,
+        )
+        response = _async_run_response(app, result.run)
+        response["idempotent_replay"] = result.idempotent_replay
+        response["http_status"] = (
+            "idempotent_replay" if result.idempotent_replay else "accepted"
+        )
+        return response
+
+    @app.get("/platform/async-payment-runs")
+    def list_async_payment_runs(
+        status_filter: str | None = Query(default=None, alias="status"),
+        x_actor_id: str | None = Header(default=None),
+        async_store: SQLitePlatformAsyncRunStore = Depends(get_async_store),
+    ) -> dict:
+        actor = _api_actor(x_actor_id)
+        try:
+            runs = async_store.query_runs(status=status_filter)
+        except PlatformAsyncRunStoreError as error:
+            _record_api_access(
+                app,
+                actor=actor,
+                permission=LIST_PLATFORM_ASYNC_PAYMENT_RUNS,
+                target=PLATFORM_API_ASYNC_PAYMENT_RUNS_TARGET,
+                outcome="denied",
+                reason=f"400 {type(error).__name__}: {error}",
+            )
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={
+                    "error": type(error).__name__,
+                    "message": str(error),
+                },
+            ) from error
+        finally:
+            async_store.close()
+        _record_api_access(
+            app,
+            actor=actor,
+            permission=LIST_PLATFORM_ASYNC_PAYMENT_RUNS,
+            target=PLATFORM_API_ASYNC_PAYMENT_RUNS_TARGET,
+            outcome="granted",
+        )
+        return {
+            "runs": [
+                _async_run_response(app, run, include_platform_result=False)
+                for run in runs
+            ]
+        }
+
+    @app.get("/platform/async-payment-runs/{run_id}")
+    def get_async_payment_run(
+        run_id: str,
+        x_actor_id: str | None = Header(default=None),
+        async_store: SQLitePlatformAsyncRunStore = Depends(get_async_store),
+    ) -> dict:
+        actor = _api_actor(x_actor_id)
+        target = _async_payment_run_target(run_id)
+        try:
+            run = async_store.get_run(run_id)
+        except PlatformAsyncRunStoreError as error:
+            _record_api_access(
+                app,
+                actor=actor,
+                permission=VIEW_PLATFORM_ASYNC_PAYMENT_RUN,
+                target=target,
+                outcome="denied",
+                reason=f"404 {type(error).__name__}: {error}",
+            )
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={
+                    "error": type(error).__name__,
+                    "message": str(error),
+                },
+            ) from error
+        finally:
+            async_store.close()
+        _record_api_access(
+            app,
+            actor=actor,
+            permission=VIEW_PLATFORM_ASYNC_PAYMENT_RUN,
+            target=target,
+            outcome="granted",
+        )
+        return _async_run_response(app, run)
+
+    @app.post("/platform/async-worker/process-next")
+    def process_next_async_payment_run(
+        x_actor_id: str | None = Header(default=None),
+    ) -> dict:
+        actor = _api_actor(x_actor_id)
+        result = _process_async_worker(app, limit=None)
+        _record_api_access(
+            app,
+            actor=actor,
+            permission=PROCESS_PLATFORM_ASYNC_PAYMENT_RUNS,
+            target=PLATFORM_API_ASYNC_WORKER_TARGET,
+            outcome="granted",
+            reason=_worker_audit_reason((result,)),
+        )
+        return {"result": _worker_result_response(result)}
+
+    @app.post("/platform/async-worker/process-pending")
+    def process_pending_async_payment_runs(
+        limit: int = Query(default=10, gt=0),
+        x_actor_id: str | None = Header(default=None),
+    ) -> dict:
+        actor = _api_actor(x_actor_id)
+        results = _process_async_worker(app, limit=limit)
+        _record_api_access(
+            app,
+            actor=actor,
+            permission=PROCESS_PLATFORM_ASYNC_PAYMENT_RUNS,
+            target=PLATFORM_API_ASYNC_WORKER_TARGET,
+            outcome="granted",
+            reason=_worker_audit_reason(results),
+        )
+        return {"results": [_worker_result_response(result) for result in results]}
 
     @app.get("/platform/api-access-events")
     def list_api_access_events(
@@ -508,6 +683,28 @@ def _access_events(app: FastAPI) -> tuple[AuditAccessEvent, ...]:
         store.close()
 
 
+def _process_async_worker(
+    app: FastAPI,
+    *,
+    limit: int | None,
+) -> PlatformAsyncWorkerResult | tuple[PlatformAsyncWorkerResult, ...]:
+    app.state.async_database_path.parent.mkdir(parents=True, exist_ok=True)
+    app.state.database_path.parent.mkdir(parents=True, exist_ok=True)
+    async_store = SQLitePlatformAsyncRunStore(app.state.async_database_path)
+    platform_store = SQLitePlatformStore(app.state.database_path)
+    try:
+        worker = PlatformAsyncWorker(
+            async_store=async_store,
+            platform_store=platform_store,
+        )
+        if limit is None:
+            return worker.process_next()
+        return worker.process_pending(limit=limit)
+    finally:
+        async_store.close()
+        platform_store.close()
+
+
 def _persist_platform_api_investigation_cases(
     app: FastAPI,
     *,
@@ -646,10 +843,71 @@ def _payment_run_target(run_id: str) -> str:
     return f"{PLATFORM_API_PAYMENT_RUNS_TARGET}/{run_id}"
 
 
+def _async_payment_run_target(run_id: str) -> str:
+    return f"{PLATFORM_API_ASYNC_PAYMENT_RUNS_TARGET}/{run_id}"
+
+
 def _aware_timestamp(value: datetime) -> datetime:
     if value.tzinfo is None or value.utcoffset() is None:
         return value.replace(tzinfo=timezone.utc)
     return value
+
+
+def _async_run_response(
+    app: FastAPI,
+    run: PlatformAsyncRun,
+    *,
+    include_platform_result: bool = True,
+) -> dict:
+    response = {
+        "run_id": run.run_id,
+        "status": run.status,
+        "request_fingerprint": run.request_fingerprint,
+        "attempt_count": run.attempt_count,
+        "max_attempts": run.max_attempts,
+        "last_error": run.last_error,
+        "created_at": run.created_at.isoformat(),
+        "updated_at": run.updated_at.isoformat(),
+        "started_at": run.started_at.isoformat() if run.started_at else None,
+        "completed_at": run.completed_at.isoformat() if run.completed_at else None,
+        "request": dict(run.request_payload),
+    }
+    if include_platform_result:
+        response["platform_result"] = _platform_result_or_none(app, run.run_id)
+    return response
+
+
+def _platform_result_or_none(app: FastAPI, run_id: str) -> dict | None:
+    app.state.database_path.parent.mkdir(parents=True, exist_ok=True)
+    store = SQLitePlatformStore(app.state.database_path)
+    try:
+        try:
+            snapshot = store.get_run(run_id)
+        except SQLitePlatformStoreError:
+            return None
+        return PlatformApiService(store=store).get_payment_run(snapshot.record.run_id)
+    finally:
+        store.close()
+
+
+def _worker_result_response(result: PlatformAsyncWorkerResult) -> dict:
+    return {
+        "processed": result.processed,
+        "run_id": result.run_id,
+        "async_status": result.async_status,
+        "platform_status": result.platform_status,
+        "error": result.error,
+    }
+
+
+def _worker_audit_reason(
+    results: tuple[PlatformAsyncWorkerResult, ...],
+) -> str:
+    processed = [result for result in results if result.processed]
+    if not processed:
+        return "processed=0"
+    run_ids = ",".join(result.run_id or "" for result in processed)
+    return f"processed={len(processed)} run_ids={run_ids}"
 
 
 def _access_event_response(event: AuditAccessEvent) -> dict:

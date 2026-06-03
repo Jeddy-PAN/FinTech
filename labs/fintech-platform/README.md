@@ -240,13 +240,15 @@ labs/fintech-platform/reports/platform_api_access_investigation_cases.csv
 labs/fintech-platform/reports/platform_api_access_investigation_report.html
 ```
 
-demo 还会输出 `Risk review completion`，用于观察 `risk_review_required -> completed` 的人工复核通过闭环。
+demo 还会输出 `Risk review completion`，用于观察 `risk_review_required -> completed` 的人工复核通过闭环。它也会输出 `Async payment run via FastAPI`，用 in-process FastAPI client 展示创建 async run、触发教学版 worker、查询最终 platform result 和 API access audit。
 
 demo 还会写入并重新读取：
 
 ```text
 labs/fintech-platform/.test-data/demo_platform_runs.db
 labs/fintech-platform/.test-data/demo_platform_access_audit.db
+labs/fintech-platform/.test-data/demo_platform_async_runs.db
+labs/fintech-platform/.test-data/demo_platform_api_access_audit.db
 labs/fintech-platform/.test-data/demo_platform_investigation_cases.db
 labs/fintech-platform/.test-data/demo_platform_api_investigation_cases.db
 ```
@@ -340,3 +342,33 @@ docs/20-stage-9-summary-and-stage-10-plan.md
 ```
 
 该文档总结 API service、幂等、访问审计、API access anomaly、investigation case 和最小 console 的工程结论，并建议阶段 10 优先进入事件驱动与异步任务主题。
+
+阶段 10 已经形成设计和收尾总结：
+
+```text
+docs/21-stage-10-event-driven-async-plan.md
+docs/22-stage-10-summary-and-acceptance.md
+```
+
+阶段 10 不另起项目，而是在当前 API service 后面增加教学版异步边界。目标是把同步的 payment run 处理拆成 `accepted -> processing -> completed / failed`，学习 async run store、worker、retry、request fingerprint 和最终 platform run 快照之间的关系。
+
+当前已新增：
+
+```text
+platform_async_service.py
+test_platform_async_service.py
+```
+
+`SQLitePlatformAsyncRunStore` 会把 `PlatformApiPaymentRequest` 保存成 `accepted` async run，写入 `platform_async_runs` 表，并用 `run_id` 加 request fingerprint 区分安全重放和参数冲突。`PlatformAsyncWorker` 会读取最早的 `accepted` run，标记为 `processing`，调用现有 `PlatformApiService` 处理 payment run，把最终结果写入 `SQLitePlatformStore`，再把 async run 标记为 `completed`。如果 worker 处理失败，会记录 `last_error` 和 `attempt_count`，未超过 `max_attempts` 时回到 `accepted` 等待重试，达到上限后标记为 `failed`。
+
+FastAPI 现在也暴露阶段 10 的教学版 async endpoints：
+
+```text
+POST /platform/async-payment-runs
+GET  /platform/async-payment-runs
+GET  /platform/async-payment-runs/{run_id}
+POST /platform/async-worker/process-next
+POST /platform/async-worker/process-pending
+```
+
+`POST /platform/async-payment-runs` 返回 `202 Accepted` 风格响应，只表示请求已被保存为 async run，不表示支付业务已经完成。worker 触发接口会推进 accepted run，并把最终业务结果写入 `SQLitePlatformStore`。查询单个 async run 时，如果最终 platform run 已存在，会返回 `platform_result`，用于观察任务状态和业务结果的区别。async 创建、查询、列表和 worker 触发都会写入教学版 API access audit。当前测试覆盖 async API 创建、查询、按状态筛选、幂等重放、fingerprint 冲突、worker 处理、空队列和批量处理。demo 现在也展示了 async HTTP 观察路径。阶段 10 总结文档已记录工程结论、验收清单、当前边界和阶段 11 候选路线。
