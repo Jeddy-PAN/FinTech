@@ -215,6 +215,7 @@ investigation_case
 13. 已完成阶段 9 API 服务化、API access audit、API access anomaly、API investigation case 和最小 console。
 14. 已完成阶段 10 async run store、worker、FastAPI async endpoints、demo 展示和阶段总结。
 15. 已完成阶段 11 运营控制台增强、failed async run retry API 和控制台 retry form。
+16. 已完成阶段 12 第一版：failed async run retry 增加二人审批、职责分离和更明确的操作审计边界。
 
 ## 运行示例
 
@@ -389,4 +390,12 @@ POST /platform/async-worker/process-pending
 docs/23-stage-11-operations-console-plan.md
 ```
 
-阶段 11 继续增强现有 `FinTech Platform Console`，目标是在同一个页面里观察 payment runs、async runs、API access anomalies、investigation cases 和 recent API access events。当前已把 async run summary、recent async runs 和 failed async runs 接入现有 console 页面，并在 demo 中补充了 failed async run 可观察样例；阶段 11B/11C 又补充了 failed async run retry API 和控制台 retry form。下一步建议进入阶段 12，围绕操作审计、审批边界或运行报告/对账视角选择一个新主题。
+阶段 11 继续增强现有 `FinTech Platform Console`，目标是在同一个页面里观察 payment runs、async runs、API access anomalies、investigation cases 和 recent API access events。当前已把 async run summary、recent async runs 和 failed async runs 接入现有 console 页面，并在 demo 中补充了 failed async run 可观察样例；阶段 11B/11C 又补充了 failed async run retry API 和控制台 retry form。
+
+阶段 12 第一版已完成：
+
+```text
+docs/25-stage-12-operation-approval-boundary.md
+```
+
+阶段 12 已把 failed async run retry 从“单人操作 + 原因 + confirmation”升级为“操作人 + 原因 + 独立审批人 + 审批原因 + confirmation”的教学版 maker-checker 边界。JSON API 和控制台 form 都要求 `approved_by`、`approval_reason` 和 `approval_confirmation: approve_retry_failed_async_run`；`actor == approved_by` 会被拒绝并写入 denied access audit。当前仍不引入真实 IAM、审批流数据库或前端框架。

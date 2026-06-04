@@ -7,7 +7,7 @@
 - 学习对象：有编程背景，金融领域零基础。
 - 学习目标：理解金融业务、FinTech 工程系统、数据分析、风控和合规基础。
 - 学习方式：先学概念，再写最小实验，再把知识沉淀成文档。
-- 当前阶段：阶段 11 已收尾，已完成运营控制台 async run 观察、failed async run retry API 和控制台 retry form；下一步建议进入阶段 12。
+- 当前阶段：阶段 12 第一版已完成，failed async run retry 已增加操作审计、二人审批和职责分离边界。
 
 ## 环境和语言约定
 
@@ -57,7 +57,8 @@ PYTHONIOENCODING=utf-8
 │   ├── 21-stage-10-event-driven-async-plan.md
 │   ├── 22-stage-10-summary-and-acceptance.md
 │   ├── 23-stage-11-operations-console-plan.md
-│   └── 24-stage-11b-retry-failed-async-run-design.md
+│   ├── 24-stage-11b-retry-failed-async-run-design.md
+│   └── 25-stage-12-operation-approval-boundary.md
 └── labs/                      # 后续代码实验
     ├── ledger-basics/         # 第一个实验：双分录账本
     ├── payment-orders/        # 第二个实验：支付订单系统
@@ -151,6 +152,8 @@ PYTHONIOENCODING=utf-8
 78. 访问 `GET /platform/view`，观察 `FinTech Platform Console` 如何展示 async run summary、recent async runs、failed async runs 和最终 platform result。
 79. 调用 `POST /platform/async-payment-runs/{run_id}/retry`，理解 failed async run 为什么要通过权限、确认、状态约束、幂等和 access audit 才能重新进入 `accepted` 队列。
 80. 在 `GET /platform/view` 的 Failed Async Runs 区域观察 retry form，理解浏览器表单如何复用同一套 retry 校验和 access audit。
+81. 读 [docs/25-stage-12-operation-approval-boundary.md](docs/25-stage-12-operation-approval-boundary.md)，理解 high-impact operation 为什么需要 maker-checker、separation of duties 和二人审批边界。
+82. 再次调用 retry API 或 console retry form，观察 `approved_by`、`approval_reason` 和 `approval_confirmation` 如何防止同一人自审批高影响操作。
 
 ## 协作原则
 

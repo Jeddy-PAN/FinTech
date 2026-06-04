@@ -84,6 +84,7 @@ PLATFORM_API_INVESTIGATION_CASES_TARGET = (
 )
 PLATFORM_CONSOLE_TARGET = "fintech_platform_api_console"
 RETRY_FAILED_ASYNC_RUN_CONFIRMATION = "retry_failed_async_run"
+APPROVE_RETRY_FAILED_ASYNC_RUN_CONFIRMATION = "approve_retry_failed_async_run"
 ANONYMOUS_API_CLIENT = "anonymous_api_client"
 
 
@@ -110,6 +111,9 @@ class RetryAsyncRunRequest(BaseModel):
     actor: str | None = None
     reason: str | None = None
     confirmation: str | None = None
+    approved_by: str | None = None
+    approval_reason: str | None = None
+    approval_confirmation: str | None = None
 
 
 class StartInvestigationRequest(BaseModel):
@@ -423,6 +427,9 @@ def create_app(
                 actor=request.actor,
                 reason=request.reason,
                 confirmation=request.confirmation,
+                approved_by=request.approved_by,
+                approval_reason=request.approval_reason,
+                approval_confirmation=request.approval_confirmation,
             )
         except PlatformAsyncRunStoreError as error:
             http_status = _status_for_async_run_store_error(error)
@@ -455,6 +462,9 @@ def create_app(
                 actor=_form_value(form, "actor"),
                 reason=_form_value(form, "reason"),
                 confirmation=_form_value(form, "confirmation"),
+                approved_by=_form_value(form, "approved_by"),
+                approval_reason=_form_value(form, "approval_reason"),
+                approval_confirmation=_form_value(form, "approval_confirmation"),
             )
         except PlatformAsyncRunStoreError as error:
             message = quote(str(error), safe="")
@@ -894,6 +904,9 @@ def _retry_async_run(
     actor: str | None,
     reason: str | None,
     confirmation: str | None,
+    approved_by: str | None,
+    approval_reason: str | None,
+    approval_confirmation: str | None,
 ) -> PlatformAsyncRun:
     normalized_actor = _api_actor(actor)
     target = _async_payment_run_target(run_id)
@@ -907,6 +920,26 @@ def _retry_async_run(
         if normalized_confirmation != RETRY_FAILED_ASYNC_RUN_CONFIRMATION:
             raise PlatformAsyncRunStoreError(
                 "confirmation must be retry_failed_async_run"
+            )
+        normalized_approved_by = _required_request_text(approved_by, "approved_by")
+        normalized_approval_reason = _required_request_text(
+            approval_reason,
+            "approval_reason",
+        )
+        normalized_approval_confirmation = _required_request_text(
+            approval_confirmation,
+            "approval_confirmation",
+        )
+        if (
+            normalized_approval_confirmation
+            != APPROVE_RETRY_FAILED_ASYNC_RUN_CONFIRMATION
+        ):
+            raise PlatformAsyncRunStoreError(
+                "approval_confirmation must be approve_retry_failed_async_run"
+            )
+        if normalized_approved_by == normalized_actor:
+            raise PlatformAsyncRunStoreError(
+                "retry approver must differ from actor"
             )
         run = async_store.retry_failed(
             run_id,
@@ -929,7 +962,11 @@ def _retry_async_run(
         permission=RETRY_PLATFORM_ASYNC_PAYMENT_RUN,
         target=target,
         outcome="granted",
-        reason=normalized_reason,
+        reason=(
+            f"reason={normalized_reason}; "
+            f"approved_by={normalized_approved_by}; "
+            f"approval_reason={normalized_approval_reason}"
+        ),
     )
     return run
 
@@ -1484,11 +1521,18 @@ def _retry_form_html(run_id: str) -> str:
     escaped_run_id = html.escape(run_id, quote=True)
     action = f"/platform/async-payment-runs/{escaped_run_id}/retry-form"
     confirmation = html.escape(RETRY_FAILED_ASYNC_RUN_CONFIRMATION, quote=True)
+    approval_confirmation = html.escape(
+        APPROVE_RETRY_FAILED_ASYNC_RUN_CONFIRMATION,
+        quote=True,
+    )
     return f"""
       <form class="retry-form" method="post" action="{action}">
         <input name="actor" type="text" placeholder="actor" required>
         <input name="reason" type="text" placeholder="reason" required>
         <input name="confirmation" type="text" value="{confirmation}" required>
+        <input name="approved_by" type="text" placeholder="approved_by" required>
+        <input name="approval_reason" type="text" placeholder="approval_reason" required>
+        <input name="approval_confirmation" type="text" value="{approval_confirmation}" required>
         <button type="submit">Retry</button>
       </form>
     """

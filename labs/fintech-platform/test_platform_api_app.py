@@ -329,6 +329,9 @@ def test_platform_api_retries_failed_async_run_and_worker_processes_it() -> None
                 "actor": "ops_user_001",
                 "reason": "Retry after transient worker failure",
                 "confirmation": "retry_failed_async_run",
+                "approved_by": "ops_manager_001",
+                "approval_reason": "Approved retry after reviewing worker failure",
+                "approval_confirmation": "approve_retry_failed_async_run",
             },
         )
         processed = client.post(
@@ -361,7 +364,11 @@ def test_platform_api_retries_failed_async_run_and_worker_processes_it() -> None
             "fintech_platform_api_async_payment_runs/run_retry_http"
         )
         assert retry_events[0].outcome == "granted"
-        assert retry_events[0].reason == "Retry after transient worker failure"
+        assert retry_events[0].reason == (
+            "reason=Retry after transient worker failure; "
+            "approved_by=ops_manager_001; "
+            "approval_reason=Approved retry after reviewing worker failure"
+        )
     finally:
         client.close()
         _remove_database(database_path)
@@ -389,6 +396,9 @@ def test_platform_api_rejects_retry_confirmation_error() -> None:
                 "actor": "ops_user_001",
                 "reason": "Retry after transient worker failure",
                 "confirmation": "wrong_confirmation",
+                "approved_by": "ops_manager_001",
+                "approval_reason": "Approved retry after reviewing worker failure",
+                "approval_confirmation": "approve_retry_failed_async_run",
             },
         )
 
@@ -406,6 +416,111 @@ def test_platform_api_rejects_retry_confirmation_error() -> None:
         assert len(retry_events) == 1
         assert retry_events[0].outcome == "denied"
         assert "confirmation must be retry_failed_async_run" in retry_events[0].reason
+    finally:
+        client.close()
+        _remove_database(database_path)
+        _remove_database(access_audit_database_path)
+        _remove_database(async_database_path)
+
+
+def test_platform_api_rejects_retry_self_approval() -> None:
+    client, database_path, access_audit_database_path, async_database_path = (
+        _client_with_async()
+    )
+    try:
+        client.post(
+            "/platform/async-payment-runs",
+            json=_payload(run_id="run_retry_http", order_id="order_retry_http"),
+        )
+        _fail_async_run(
+            database_path=database_path,
+            async_database_path=async_database_path,
+        )
+
+        response = client.post(
+            "/platform/async-payment-runs/run_retry_http/retry",
+            json={
+                "actor": "ops_user_001",
+                "reason": "Retry after transient worker failure",
+                "confirmation": "retry_failed_async_run",
+                "approved_by": "ops_user_001",
+                "approval_reason": "Self approval should fail",
+                "approval_confirmation": "approve_retry_failed_async_run",
+            },
+        )
+
+        assert response.status_code == 400
+        assert response.json()["detail"]["error"] == "PlatformAsyncRunStoreError"
+        assert "retry approver must differ from actor" in response.json()["detail"][
+            "message"
+        ]
+
+        async_store = SQLitePlatformAsyncRunStore(async_database_path)
+        try:
+            failed = async_store.get_run("run_retry_http")
+        finally:
+            async_store.close()
+        assert failed.status == "failed"
+
+        retry_events = [
+            event
+            for event in _access_events(access_audit_database_path)
+            if event.permission == RETRY_PLATFORM_ASYNC_PAYMENT_RUN
+        ]
+        assert len(retry_events) == 1
+        assert retry_events[0].outcome == "denied"
+        assert "retry approver must differ from actor" in retry_events[0].reason
+    finally:
+        client.close()
+        _remove_database(database_path)
+        _remove_database(access_audit_database_path)
+        _remove_database(async_database_path)
+
+
+def test_platform_api_rejects_retry_approval_confirmation_error() -> None:
+    client, database_path, access_audit_database_path, async_database_path = (
+        _client_with_async()
+    )
+    try:
+        client.post(
+            "/platform/async-payment-runs",
+            json=_payload(run_id="run_retry_http", order_id="order_retry_http"),
+        )
+        _fail_async_run(
+            database_path=database_path,
+            async_database_path=async_database_path,
+        )
+
+        response = client.post(
+            "/platform/async-payment-runs/run_retry_http/retry",
+            json={
+                "actor": "ops_user_001",
+                "reason": "Retry after transient worker failure",
+                "confirmation": "retry_failed_async_run",
+                "approved_by": "ops_manager_001",
+                "approval_reason": "Approved retry after reviewing worker failure",
+                "approval_confirmation": "wrong_approval_confirmation",
+            },
+        )
+
+        assert response.status_code == 400
+        assert response.json()["detail"]["error"] == "PlatformAsyncRunStoreError"
+        assert (
+            "approval_confirmation must be approve_retry_failed_async_run"
+            in response.json()["detail"]["message"]
+        )
+
+        retry_events = [
+            event
+            for event in _access_events(access_audit_database_path)
+            if event.permission == RETRY_PLATFORM_ASYNC_PAYMENT_RUN
+        ]
+        assert len(retry_events) == 1
+        assert retry_events[0].outcome == "denied"
+        assert (
+            "approval_confirmation must be approve_retry_failed_async_run"
+            in retry_events[0].reason
+        )
     finally:
         client.close()
         _remove_database(database_path)
@@ -744,7 +859,11 @@ def test_platform_console_renders_retry_form_for_failed_async_run() -> None:
         assert 'name="actor"' in body
         assert 'name="reason"' in body
         assert 'name="confirmation"' in body
+        assert 'name="approved_by"' in body
+        assert 'name="approval_reason"' in body
+        assert 'name="approval_confirmation"' in body
         assert "retry_failed_async_run" in body
+        assert "approve_retry_failed_async_run" in body
         assert "Retry" in body
     finally:
         client.close()
@@ -773,6 +892,9 @@ def test_platform_console_retry_form_requeues_failed_async_run() -> None:
                 "actor": "ops_user_001",
                 "reason": "Retry from console",
                 "confirmation": "retry_failed_async_run",
+                "approved_by": "ops_manager_001",
+                "approval_reason": "Approved retry from console",
+                "approval_confirmation": "approve_retry_failed_async_run",
             },
             follow_redirects=False,
         )
@@ -798,7 +920,11 @@ def test_platform_console_retry_form_requeues_failed_async_run() -> None:
         assert len(retry_events) == 1
         assert retry_events[0].actor == "ops_user_001"
         assert retry_events[0].outcome == "granted"
-        assert retry_events[0].reason == "Retry from console"
+        assert retry_events[0].reason == (
+            "reason=Retry from console; "
+            "approved_by=ops_manager_001; "
+            "approval_reason=Approved retry from console"
+        )
     finally:
         client.close()
         _remove_database(database_path)
@@ -826,6 +952,9 @@ def test_platform_console_retry_form_reports_confirmation_error() -> None:
                 "actor": "ops_user_001",
                 "reason": "Retry from console",
                 "confirmation": "wrong_confirmation",
+                "approved_by": "ops_manager_001",
+                "approval_reason": "Approved retry from console",
+                "approval_confirmation": "approve_retry_failed_async_run",
             },
             follow_redirects=False,
         )
@@ -852,6 +981,61 @@ def test_platform_console_retry_form_reports_confirmation_error() -> None:
         assert len(retry_events) == 1
         assert retry_events[0].outcome == "denied"
         assert "confirmation must be retry_failed_async_run" in retry_events[0].reason
+    finally:
+        client.close()
+        _remove_database(database_path)
+        _remove_database(access_audit_database_path)
+        _remove_database(async_database_path)
+
+
+def test_platform_console_retry_form_reports_self_approval_error() -> None:
+    client, database_path, access_audit_database_path, async_database_path = (
+        _client_with_async()
+    )
+    try:
+        client.post(
+            "/platform/async-payment-runs",
+            json=_payload(run_id="run_retry_http", order_id="order_retry_http"),
+        )
+        _fail_async_run(
+            database_path=database_path,
+            async_database_path=async_database_path,
+        )
+
+        retry = client.post(
+            "/platform/async-payment-runs/run_retry_http/retry-form",
+            data={
+                "actor": "ops_user_001",
+                "reason": "Retry from console",
+                "confirmation": "retry_failed_async_run",
+                "approved_by": "ops_user_001",
+                "approval_reason": "Self approval should fail",
+                "approval_confirmation": "approve_retry_failed_async_run",
+            },
+            follow_redirects=False,
+        )
+        console = client.get(retry.headers["location"])
+
+        assert retry.status_code == 303
+        assert retry.headers["location"].startswith("/platform/view?retry_error=")
+        assert "Retry failed:" in console.text
+        assert "retry approver must differ from actor" in console.text
+
+        async_store = SQLitePlatformAsyncRunStore(async_database_path)
+        try:
+            failed = async_store.get_run("run_retry_http")
+        finally:
+            async_store.close()
+        assert failed.status == "failed"
+
+        retry_events = [
+            event
+            for event in _access_events(access_audit_database_path)
+            if event.permission == RETRY_PLATFORM_ASYNC_PAYMENT_RUN
+        ]
+        assert len(retry_events) == 1
+        assert retry_events[0].outcome == "denied"
+        assert "retry approver must differ from actor" in retry_events[0].reason
     finally:
         client.close()
         _remove_database(database_path)
@@ -974,6 +1158,9 @@ def _retry_payload() -> dict:
         "actor": "ops_user_001",
         "reason": "Retry after transient worker failure",
         "confirmation": "retry_failed_async_run",
+        "approved_by": "ops_manager_001",
+        "approval_reason": "Approved retry after reviewing worker failure",
+        "approval_confirmation": "approve_retry_failed_async_run",
     }
 
 
