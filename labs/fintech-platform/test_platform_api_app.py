@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib.util
 from pathlib import Path
 from uuid import uuid4
 
@@ -10,11 +11,14 @@ from platform_api_app import (
     CREATE_PLATFORM_PAYMENT_RUN,
     LIST_PLATFORM_PAYMENT_RUNS,
     PROCESS_PLATFORM_ASYNC_PAYMENT_RUNS,
+    RETRY_PLATFORM_ASYNC_PAYMENT_RUN,
     VIEW_PLATFORM_ASYNC_PAYMENT_RUN,
     VIEW_PLATFORM_PAYMENT_RUN,
     create_app,
 )
+from platform_async_service import PlatformAsyncWorker, SQLitePlatformAsyncRunStore
 from sqlite_access_audit_store import SQLiteAccessAuditStore
+from sqlite_platform_store import SQLitePlatformStore
 
 
 def test_platform_api_health() -> None:
@@ -305,6 +309,152 @@ def test_platform_api_worker_processes_async_run_to_platform_result() -> None:
         _remove_database(async_database_path)
 
 
+def test_platform_api_retries_failed_async_run_and_worker_processes_it() -> None:
+    client, database_path, access_audit_database_path, async_database_path = (
+        _client_with_async()
+    )
+    try:
+        created = client.post(
+            "/platform/async-payment-runs",
+            json=_payload(run_id="run_retry_http", order_id="order_retry_http"),
+        )
+        _fail_async_run(
+            database_path=database_path,
+            async_database_path=async_database_path,
+        )
+
+        retry = client.post(
+            "/platform/async-payment-runs/run_retry_http/retry",
+            json={
+                "actor": "ops_user_001",
+                "reason": "Retry after transient worker failure",
+                "confirmation": "retry_failed_async_run",
+            },
+        )
+        processed = client.post(
+            "/platform/async-worker/process-next",
+            headers={"x-actor-id": "async_worker_001"},
+        )
+
+        assert created.status_code == 202
+        assert retry.status_code == 200
+        retry_body = retry.json()["run"]
+        assert retry_body["run_id"] == "run_retry_http"
+        assert retry_body["status"] == "accepted"
+        assert retry_body["attempt_count"] == 3
+        assert retry_body["last_error"] is None
+        assert retry_body["completed_at"] is None
+
+        assert processed.status_code == 200
+        assert processed.json()["result"]["run_id"] == "run_retry_http"
+        assert processed.json()["result"]["async_status"] == "completed"
+
+        events = _access_events(access_audit_database_path)
+        retry_events = [
+            event
+            for event in events
+            if event.permission == RETRY_PLATFORM_ASYNC_PAYMENT_RUN
+        ]
+        assert len(retry_events) == 1
+        assert retry_events[0].actor == "ops_user_001"
+        assert retry_events[0].target == (
+            "fintech_platform_api_async_payment_runs/run_retry_http"
+        )
+        assert retry_events[0].outcome == "granted"
+        assert retry_events[0].reason == "Retry after transient worker failure"
+    finally:
+        client.close()
+        _remove_database(database_path)
+        _remove_database(access_audit_database_path)
+        _remove_database(async_database_path)
+
+
+def test_platform_api_rejects_retry_confirmation_error() -> None:
+    client, database_path, access_audit_database_path, async_database_path = (
+        _client_with_async()
+    )
+    try:
+        client.post(
+            "/platform/async-payment-runs",
+            json=_payload(run_id="run_retry_http", order_id="order_retry_http"),
+        )
+        _fail_async_run(
+            database_path=database_path,
+            async_database_path=async_database_path,
+        )
+
+        response = client.post(
+            "/platform/async-payment-runs/run_retry_http/retry",
+            json={
+                "actor": "ops_user_001",
+                "reason": "Retry after transient worker failure",
+                "confirmation": "wrong_confirmation",
+            },
+        )
+
+        assert response.status_code == 400
+        assert response.json()["detail"]["error"] == "PlatformAsyncRunStoreError"
+        assert "confirmation must be retry_failed_async_run" in response.json()[
+            "detail"
+        ]["message"]
+
+        retry_events = [
+            event
+            for event in _access_events(access_audit_database_path)
+            if event.permission == RETRY_PLATFORM_ASYNC_PAYMENT_RUN
+        ]
+        assert len(retry_events) == 1
+        assert retry_events[0].outcome == "denied"
+        assert "confirmation must be retry_failed_async_run" in retry_events[0].reason
+    finally:
+        client.close()
+        _remove_database(database_path)
+        _remove_database(access_audit_database_path)
+        _remove_database(async_database_path)
+
+
+def test_platform_api_rejects_retry_for_unknown_or_non_failed_async_run() -> None:
+    client, database_path, access_audit_database_path, async_database_path = (
+        _client_with_async()
+    )
+    try:
+        client.post(
+            "/platform/async-payment-runs",
+            json=_payload(run_id="run_retry_http", order_id="order_retry_http"),
+        )
+
+        unknown = client.post(
+            "/platform/async-payment-runs/missing_run/retry",
+            json=_retry_payload(),
+        )
+        conflict = client.post(
+            "/platform/async-payment-runs/run_retry_http/retry",
+            json=_retry_payload(),
+        )
+
+        assert unknown.status_code == 404
+        assert unknown.json()["detail"]["error"] == "PlatformAsyncRunStoreError"
+        assert "Unknown platform async run" in unknown.json()["detail"]["message"]
+
+        assert conflict.status_code == 409
+        assert conflict.json()["detail"]["error"] == "PlatformAsyncRunStoreError"
+        assert "Cannot retry accepted async run" in conflict.json()["detail"][
+            "message"
+        ]
+
+        retry_events = [
+            event
+            for event in _access_events(access_audit_database_path)
+            if event.permission == RETRY_PLATFORM_ASYNC_PAYMENT_RUN
+        ]
+        assert [event.outcome for event in retry_events] == ["denied", "denied"]
+    finally:
+        client.close()
+        _remove_database(database_path)
+        _remove_database(access_audit_database_path)
+        _remove_database(async_database_path)
+
+
 def test_platform_api_lists_async_runs_and_processes_pending_limit() -> None:
     client, database_path, access_audit_database_path, async_database_path = (
         _client_with_async()
@@ -428,12 +578,26 @@ def test_platform_api_lists_api_access_events() -> None:
 
 
 def test_platform_api_console_page_renders_platform_summary() -> None:
-    client, database_path, access_audit_database_path, investigation_database_path = (
-        _client_with_investigation()
-    )
+    (
+        client,
+        database_path,
+        access_audit_database_path,
+        async_database_path,
+        investigation_database_path,
+    ) = _client_with_async_and_investigation()
     try:
         created = client.post("/platform/payment-runs", json=_payload())
         assert created.status_code == 201
+        async_created = client.post(
+            "/platform/async-payment-runs",
+            json=_payload(run_id="run_async_http_001", order_id="order_async_http_001"),
+        )
+        async_processed = client.post(
+            "/platform/async-worker/process-next",
+            headers={"x-actor-id": "async_worker_001"},
+        )
+        assert async_created.status_code == 202
+        assert async_processed.status_code == 200
 
         client.get(
             "/platform/payment-runs/missing_run",
@@ -460,9 +624,18 @@ def test_platform_api_console_page_renders_platform_summary() -> None:
         assert "FinTech Platform Console" in body
         assert "Payment runs" in body
         assert "Completed runs" in body
+        assert "Async runs" in body
+        assert "Accepted async runs" in body
+        assert "Failed async runs" in body
+        assert "Recent Async Runs" in body
+        assert "Failed Async Runs" in body
         assert "API access anomalies" in body
         assert "Investigation cases" in body
         assert "run_http_001" in body
+        assert "run_async_http_001" in body
+        assert "order_async_http_001" in body
+        assert "completed" in body
+        assert "No failed async runs have been recorded yet." in body
         assert "repeated_denied_access" in body
         assert "api_viewer_404" in body
         assert "access_investigation:" in body
@@ -473,6 +646,7 @@ def test_platform_api_console_page_renders_platform_summary() -> None:
         client.close()
         _remove_database(database_path)
         _remove_database(access_audit_database_path)
+        _remove_database(async_database_path)
         _remove_database(investigation_database_path)
 
 
@@ -488,6 +662,8 @@ def test_platform_api_console_page_renders_empty_state() -> None:
         body = console.text
         assert "FinTech Platform Console" in body
         assert "No payment runs have been recorded yet." in body
+        assert "No async runs have been recorded yet." in body
+        assert "No failed async runs have been recorded yet." in body
         assert "No API access anomalies have been detected yet." in body
         assert "No investigation cases have been created yet." in body
 
@@ -499,6 +675,200 @@ def test_platform_api_console_page_renders_empty_state() -> None:
         _remove_database(database_path)
         _remove_database(access_audit_database_path)
         _remove_database(investigation_database_path)
+
+
+def test_platform_demo_failed_async_sample_is_visible_in_console() -> None:
+    client, database_path, access_audit_database_path, async_database_path = (
+        _client_with_async()
+    )
+    try:
+        sample = create_failed_async_run_sample(
+            client,
+            existing_platform_payload=_payload(
+                run_id="run_failed_async_http_001",
+                order_id="order_existing_failed_async",
+                amount="100.00",
+            ),
+            async_payload=_payload(
+                run_id="run_failed_async_http_001",
+                order_id="order_failed_async",
+                amount="125.00",
+            ),
+        )
+        console = client.get("/platform/view")
+
+        assert sample["created_platform"]["status"] == "completed"
+        assert sample["accepted_async"]["status"] == "accepted"
+        assert [result["async_status"] for result in sample["worker_results"]] == [
+            "accepted",
+            "accepted",
+            "failed",
+        ]
+        assert sample["failed_async"]["status"] == "failed"
+        assert sample["failed_async"]["attempt_count"] == 3
+        assert "different request fingerprint" in sample["failed_async"]["last_error"]
+
+        body = console.text
+        assert "Failed Async Runs" in body
+        assert "run_failed_async_http_001" in body
+        assert "failed" in body
+        assert "different request fingerprint" in body
+        assert "No failed async runs have been recorded yet." not in body
+    finally:
+        client.close()
+        _remove_database(database_path)
+        _remove_database(access_audit_database_path)
+        _remove_database(async_database_path)
+
+
+def test_platform_console_renders_retry_form_for_failed_async_run() -> None:
+    client, database_path, access_audit_database_path, async_database_path = (
+        _client_with_async()
+    )
+    try:
+        client.post(
+            "/platform/async-payment-runs",
+            json=_payload(run_id="run_retry_http", order_id="order_retry_http"),
+        )
+        _fail_async_run(
+            database_path=database_path,
+            async_database_path=async_database_path,
+        )
+
+        console = client.get("/platform/view")
+
+        assert console.status_code == 200
+        body = console.text
+        assert "Failed Async Runs" in body
+        assert 'action="/platform/async-payment-runs/run_retry_http/retry-form"' in body
+        assert 'name="actor"' in body
+        assert 'name="reason"' in body
+        assert 'name="confirmation"' in body
+        assert "retry_failed_async_run" in body
+        assert "Retry" in body
+    finally:
+        client.close()
+        _remove_database(database_path)
+        _remove_database(access_audit_database_path)
+        _remove_database(async_database_path)
+
+
+def test_platform_console_retry_form_requeues_failed_async_run() -> None:
+    client, database_path, access_audit_database_path, async_database_path = (
+        _client_with_async()
+    )
+    try:
+        client.post(
+            "/platform/async-payment-runs",
+            json=_payload(run_id="run_retry_http", order_id="order_retry_http"),
+        )
+        _fail_async_run(
+            database_path=database_path,
+            async_database_path=async_database_path,
+        )
+
+        retry = client.post(
+            "/platform/async-payment-runs/run_retry_http/retry-form",
+            data={
+                "actor": "ops_user_001",
+                "reason": "Retry from console",
+                "confirmation": "retry_failed_async_run",
+            },
+            follow_redirects=False,
+        )
+        console = client.get("/platform/view")
+
+        assert retry.status_code == 303
+        assert retry.headers["location"] == "/platform/view?retry_status=success"
+        assert "No failed async runs have been recorded yet." in console.text
+
+        async_store = SQLitePlatformAsyncRunStore(async_database_path)
+        try:
+            retried = async_store.get_run("run_retry_http")
+        finally:
+            async_store.close()
+        assert retried.status == "accepted"
+        assert retried.last_error is None
+
+        retry_events = [
+            event
+            for event in _access_events(access_audit_database_path)
+            if event.permission == RETRY_PLATFORM_ASYNC_PAYMENT_RUN
+        ]
+        assert len(retry_events) == 1
+        assert retry_events[0].actor == "ops_user_001"
+        assert retry_events[0].outcome == "granted"
+        assert retry_events[0].reason == "Retry from console"
+    finally:
+        client.close()
+        _remove_database(database_path)
+        _remove_database(access_audit_database_path)
+        _remove_database(async_database_path)
+
+
+def test_platform_console_retry_form_reports_confirmation_error() -> None:
+    client, database_path, access_audit_database_path, async_database_path = (
+        _client_with_async()
+    )
+    try:
+        client.post(
+            "/platform/async-payment-runs",
+            json=_payload(run_id="run_retry_http", order_id="order_retry_http"),
+        )
+        _fail_async_run(
+            database_path=database_path,
+            async_database_path=async_database_path,
+        )
+
+        retry = client.post(
+            "/platform/async-payment-runs/run_retry_http/retry-form",
+            data={
+                "actor": "ops_user_001",
+                "reason": "Retry from console",
+                "confirmation": "wrong_confirmation",
+            },
+            follow_redirects=False,
+        )
+        console = client.get(retry.headers["location"])
+
+        assert retry.status_code == 303
+        assert retry.headers["location"].startswith("/platform/view?retry_error=")
+        assert "Retry failed:" in console.text
+        assert "confirmation must be retry_failed_async_run" in console.text
+        assert "run_retry_http" in console.text
+
+        async_store = SQLitePlatformAsyncRunStore(async_database_path)
+        try:
+            failed = async_store.get_run("run_retry_http")
+        finally:
+            async_store.close()
+        assert failed.status == "failed"
+
+        retry_events = [
+            event
+            for event in _access_events(access_audit_database_path)
+            if event.permission == RETRY_PLATFORM_ASYNC_PAYMENT_RUN
+        ]
+        assert len(retry_events) == 1
+        assert retry_events[0].outcome == "denied"
+        assert "confirmation must be retry_failed_async_run" in retry_events[0].reason
+    finally:
+        client.close()
+        _remove_database(database_path)
+        _remove_database(access_audit_database_path)
+        _remove_database(async_database_path)
+
+
+def create_failed_async_run_sample(client: TestClient, **kwargs):
+    spec = importlib.util.spec_from_file_location(
+        "fintech_platform_demo",
+        Path(__file__).with_name("demo.py"),
+    )
+    if spec is None or spec.loader is None:
+        raise RuntimeError("Cannot load fintech platform demo module")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.create_failed_async_run_sample(client, **kwargs)
 
 
 def _client():
@@ -552,6 +922,27 @@ def _client_with_async():
     )
 
 
+def _client_with_async_and_investigation():
+    database_path = _database_path()
+    access_audit_database_path = _access_audit_database_path()
+    async_database_path = _async_database_path()
+    investigation_database_path = _investigation_database_path()
+    return (
+        TestClient(
+            create_app(
+                database_path=database_path,
+                access_audit_database_path=access_audit_database_path,
+                async_database_path=async_database_path,
+                investigation_database_path=investigation_database_path,
+            )
+        ),
+        database_path,
+        access_audit_database_path,
+        async_database_path,
+        investigation_database_path,
+    )
+
+
 def _payload(
     *,
     run_id: str = "run_http_001",
@@ -576,6 +967,36 @@ def _payload(
         "beneficiary_id": "beneficiary_001",
         "actor": "api_client_001",
     }
+
+
+def _retry_payload() -> dict:
+    return {
+        "actor": "ops_user_001",
+        "reason": "Retry after transient worker failure",
+        "confirmation": "retry_failed_async_run",
+    }
+
+
+def _fail_async_run(*, database_path: Path, async_database_path: Path) -> None:
+    async_store = SQLitePlatformAsyncRunStore(async_database_path)
+    platform_store = SQLitePlatformStore(database_path)
+    try:
+        worker = PlatformAsyncWorker(
+            async_store=async_store,
+            platform_store=platform_store,
+            service_factory=lambda: _FailingService(),
+        )
+        for _ in range(3):
+            worker.process_next()
+        assert async_store.get_run("run_retry_http").status == "failed"
+    finally:
+        async_store.close()
+        platform_store.close()
+
+
+class _FailingService:
+    def create_payment_run(self, request):  # noqa: ARG002
+        raise RuntimeError("temporary failure")
 
 
 def _database_path() -> Path:

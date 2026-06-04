@@ -211,7 +211,10 @@ investigation_case
 9. 已完成平台报表访问控制和访问审计，支持授权、拒绝、二人审批和 SQLite 持久化访问记录。
 10. 已完成平台报表访问异常检测和报告导出。
 11. 已完成平台 access anomaly finding 到 investigation case 的闭环，支持工单状态流转、SQLite 持久化、报告导出和工单动作审计。
-12. 下一步可以做阶段 8 小结和端到端验收清单，确认这个学习作品覆盖了哪些金融系统工程能力，以及后续是否进入 API 服务化或前端化。
+12. 已完成阶段 8 小结和端到端验收清单。
+13. 已完成阶段 9 API 服务化、API access audit、API access anomaly、API investigation case 和最小 console。
+14. 已完成阶段 10 async run store、worker、FastAPI async endpoints、demo 展示和阶段总结。
+15. 已完成阶段 11 运营控制台增强、failed async run retry API 和控制台 retry form。
 
 ## 运行示例
 
@@ -240,7 +243,7 @@ labs/fintech-platform/reports/platform_api_access_investigation_cases.csv
 labs/fintech-platform/reports/platform_api_access_investigation_report.html
 ```
 
-demo 还会输出 `Risk review completion`，用于观察 `risk_review_required -> completed` 的人工复核通过闭环。它也会输出 `Async payment run via FastAPI`，用 in-process FastAPI client 展示创建 async run、触发教学版 worker、查询最终 platform result 和 API access audit。
+demo 还会输出 `Risk review completion`，用于观察 `risk_review_required -> completed` 的人工复核通过闭环。它也会输出 `Async payment run via FastAPI`，用 in-process FastAPI client 展示创建 async run、触发教学版 worker、查询最终 platform result 和 API access audit。随后 demo 会输出 `Failed async run sample for console`，通过真实 API 流程构造一个 request fingerprint 冲突导致的 failed async run，用来观察 console 里的 failed async run、attempt count 和 last error。
 
 demo 还会写入并重新读取：
 
@@ -325,7 +328,7 @@ GET /platform
 GET /platform/view
 ```
 
-页面标题是 `FinTech Platform Console`，只读展示 payment runs、API access anomalies、investigation cases 和 recent API access events。它不引入单独前端项目、模板框架、登录态或真实 IAM；访问查看页本身会记录 `view_platform_console` access audit，用来观察运营查看动作也应进入审计轨迹。
+页面标题是 `FinTech Platform Console`，只读展示 payment runs、async runs、failed async runs、API access anomalies、investigation cases 和 recent API access events。completed async run 会关联显示最终 platform status 和 payment order id，用来观察任务状态和业务状态的区别。它不引入单独前端项目、模板框架、登录态或真实 IAM；访问查看页本身会记录 `view_platform_console` access audit，用来观察运营查看动作也应进入审计轨迹。
 
 运行 API 示例：
 
@@ -367,8 +370,23 @@ FastAPI 现在也暴露阶段 10 的教学版 async endpoints：
 POST /platform/async-payment-runs
 GET  /platform/async-payment-runs
 GET  /platform/async-payment-runs/{run_id}
+POST /platform/async-payment-runs/{run_id}/retry
 POST /platform/async-worker/process-next
 POST /platform/async-worker/process-pending
 ```
 
 `POST /platform/async-payment-runs` 返回 `202 Accepted` 风格响应，只表示请求已被保存为 async run，不表示支付业务已经完成。worker 触发接口会推进 accepted run，并把最终业务结果写入 `SQLitePlatformStore`。查询单个 async run 时，如果最终 platform run 已存在，会返回 `platform_result`，用于观察任务状态和业务结果的区别。async 创建、查询、列表和 worker 触发都会写入教学版 API access audit。当前测试覆盖 async API 创建、查询、按状态筛选、幂等重放、fingerprint 冲突、worker 处理、空队列和批量处理。demo 现在也展示了 async HTTP 观察路径。阶段 10 总结文档已记录工程结论、验收清单、当前边界和阶段 11 候选路线。
+
+阶段 11B 新增教学版 failed async run retry endpoint：`POST /platform/async-payment-runs/{run_id}/retry`。
+
+该接口只允许把 `failed` async run 重新放回 `accepted` 队列，要求请求体包含 `actor`、`reason` 和 `confirmation: retry_failed_async_run`。retry 不直接执行业务处理，后续仍由 worker endpoint 推进；成功和失败都会写入 API access audit。
+
+阶段 11C 已把 retry 接入 `FinTech Platform Console` 的 failed async runs 区域。页面表单提交到 `POST /platform/async-payment-runs/{run_id}/retry-form`，该 form endpoint 只是浏览器表单适配层，内部仍复用同一套 retry 校验和 API access audit；提交成功后回到 console，run 只进入 `accepted`，不会直接触发 worker。
+
+阶段 11 已经完成运营控制台增强设计与收尾总结：
+
+```text
+docs/23-stage-11-operations-console-plan.md
+```
+
+阶段 11 继续增强现有 `FinTech Platform Console`，目标是在同一个页面里观察 payment runs、async runs、API access anomalies、investigation cases 和 recent API access events。当前已把 async run summary、recent async runs 和 failed async runs 接入现有 console 页面，并在 demo 中补充了 failed async run 可观察样例；阶段 11B/11C 又补充了 failed async run retry API 和控制台 retry form。下一步建议进入阶段 12，围绕操作审计、审批边界或运行报告/对账视角选择一个新主题。

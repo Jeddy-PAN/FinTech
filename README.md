@@ -7,7 +7,7 @@
 - 学习对象：有编程背景，金融领域零基础。
 - 学习目标：理解金融业务、FinTech 工程系统、数据分析、风控和合规基础。
 - 学习方式：先学概念，再写最小实验，再把知识沉淀成文档。
-- 当前阶段：阶段 10 已收尾，完成教学版事件驱动与异步任务边界；下一阶段建议进入运营控制台增强。
+- 当前阶段：阶段 11 已收尾，已完成运营控制台 async run 观察、failed async run retry API 和控制台 retry form；下一步建议进入阶段 12。
 
 ## 环境和语言约定
 
@@ -55,7 +55,9 @@ PYTHONIOENCODING=utf-8
 │   ├── 19-stage-9-platform-api-plan.md
 │   ├── 20-stage-9-summary-and-stage-10-plan.md
 │   ├── 21-stage-10-event-driven-async-plan.md
-│   └── 22-stage-10-summary-and-acceptance.md
+│   ├── 22-stage-10-summary-and-acceptance.md
+│   ├── 23-stage-11-operations-console-plan.md
+│   └── 24-stage-11b-retry-failed-async-run-design.md
 └── labs/                      # 后续代码实验
     ├── ledger-basics/         # 第一个实验：双分录账本
     ├── payment-orders/        # 第二个实验：支付订单系统
@@ -145,6 +147,10 @@ PYTHONIOENCODING=utf-8
 74. 读 [docs/21-stage-10-event-driven-async-plan.md](docs/21-stage-10-event-driven-async-plan.md)，理解阶段 10 如何把同步 API service 拆成 accepted async run、后台 worker、状态查询、重试和幂等边界。
 75. 调用 `POST /platform/async-payment-runs`、`POST /platform/async-worker/process-next` 和 `GET /platform/async-payment-runs/{run_id}`，观察 `accepted -> completed` 与最终 platform run 的关系。
 76. 读 [docs/22-stage-10-summary-and-acceptance.md](docs/22-stage-10-summary-and-acceptance.md)，确认阶段 10 的工程结论、验收清单、当前边界和阶段 11 候选路线。
+77. 读 [docs/23-stage-11-operations-console-plan.md](docs/23-stage-11-operations-console-plan.md)，理解运营控制台为什么要同时展示 payment runs、async runs、API access events 和 investigation cases。
+78. 访问 `GET /platform/view`，观察 `FinTech Platform Console` 如何展示 async run summary、recent async runs、failed async runs 和最终 platform result。
+79. 调用 `POST /platform/async-payment-runs/{run_id}/retry`，理解 failed async run 为什么要通过权限、确认、状态约束、幂等和 access audit 才能重新进入 `accepted` 队列。
+80. 在 `GET /platform/view` 的 Failed Async Runs 区域观察 retry form，理解浏览器表单如何复用同一套 retry 校验和 access audit。
 
 ## 协作原则
 

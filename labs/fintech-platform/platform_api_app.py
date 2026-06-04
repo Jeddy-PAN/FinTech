@@ -4,9 +4,10 @@ import html
 from datetime import date, datetime, timezone
 from pathlib import Path
 import sys
+from urllib.parse import parse_qs, quote
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Query, status
-from fastapi.responses import HTMLResponse
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, status
+from fastapi.responses import HTMLResponse, RedirectResponse
 from pydantic import BaseModel, Field
 
 
@@ -61,6 +62,7 @@ CREATE_PLATFORM_ASYNC_PAYMENT_RUN = "create_platform_async_payment_run"
 VIEW_PLATFORM_ASYNC_PAYMENT_RUN = "view_platform_async_payment_run"
 LIST_PLATFORM_ASYNC_PAYMENT_RUNS = "list_platform_async_payment_runs"
 PROCESS_PLATFORM_ASYNC_PAYMENT_RUNS = "process_platform_async_payment_runs"
+RETRY_PLATFORM_ASYNC_PAYMENT_RUN = "retry_platform_async_run"
 VIEW_PLATFORM_API_ACCESS_EVENTS = "view_platform_api_access_events"
 VIEW_PLATFORM_API_ACCESS_ANOMALY_FINDINGS = "view_platform_api_access_anomaly_findings"
 CREATE_PLATFORM_API_INVESTIGATION_CASES = "create_platform_api_investigation_cases"
@@ -81,6 +83,7 @@ PLATFORM_API_INVESTIGATION_CASES_TARGET = (
     "fintech_platform_api_investigation_cases"
 )
 PLATFORM_CONSOLE_TARGET = "fintech_platform_api_console"
+RETRY_FAILED_ASYNC_RUN_CONFIRMATION = "retry_failed_async_run"
 ANONYMOUS_API_CLIENT = "anonymous_api_client"
 
 
@@ -101,6 +104,12 @@ class PaymentRunRequest(BaseModel):
     ip_country: str = Field(default="US", min_length=1)
     beneficiary_id: str = Field(default="beneficiary_default", min_length=1)
     actor: str = Field(default="api_client", min_length=1)
+
+
+class RetryAsyncRunRequest(BaseModel):
+    actor: str | None = None
+    reason: str | None = None
+    confirmation: str | None = None
 
 
 class StartInvestigationRequest(BaseModel):
@@ -140,10 +149,16 @@ def create_app(
     @app.get("/platform", response_class=HTMLResponse)
     @app.get("/platform/view", response_class=HTMLResponse)
     def platform_console(
+        retry_error: str | None = None,
+        retry_status: str | None = None,
         x_actor_id: str | None = Header(default=None),
     ) -> HTMLResponse:
         actor = _api_actor(x_actor_id)
-        html_body = _render_platform_console_html(app)
+        html_body = _render_platform_console_html(
+            app,
+            retry_error=retry_error,
+            retry_status=retry_status,
+        )
         _record_api_access(
             app,
             actor=actor,
@@ -393,6 +408,66 @@ def create_app(
             outcome="granted",
         )
         return _async_run_response(app, run)
+
+    @app.post("/platform/async-payment-runs/{run_id}/retry")
+    def retry_async_payment_run(
+        run_id: str,
+        request: RetryAsyncRunRequest,
+        async_store: SQLitePlatformAsyncRunStore = Depends(get_async_store),
+    ) -> dict:
+        try:
+            run = _retry_async_run(
+                app,
+                async_store,
+                run_id,
+                actor=request.actor,
+                reason=request.reason,
+                confirmation=request.confirmation,
+            )
+        except PlatformAsyncRunStoreError as error:
+            http_status = _status_for_async_run_store_error(error)
+            raise HTTPException(
+                status_code=http_status,
+                detail={
+                    "error": type(error).__name__,
+                    "message": str(error),
+                },
+            ) from error
+        finally:
+            async_store.close()
+
+        return {"run": _async_run_response(app, run)}
+
+    @app.post("/platform/async-payment-runs/{run_id}/retry-form")
+    async def retry_async_payment_run_form(
+        run_id: str,
+        request: Request,
+    ) -> RedirectResponse:
+        body = (await request.body()).decode("utf-8")
+        form = parse_qs(body, keep_blank_values=True)
+        app.state.async_database_path.parent.mkdir(parents=True, exist_ok=True)
+        async_store = SQLitePlatformAsyncRunStore(app.state.async_database_path)
+        try:
+            _retry_async_run(
+                app,
+                async_store,
+                run_id,
+                actor=_form_value(form, "actor"),
+                reason=_form_value(form, "reason"),
+                confirmation=_form_value(form, "confirmation"),
+            )
+        except PlatformAsyncRunStoreError as error:
+            message = quote(str(error), safe="")
+            return RedirectResponse(
+                url=f"/platform/view?retry_error={message}",
+                status_code=status.HTTP_303_SEE_OTHER,
+            )
+        finally:
+            async_store.close()
+        return RedirectResponse(
+            url="/platform/view?retry_status=success",
+            status_code=status.HTTP_303_SEE_OTHER,
+        )
 
     @app.post("/platform/async-worker/process-next")
     def process_next_async_payment_run(
@@ -802,6 +877,79 @@ def _status_for_compliance_error(error: ComplianceAuditError) -> int:
     return status.HTTP_400_BAD_REQUEST
 
 
+def _status_for_async_run_store_error(error: PlatformAsyncRunStoreError) -> int:
+    message = str(error)
+    if message.startswith("Unknown platform async run:"):
+        return status.HTTP_404_NOT_FOUND
+    if message.startswith("Cannot retry "):
+        return status.HTTP_409_CONFLICT
+    return status.HTTP_400_BAD_REQUEST
+
+
+def _retry_async_run(
+    app: FastAPI,
+    async_store: SQLitePlatformAsyncRunStore,
+    run_id: str,
+    *,
+    actor: str | None,
+    reason: str | None,
+    confirmation: str | None,
+) -> PlatformAsyncRun:
+    normalized_actor = _api_actor(actor)
+    target = _async_payment_run_target(run_id)
+    try:
+        normalized_actor = _required_request_text(actor, "actor")
+        normalized_reason = _required_request_text(reason, "reason")
+        normalized_confirmation = _required_request_text(
+            confirmation,
+            "confirmation",
+        )
+        if normalized_confirmation != RETRY_FAILED_ASYNC_RUN_CONFIRMATION:
+            raise PlatformAsyncRunStoreError(
+                "confirmation must be retry_failed_async_run"
+            )
+        run = async_store.retry_failed(
+            run_id,
+            retried_at=datetime.now(timezone.utc),
+        )
+    except PlatformAsyncRunStoreError as error:
+        http_status = _status_for_async_run_store_error(error)
+        _record_api_access(
+            app,
+            actor=normalized_actor,
+            permission=RETRY_PLATFORM_ASYNC_PAYMENT_RUN,
+            target=target,
+            outcome="denied",
+            reason=f"{http_status} {type(error).__name__}: {error}",
+        )
+        raise
+    _record_api_access(
+        app,
+        actor=normalized_actor,
+        permission=RETRY_PLATFORM_ASYNC_PAYMENT_RUN,
+        target=target,
+        outcome="granted",
+        reason=normalized_reason,
+    )
+    return run
+
+
+def _form_value(form: dict[str, list[str]], field_name: str) -> str | None:
+    values = form.get(field_name)
+    if not values:
+        return None
+    return values[0]
+
+
+def _required_request_text(value: str | None, field_name: str) -> str:
+    if value is None:
+        raise PlatformAsyncRunStoreError(f"{field_name} is required")
+    normalized = value.strip()
+    if not normalized:
+        raise PlatformAsyncRunStoreError(f"{field_name} is required")
+    return normalized
+
+
 def _record_api_access(
     app: FastAPI,
     *,
@@ -956,7 +1104,12 @@ def _investigation_case_response(case: AccessAnomalyInvestigationCase) -> dict:
     }
 
 
-def _render_platform_console_html(app: FastAPI) -> str:
+def _render_platform_console_html(
+    app: FastAPI,
+    *,
+    retry_error: str | None = None,
+    retry_status: str | None = None,
+) -> str:
     app.state.database_path.parent.mkdir(parents=True, exist_ok=True)
     service = PlatformApiService(
         store=SQLitePlatformStore(app.state.database_path),
@@ -967,6 +1120,7 @@ def _render_platform_console_html(app: FastAPI) -> str:
         service.store.close()
 
     access_events = _access_events(app)
+    async_runs = _async_runs(app)
     findings = detect_platform_api_access_anomalies(access_events)
     cases = _investigation_cases(app)
 
@@ -974,6 +1128,9 @@ def _render_platform_console_html(app: FastAPI) -> str:
         ("Payment runs", str(len(runs))),
         ("Completed runs", str(_count_by_status(runs, "completed"))),
         ("Risk review runs", str(_count_by_status(runs, "risk_review_required"))),
+        ("Async runs", str(len(async_runs))),
+        ("Accepted async runs", str(_count_async_status(async_runs, "accepted"))),
+        ("Failed async runs", str(_count_async_status(async_runs, "failed"))),
         ("API access events", str(len(access_events))),
         ("API access anomalies", str(len(findings))),
         ("Investigation cases", str(len(cases))),
@@ -1029,6 +1186,7 @@ def _render_platform_console_html(app: FastAPI) -> str:
     table {{
       border-collapse: collapse;
       margin-top: 8px;
+      min-width: 720px;
       width: 100%;
     }}
     th, td {{
@@ -1042,10 +1200,50 @@ def _render_platform_console_html(app: FastAPI) -> str:
     }}
     .section {{
       margin-top: 24px;
+      overflow-x: auto;
     }}
     .muted {{
       color: #6b7280;
       font-size: 14px;
+    }}
+    .notice {{
+      border-radius: 6px;
+      margin: 16px 0;
+      padding: 10px 12px;
+    }}
+    .notice-success {{
+      background: #ecfdf5;
+      border: 1px solid #a7f3d0;
+      color: #065f46;
+    }}
+    .notice-error {{
+      background: #fef2f2;
+      border: 1px solid #fecaca;
+      color: #991b1b;
+    }}
+    .retry-form {{
+      display: grid;
+      gap: 8px;
+      min-width: 260px;
+    }}
+    .retry-form input {{
+      border: 1px solid #d1d5db;
+      border-radius: 4px;
+      box-sizing: border-box;
+      font: inherit;
+      min-height: 44px;
+      padding: 8px;
+      width: 100%;
+    }}
+    .retry-form button {{
+      background: #1f2937;
+      border: 0;
+      border-radius: 4px;
+      color: #ffffff;
+      cursor: pointer;
+      font: inherit;
+      min-height: 44px;
+      padding: 8px 12px;
     }}
     code {{
       background: #f3f4f6;
@@ -1057,9 +1255,10 @@ def _render_platform_console_html(app: FastAPI) -> str:
 <body>
   <h1>FinTech Platform Console</h1>
   <div class="meta">
-    Minimal read-only view for the stage 9 learning platform.
+    Minimal read-only view for the stage 11 learning platform.
     API docs remain available at <code>/docs</code>.
   </div>
+  {_retry_feedback_html(retry_status=retry_status, retry_error=retry_error)}
 
   <div class="summary">
     {''.join(_metric_html(label, value) for label, value in summary_rows)}
@@ -1090,6 +1289,31 @@ def _render_platform_console_html(app: FastAPI) -> str:
             for run in _latest_rows(runs, key="created_at")
         ],
         empty_message="No payment runs have been recorded yet.",
+    )}
+  </div>
+
+  <div class="section">
+    <h2>Recent Async Runs</h2>
+    {_table(
+        [
+            "run_id",
+            "status",
+            "attempt_count",
+            "platform_status",
+            "payment_order_id",
+            "last_error",
+            "updated_at",
+        ],
+        _async_console_rows(app, _latest_async_runs(async_runs)),
+        empty_message="No async runs have been recorded yet.",
+    )}
+  </div>
+
+  <div class="section">
+    <h2>Failed Async Runs</h2>
+    {_failed_async_runs_table(
+        _failed_async_runs(async_runs),
+        empty_message="No failed async runs have been recorded yet.",
     )}
   </div>
 
@@ -1188,6 +1412,22 @@ def _metric_html(label: str, value: str) -> str:
     """
 
 
+def _retry_feedback_html(
+    *,
+    retry_status: str | None,
+    retry_error: str | None,
+) -> str:
+    if retry_error:
+        return (
+            '<div class="notice notice-error">'
+            f"Retry failed: {html.escape(retry_error)}"
+            "</div>"
+        )
+    if retry_status == "success":
+        return '<div class="notice notice-success">Retry accepted.</div>'
+    return ""
+
+
 def _table(
     headers: list[str],
     rows: list[tuple[object, ...]],
@@ -1207,8 +1447,124 @@ def _table(
     )
 
 
+def _failed_async_runs_table(
+    runs: tuple[PlatformAsyncRun, ...],
+    *,
+    empty_message: str,
+) -> str:
+    if not runs:
+        return f'<div class="muted">{html.escape(empty_message)}</div>'
+    headers = [
+        "run_id",
+        "attempt_count",
+        "max_attempts",
+        "last_error",
+        "updated_at",
+        "action",
+    ]
+    header_html = "".join(f"<th>{html.escape(header)}</th>" for header in headers)
+    row_html = []
+    for run in runs:
+        cells = [
+            html.escape(run.run_id),
+            html.escape(str(run.attempt_count)),
+            html.escape(str(run.max_attempts)),
+            html.escape(run.last_error or ""),
+            html.escape(run.updated_at.isoformat()),
+            _retry_form_html(run.run_id),
+        ]
+        row_html.append(f"<tr>{''.join(f'<td>{cell}</td>' for cell in cells)}</tr>")
+    return (
+        f"<table><thead><tr>{header_html}</tr></thead>"
+        f"<tbody>{''.join(row_html)}</tbody></table>"
+    )
+
+
+def _retry_form_html(run_id: str) -> str:
+    escaped_run_id = html.escape(run_id, quote=True)
+    action = f"/platform/async-payment-runs/{escaped_run_id}/retry-form"
+    confirmation = html.escape(RETRY_FAILED_ASYNC_RUN_CONFIRMATION, quote=True)
+    return f"""
+      <form class="retry-form" method="post" action="{action}">
+        <input name="actor" type="text" placeholder="actor" required>
+        <input name="reason" type="text" placeholder="reason" required>
+        <input name="confirmation" type="text" value="{confirmation}" required>
+        <button type="submit">Retry</button>
+      </form>
+    """
+
+
 def _latest_rows(rows: tuple[dict, ...], *, key: str, limit: int = 5) -> tuple[dict, ...]:
     return tuple(sorted(rows, key=lambda row: row[key], reverse=True)[:limit])
+
+
+def _async_runs(app: FastAPI) -> tuple[PlatformAsyncRun, ...]:
+    app.state.async_database_path.parent.mkdir(parents=True, exist_ok=True)
+    store = SQLitePlatformAsyncRunStore(app.state.async_database_path)
+    try:
+        return store.runs
+    finally:
+        store.close()
+
+
+def _latest_async_runs(
+    runs: tuple[PlatformAsyncRun, ...],
+    limit: int = 5,
+) -> tuple[PlatformAsyncRun, ...]:
+    return tuple(
+        sorted(
+            runs,
+            key=lambda run: (run.updated_at, run.created_at, run.run_id),
+            reverse=True,
+        )[:limit]
+    )
+
+
+def _failed_async_runs(
+    runs: tuple[PlatformAsyncRun, ...],
+    limit: int = 5,
+) -> tuple[PlatformAsyncRun, ...]:
+    return _latest_async_runs(
+        tuple(run for run in runs if run.status == "failed"),
+        limit=limit,
+    )
+
+
+def _async_console_rows(
+    app: FastAPI,
+    runs: tuple[PlatformAsyncRun, ...],
+) -> list[tuple[object, ...]]:
+    rows: list[tuple[object, ...]] = []
+    for run in runs:
+        platform_result = _async_platform_result_or_none(app, run)
+        rows.append(
+            (
+                run.run_id,
+                run.status,
+                run.attempt_count,
+                _platform_result_field(platform_result, "status"),
+                _platform_result_field(platform_result, "payment_order_id"),
+                run.last_error or "",
+                run.updated_at.isoformat(),
+            )
+        )
+    return rows
+
+
+def _async_platform_result_or_none(
+    app: FastAPI,
+    run: PlatformAsyncRun,
+) -> dict | None:
+    if run.status != "completed":
+        return None
+    return _platform_result_or_none(app, run.run_id)
+
+
+def _platform_result_field(platform_result: dict | None, field_name: str) -> str:
+    if platform_result is None:
+        return ""
+    value = platform_result.get(field_name)
+    return "" if value is None else str(value)
 
 
 def _latest_findings(
@@ -1244,6 +1600,10 @@ def _latest_access_events(
 
 def _count_by_status(runs: tuple[dict, ...], status_name: str) -> int:
     return sum(1 for run in runs if run["status"] == status_name)
+
+
+def _count_async_status(runs: tuple[PlatformAsyncRun, ...], status_name: str) -> int:
+    return sum(1 for run in runs if run.status == status_name)
 
 
 def _count_case_status(

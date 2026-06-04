@@ -1,13 +1,13 @@
 # Learning Progress
 
-最后更新：2026-06-03
+最后更新：2026-06-04
 
 ## 当前状态
 
 - 学习者背景：程序员，金融和 FinTech 目前按零基础处理。
-- 当前阶段：阶段 10 已收尾，完成教学版事件驱动与异步任务边界；下一阶段建议进入运营控制台增强。
+- 当前阶段：阶段 11 已收尾，已完成运营控制台 async run 观察、failed async run retry API 和控制台 retry form；下一步建议进入阶段 12。
 - 当前主线：把账本、支付订单、风控规则引擎、KYC/AML 开户筛查和合规审计串成一个最小端到端学习项目，并把这条链路放到 API service 和异步 worker 边界后面，理解外部请求、幂等、状态查询、后台处理、retry、audit trail、报表和调查工单如何协同。
-- 当前仓库状态：已完成账本基础实验、支付订单实验、交易流水分析实验、投资组合分析实验、风控规则引擎实验、KYC/AML 开户筛查实验、合规审计实验、阶段 7 总结与阶段 8 规划文档、阶段 8 总结与验收清单、`labs/fintech-platform/README.md` 综合平台设计、阶段 8 综合平台能力，以及阶段 9 API 服务化计划、纯 Python API service 第一版、FastAPI 路由层第一版、API 访问审计、API 访问异常检测、API 访问异常调查工单、API 工单 HTTP 查询接口、API 工单状态流转 HTTP 接口、最小前端查看页和阶段 9 总结；阶段 10 已完成事件驱动与异步任务设计文档、最小 async run store、最小 async worker、FastAPI async endpoints、async demo 和阶段 10 总结与验收清单，下一步进入阶段 11 运营控制台增强设计。
+- 当前仓库状态：已完成账本基础实验、支付订单实验、交易流水分析实验、投资组合分析实验、风控规则引擎实验、KYC/AML 开户筛查实验、合规审计实验、阶段 7 总结与阶段 8 规划文档、阶段 8 总结与验收清单、`labs/fintech-platform/README.md` 综合平台设计、阶段 8 综合平台能力，以及阶段 9 API 服务化计划、纯 Python API service 第一版、FastAPI 路由层第一版、API 访问审计、API 访问异常检测、API 访问异常调查工单、API 工单 HTTP 查询接口、API 工单状态流转 HTTP 接口、最小前端查看页和阶段 9 总结；阶段 10 已完成事件驱动与异步任务设计文档、最小 async run store、最小 async worker、FastAPI async endpoints、async demo 和阶段 10 总结与验收清单；阶段 11 已完成运营控制台增强设计、最小 async run console 展示、failed async run demo 样例、failed async run retry API、控制台 retry form 和阶段 11 收尾总结。下一步可进入阶段 12：操作审计与审批边界，或运行报告与对账视角。
 
 ## 学习原则
 
@@ -121,6 +121,13 @@
 - 新增阶段 10 FastAPI async endpoints：创建 async run、查询 async run、按状态列表和教学版 worker 触发
 - 新增阶段 10 demo 展示：通过 FastAPI 创建 async run、触发 worker、查询最终 platform result 和 API access audit
 - 建立阶段 10 总结与验收清单：`docs/22-stage-10-summary-and-acceptance.md`
+- 建立阶段 11 运营控制台增强设计：`docs/23-stage-11-operations-console-plan.md`
+- 新增阶段 11 最小运营控制台 async run 展示：`platform_api_app.py` 的 `FinTech Platform Console` 会展示 async run summary、recent async runs、failed async runs，并把 completed async run 关联到最终 platform result
+- 新增阶段 11 failed async run demo 样例：`demo.py` 通过真实 API 流程构造 request fingerprint 冲突导致的 failed async run，并确认 console 可展示 failed run、attempt count 和 last error
+- 新增阶段 11B failed async run retry 设计：`docs/24-stage-11b-retry-failed-async-run-design.md`
+- 新增阶段 11B failed async run retry API：`POST /platform/async-payment-runs/{run_id}/retry` 支持把 `failed` async run 重新放回 `accepted`，要求 actor、reason 和 confirmation，并记录成功/失败 API access audit
+- 新增阶段 11C 控制台 failed async run retry form：Failed Async Runs 区域可提交 actor、reason 和 confirmation，成功/失败复用 retry API access audit，成功后 run 回到 `accepted` 且不直接触发 worker
+- 完成阶段 11 收尾总结：`docs/23-stage-11-operations-console-plan.md` 已合并运营控制台实现进度、验收清单、工程结论、文档整理约定和阶段 12 候选方向
 - 权威资料索引新增 FinCEN 和 OFAC：`docs/00-authoritative-sources.md`
 
 ## 当前待学
@@ -541,6 +548,23 @@
 
 当前已完成阶段 10 设计文档、SQLite async run store、最小 `PlatformAsyncWorker`、FastAPI async endpoints、demo 展示和阶段 10 总结与验收清单，覆盖创建任务、查询任务、按状态筛选、幂等重放、request fingerprint 冲突、重开数据库读取、request payload 重建、worker 成功处理、失败重试、达到上限后失败、批量处理、HTTP `202 Accepted` 响应、教学版 worker 触发、最终 platform result 查询和 API access audit。下一步进入阶段 11 运营控制台增强设计，把 payment runs、async runs、API access events 和 investigation cases 放到更完整的只读运营视图里。
 
+### 主题 18：运营控制台增强
+
+- operations console
+- read-only console
+- operational summary
+- async run monitoring
+- failed async runs
+- API access events
+- API access anomalies
+- investigation cases
+- platform observability
+- empty state
+- HTML escaping
+- `docs/23-stage-11-operations-console-plan.md`
+
+当前已完成阶段 11 设计与收尾总结，明确不另起前端项目，而是在现有 FastAPI `FinTech Platform Console` 上增强运营视图。当前 console 已能同时展示 payment runs、async runs、failed async runs、API access anomalies、investigation cases 和 recent API access events；completed async run 会关联显示最终 platform status 和 payment order id；demo 也已补充 failed async run 可观察样例，用于观察 `attempt_count` 和 `last_error`。阶段 11B 已新增 failed async run retry API，要求 actor、reason 和 `retry_failed_async_run` confirmation，且成功和失败都会写入 API access audit。阶段 11C 已把 retry 接入 Failed Async Runs 区域的原生 HTML form；form endpoint 只作为浏览器表单适配层，成功后 run 回到 `accepted`，不直接触发 worker。阶段 11 的工程结论、验收清单、文档整理约定和阶段 12 候选方向已合并到 `docs/23-stage-11-operations-console-plan.md`。下一步建议进入阶段 12：操作审计与审批边界，或运行报告与对账视角。
+
 ## 近期计划
 
 ### 第 1 周
@@ -744,7 +768,8 @@
 - 理解阶段 9 的 API service、幂等、访问审计、API access anomaly、investigation case 和最小 console 的工程结论
 - 读 `docs/21-stage-10-event-driven-async-plan.md`
 - 读 `docs/22-stage-10-summary-and-acceptance.md`
-- 下一步进入阶段 11 运营控制台增强设计：展示 async runs、run 详情、状态筛选和失败原因
+- 读 `docs/23-stage-11-operations-console-plan.md`
+- 阶段 11 已收尾；下一步建议进入阶段 12，优先设计操作审计、审批边界、职责分离和高影响操作的复核流程
 
 ## 本机环境记录
 
@@ -951,3 +976,10 @@ conda activate fintech-lab
 | 2026-06-03 | 新增阶段 10 FastAPI async endpoints | `platform_api_app.py` 新增 `POST /platform/async-payment-runs`、async run 查询/列表、`POST /platform/async-worker/process-next` 和 `process-pending`，支持 `202 Accepted`、幂等重放、fingerprint 冲突、worker 触发、最终 platform result 查询和 API access audit；fintech-platform pytest 82 个测试通过 |
 | 2026-06-03 | 更新阶段 10 demo 展示 async HTTP 路径 | `demo.py` 通过 in-process FastAPI client 展示 async run 创建、状态查询、worker 处理、最终 platform result、幂等重放和 async API access audit；demo 可运行 |
 | 2026-06-03 | 新增阶段 10 总结与验收清单 | `docs/22-stage-10-summary-and-acceptance.md` 总结 async run、worker、HTTP `202`、retry、idempotency、任务状态与业务状态分离、audit trail、验收清单和当前边界；下一步建议阶段 11 进入运营控制台增强 |
+| 2026-06-03 | 新增阶段 11 运营控制台增强设计 | `docs/23-stage-11-operations-console-plan.md` 规划只读 console 如何展示 payment runs、async runs、API access anomalies、investigation cases 和 recent API access events；下一步接入 async run summary 与 failed async runs |
+| 2026-06-03 | 新增阶段 11 最小运营控制台 async run 展示 | `platform_api_app.py` 的 `FinTech Platform Console` 已接入 `SQLitePlatformAsyncRunStore`，summary 展示 async runs、accepted async runs 和 failed async runs，页面展示 recent async runs 与 failed async runs 空状态，completed async run 可显示最终 platform status 和 payment order id；下一步可补充失败 async run demo 样例或设计操作型控制台动作 |
+| 2026-06-03 | 新增阶段 11 failed async run demo 样例 | `demo.py` 新增 `create_failed_async_run_sample()`，通过真实 API 流程构造 request fingerprint 冲突导致的 failed async run，并确认 console 可展示 failed run、attempt count 和 last error；`test_platform_api_app.py` 新增对应覆盖；下一步设计操作型控制台动作边界 |
+| 2026-06-04 | 新增阶段 11B failed async run retry 设计 | `docs/24-stage-11b-retry-failed-async-run-design.md` 明确只做 `failed -> accepted` 的人工 retry 边界，要求 actor、reason、confirmation，成功和失败都写入 API access audit；下一步写实现计划并进入 TDD 实现 |
+| 2026-06-04 | 新增阶段 11B failed async run retry API | `SQLitePlatformAsyncRunStore.retry_failed()` 支持 `failed -> accepted` 状态转换；FastAPI 新增 `POST /platform/async-payment-runs/{run_id}/retry`，要求 actor、reason 和 `retry_failed_async_run` confirmation，成功和失败都写入 API access audit；retry 后现有 worker 可继续处理该 run；fintech-platform pytest 通过 |
+| 2026-06-04 | 新增阶段 11C 控制台 failed async run retry form | `FinTech Platform Console` 的 Failed Async Runs 区域新增原生 HTML retry form；`POST /platform/async-payment-runs/{run_id}/retry-form` 作为浏览器表单适配层复用同一套 retry 校验和 API access audit；成功后 run 回到 `accepted`，不直接触发 worker；fintech-platform API app pytest 通过 |
+| 2026-06-04 | 完成阶段 11 运营控制台增强收尾总结 | `docs/23-stage-11-operations-console-plan.md` 已从设计文档更新为设计与收尾总结，合并 async run 观察、failed sample、retry API、retry form、验收清单、工程结论、文档整理约定和阶段 12 候选方向；全量 `labs` pytest 336 个测试通过 |

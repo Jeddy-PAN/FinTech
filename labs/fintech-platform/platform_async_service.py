@@ -295,6 +295,37 @@ class SQLitePlatformAsyncRunStore:
             )
         return self.get_run(run.run_id)
 
+    def retry_failed(
+        self,
+        run_id: str,
+        *,
+        retried_at: datetime,
+    ) -> PlatformAsyncRun:
+        run = self.get_run(run_id)
+        retried_at_text = _timestamp_to_storage(retried_at, "retried_at")
+        if run.status != ASYNC_RUN_FAILED:
+            raise PlatformAsyncRunStoreError(
+                f"Cannot retry {run.status} async run: {run.run_id}"
+            )
+        with self._connection:
+            self._connection.execute(
+                """
+                UPDATE platform_async_runs
+                SET
+                    status = ?,
+                    updated_at = ?,
+                    completed_at = NULL,
+                    last_error = NULL
+                WHERE run_id = ?
+                """,
+                (
+                    ASYNC_RUN_ACCEPTED,
+                    retried_at_text,
+                    run.run_id,
+                ),
+            )
+        return self.get_run(run.run_id)
+
     def _get_run_or_none(self, run_id: str) -> PlatformAsyncRun | None:
         row = self._connection.execute(
             """

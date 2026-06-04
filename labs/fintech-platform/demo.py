@@ -277,6 +277,25 @@ def main() -> None:
             "/platform/async-payment-runs",
             json=async_payload,
         ).json()
+        failed_async_sample = create_failed_async_run_sample(
+            client,
+            existing_platform_payload={
+                **async_payload,
+                "run_id": "run_demo_async_failed_001",
+                "order_id": "order_async_failed_existing",
+                "amount": "50.00",
+            },
+            async_payload={
+                **async_payload,
+                "run_id": "run_demo_async_failed_001",
+                "order_id": "order_async_failed_conflict",
+                "amount": "75.00",
+            },
+        )
+        console_body = client.get(
+            "/platform/view",
+            headers={"x-actor-id": "console_reader_001"},
+        ).text
 
     print("\nAsync payment run via FastAPI")
     print(f"- Create HTTP style: {accepted_body['http_status']}")
@@ -295,6 +314,17 @@ def main() -> None:
     print(
         f"- Idempotent replay: {replay_body['idempotent_replay']} "
         f"http_status={replay_body['http_status']}"
+    )
+    print("\nFailed async run sample for console")
+    print(
+        f"- Failed async run: {failed_async_sample['failed_async']['run_id']} "
+        f"status={failed_async_sample['failed_async']['status']} "
+        f"attempts={failed_async_sample['failed_async']['attempt_count']}"
+    )
+    print(f"- Last error: {failed_async_sample['failed_async']['last_error']}")
+    print(
+        "- Console shows failed async run: "
+        f"{'run_demo_async_failed_001' in console_body}"
     )
 
     async_access_store = SQLiteAccessAuditStore(api_access_audit_database_path)
@@ -494,6 +524,41 @@ def main() -> None:
             )
     finally:
         access_audit_store.close()
+
+
+def create_failed_async_run_sample(
+    client: TestClient,
+    *,
+    existing_platform_payload: dict,
+    async_payload: dict,
+) -> dict:
+    created_platform = client.post(
+        "/platform/payment-runs",
+        json=existing_platform_payload,
+    ).json()
+    accepted_async = client.post(
+        "/platform/async-payment-runs",
+        json=async_payload,
+    ).json()
+
+    worker_results = []
+    for _ in range(3):
+        worker_body = client.post(
+            "/platform/async-worker/process-next",
+            headers={"x-actor-id": "async_worker_001"},
+        ).json()
+        worker_results.append(worker_body["result"])
+
+    failed_async = client.get(
+        f"/platform/async-payment-runs/{async_payload['run_id']}",
+        headers={"x-actor-id": "async_status_viewer_001"},
+    ).json()
+    return {
+        "created_platform": created_platform,
+        "accepted_async": accepted_async,
+        "worker_results": worker_results,
+        "failed_async": failed_async,
+    }
 
 
 def _seed_sample_platform_access_anomalies(

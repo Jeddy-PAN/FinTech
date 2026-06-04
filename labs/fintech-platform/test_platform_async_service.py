@@ -217,6 +217,79 @@ def test_async_worker_retries_failure_until_max_attempts() -> None:
         _close_and_remove_platform_store(platform_store)
 
 
+def test_async_run_store_retries_failed_run_to_accepted() -> None:
+    async_store = SQLitePlatformAsyncRunStore(_database_path())
+    platform_store = SQLitePlatformStore(_database_path())
+    try:
+        async_store.create_run(
+            _api_request(run_id="run_retry"),
+            created_at=_created_at(),
+            max_attempts=1,
+        )
+        worker = PlatformAsyncWorker(
+            async_store=async_store,
+            platform_store=platform_store,
+            service_factory=lambda: _FailingService(),
+        )
+        failed = worker.process_next(processed_at=_processed_at())
+
+        retried_at = datetime(2026, 5, 20, 9, 10, tzinfo=timezone.utc)
+        retried = async_store.retry_failed("run_retry", retried_at=retried_at)
+
+        assert failed.async_status == ASYNC_RUN_FAILED
+        assert retried.run_id == "run_retry"
+        assert retried.status == ASYNC_RUN_ACCEPTED
+        assert retried.attempt_count == 1
+        assert retried.max_attempts == 1
+        assert retried.last_error is None
+        assert retried.completed_at is None
+        assert retried.updated_at == retried_at
+        assert retried.request_payload["amount"] == "100.00"
+        assert retried.request_fingerprint == async_store.get_run(
+            "run_retry"
+        ).request_fingerprint
+    finally:
+        _close_and_remove(async_store)
+        _close_and_remove_platform_store(platform_store)
+
+
+def test_async_run_store_rejects_retry_for_non_failed_runs() -> None:
+    store = SQLitePlatformAsyncRunStore(_database_path())
+    try:
+        store.create_run(
+            _api_request(run_id="run_accepted", order_id="order_accepted"),
+            created_at=_created_at(),
+        )
+        store.create_run(
+            _api_request(run_id="run_processing", order_id="order_processing"),
+            created_at=datetime(2026, 5, 20, 9, 2, tzinfo=timezone.utc),
+        )
+        store.create_run(
+            _api_request(run_id="run_completed", order_id="order_completed"),
+            created_at=datetime(2026, 5, 20, 9, 3, tzinfo=timezone.utc),
+        )
+
+        store.mark_processing("run_processing", started_at=_processed_at())
+        store.mark_processing("run_completed", started_at=_processed_at())
+        store.mark_completed("run_completed", completed_at=_processed_at())
+
+        with pytest.raises(PlatformAsyncRunStoreError, match="Cannot retry accepted"):
+            store.retry_failed("run_accepted", retried_at=_processed_at())
+        with pytest.raises(PlatformAsyncRunStoreError, match="Cannot retry processing"):
+            store.retry_failed("run_processing", retried_at=_processed_at())
+        with pytest.raises(PlatformAsyncRunStoreError, match="Cannot retry completed"):
+            store.retry_failed("run_completed", retried_at=_processed_at())
+        with pytest.raises(PlatformAsyncRunStoreError, match="Unknown platform async run"):
+            store.retry_failed("missing_run", retried_at=_processed_at())
+        with pytest.raises(PlatformAsyncRunStoreError, match="timezone-aware"):
+            store.retry_failed(
+                "run_accepted",
+                retried_at=datetime(2026, 5, 20, 9, 10),
+            )
+    finally:
+        _close_and_remove(store)
+
+
 def test_async_worker_processes_pending_runs_up_to_limit() -> None:
     async_store = SQLitePlatformAsyncRunStore(_database_path())
     platform_store = SQLitePlatformStore(_database_path())
