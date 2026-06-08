@@ -1033,6 +1033,7 @@ def test_platform_console_renders_operations_and_approval_report_views() -> None
         assert "run_retry_http" in body
         assert "Operation Approval Summary" in body
         assert "Approval Records" in body
+        assert "pending_count" in body
         assert "approved_count" in body
         assert "self_approval_rejected_count" in body
         assert "Retry after transient worker failure" in body

@@ -6,6 +6,7 @@ from uuid import uuid4
 
 from platform_operation_approval import (
     OPERATION_APPROVAL_APPROVED,
+    OPERATION_APPROVAL_PENDING,
     OPERATION_APPROVAL_REJECTED,
     RETRY_PLATFORM_ASYNC_RUN_OPERATION,
     OperationApprovalRecord,
@@ -22,6 +23,14 @@ def test_operation_approval_report_summarizes_approval_records() -> None:
             _approval_record("approval_approved_001", status=OPERATION_APPROVAL_APPROVED),
             _approval_record("approval_approved_002", status=OPERATION_APPROVAL_APPROVED),
             _approval_record(
+                "approval_pending_001",
+                status=OPERATION_APPROVAL_PENDING,
+                approved_by=None,
+                approval_reason=None,
+                decision_reason="pending approval",
+                decided_at=None,
+            ),
+            _approval_record(
                 "approval_rejected_001",
                 status=OPERATION_APPROVAL_REJECTED,
                 requested_by="ops_user_001",
@@ -30,10 +39,11 @@ def test_operation_approval_report_summarizes_approval_records() -> None:
         )
     )
 
-    assert report.summary.total_record_count == 3
+    assert report.summary.total_record_count == 4
+    assert report.summary.pending_count == 1
     assert report.summary.approved_count == 2
     assert report.summary.rejected_count == 1
-    assert report.summary.retry_operation_count == 3
+    assert report.summary.retry_operation_count == 4
     assert report.summary.self_approval_rejected_count == 1
 
 
@@ -115,7 +125,11 @@ def _approval_record(
     decided_at: datetime | None = None,
 ) -> OperationApprovalRecord:
     requested = requested_at or datetime(2026, 6, 8, 9, 0, tzinfo=timezone.utc)
-    decided = decided_at or datetime(2026, 6, 8, 9, 5, tzinfo=timezone.utc)
+    decided = (
+        datetime(2026, 6, 8, 9, 5, tzinfo=timezone.utc)
+        if decided_at is None and status != OPERATION_APPROVAL_PENDING
+        else decided_at
+    )
     return OperationApprovalRecord(
         approval_id=approval_id,
         operation_type=operation_type,

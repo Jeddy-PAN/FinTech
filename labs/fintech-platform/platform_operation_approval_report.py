@@ -8,6 +8,7 @@ from pathlib import Path
 
 from platform_operation_approval import (
     OPERATION_APPROVAL_APPROVED,
+    OPERATION_APPROVAL_PENDING,
     OPERATION_APPROVAL_REJECTED,
     RETRY_PLATFORM_ASYNC_RUN_OPERATION,
     OperationApprovalRecord,
@@ -17,6 +18,7 @@ from platform_operation_approval import (
 @dataclass(frozen=True)
 class OperationApprovalReportSummary:
     total_record_count: int
+    pending_count: int
     approved_count: int
     rejected_count: int
     retry_operation_count: int
@@ -46,6 +48,9 @@ def build_operation_approval_report(
     return OperationApprovalReport(
         summary=OperationApprovalReportSummary(
             total_record_count=len(ordered_records),
+            pending_count=sum(
+                1 for record in ordered_records if record.status == OPERATION_APPROVAL_PENDING
+            ),
             approved_count=sum(
                 1 for record in ordered_records if record.status == OPERATION_APPROVAL_APPROVED
             ),
@@ -174,6 +179,7 @@ def _summary_to_html(summary: OperationApprovalReportSummary) -> str:
 def _summary_values(summary: OperationApprovalReportSummary) -> tuple[tuple[str, int], ...]:
     return (
         ("total_record_count", summary.total_record_count),
+        ("pending_count", summary.pending_count),
         ("approved_count", summary.approved_count),
         ("rejected_count", summary.rejected_count),
         ("retry_operation_count", summary.retry_operation_count),
@@ -223,7 +229,7 @@ def _record_values(record: OperationApprovalRecord) -> list[object]:
         record.status,
         record.decision_reason,
         record.requested_at.isoformat(),
-        record.decided_at.isoformat(),
+        None if record.decided_at is None else record.decided_at.isoformat(),
     ]
 
 

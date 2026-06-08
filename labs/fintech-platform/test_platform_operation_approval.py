@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
@@ -8,6 +9,7 @@ import pytest
 
 from platform_operation_approval import (
     OPERATION_APPROVAL_APPROVED,
+    OPERATION_APPROVAL_PENDING,
     OPERATION_APPROVAL_REJECTED,
     OperationApprovalError,
     OperationApprovalRecord,
@@ -62,6 +64,94 @@ def test_operation_approval_store_queries_rejected_records() -> None:
         _remove_database(database_path)
 
 
+def test_operation_approval_store_saves_and_queries_pending_record() -> None:
+    database_path = _database_path()
+    store = SQLiteOperationApprovalStore(database_path)
+    pending = _approval_record(
+        approval_id="approval_pending",
+        status=OPERATION_APPROVAL_PENDING,
+        approved_by=None,
+        approval_reason=None,
+        decision_reason="pending approval",
+        decided_at=None,
+    )
+
+    try:
+        store.save_record(pending)
+
+        saved = store.get_record("approval_pending")
+        assert saved == pending
+        assert store.query_records(status=OPERATION_APPROVAL_PENDING) == (pending,)
+    finally:
+        store.close()
+        _remove_database(database_path)
+
+
+def test_operation_approval_store_approves_pending_record() -> None:
+    database_path = _database_path()
+    store = SQLiteOperationApprovalStore(database_path)
+    pending = _approval_record(
+        approval_id="approval_pending",
+        status=OPERATION_APPROVAL_PENDING,
+        approved_by=None,
+        approval_reason=None,
+        decision_reason="pending approval",
+        decided_at=None,
+    )
+
+    try:
+        store.save_record(pending)
+
+        approved = store.approve_pending(
+            "approval_pending",
+            approved_by="ops_manager_001",
+            approval_reason="Approved after reviewing retry request",
+            decided_at=_now(),
+        )
+
+        assert approved.status == OPERATION_APPROVAL_APPROVED
+        assert approved.approved_by == "ops_manager_001"
+        assert approved.approval_reason == "Approved after reviewing retry request"
+        assert approved.decision_reason == "approved"
+        assert approved.decided_at == _now()
+        assert store.get_record("approval_pending") == approved
+    finally:
+        store.close()
+        _remove_database(database_path)
+
+
+def test_operation_approval_store_rejects_pending_record() -> None:
+    database_path = _database_path()
+    store = SQLiteOperationApprovalStore(database_path)
+    pending = _approval_record(
+        approval_id="approval_pending",
+        status=OPERATION_APPROVAL_PENDING,
+        approved_by=None,
+        approval_reason=None,
+        decision_reason="pending approval",
+        decided_at=None,
+    )
+
+    try:
+        store.save_record(pending)
+
+        rejected = store.reject_pending(
+            "approval_pending",
+            rejected_by="ops_manager_001",
+            rejection_reason="Retry evidence is incomplete",
+            decided_at=_now(),
+        )
+
+        assert rejected.status == OPERATION_APPROVAL_REJECTED
+        assert rejected.approved_by == "ops_manager_001"
+        assert rejected.approval_reason == "Retry evidence is incomplete"
+        assert rejected.decision_reason == "rejected"
+        assert rejected.decided_at == _now()
+    finally:
+        store.close()
+        _remove_database(database_path)
+
+
 def test_operation_approval_store_rejects_approved_self_approval() -> None:
     database_path = _database_path()
     store = SQLiteOperationApprovalStore(database_path)
@@ -86,7 +176,57 @@ def test_operation_approval_store_rejects_unknown_status() -> None:
 
     try:
         with pytest.raises(OperationApprovalError, match="Unknown approval status"):
-            store.save_record(_approval_record(status="pending"))
+            store.save_record(_approval_record(status="waiting"))
+    finally:
+        store.close()
+        _remove_database(database_path)
+
+
+def test_operation_approval_store_rejects_approving_non_pending_record() -> None:
+    database_path = _database_path()
+    store = SQLiteOperationApprovalStore(database_path)
+
+    try:
+        store.save_record(
+            _approval_record(
+                approval_id="approval_approved",
+                status=OPERATION_APPROVAL_APPROVED,
+            )
+        )
+
+        with pytest.raises(OperationApprovalError, match="Cannot approve approved"):
+            store.approve_pending(
+                "approval_approved",
+                approved_by="ops_manager_001",
+                approval_reason="Duplicate approval",
+                decided_at=_now(),
+            )
+    finally:
+        store.close()
+        _remove_database(database_path)
+
+
+def test_operation_approval_store_migrates_legacy_terminal_status_schema() -> None:
+    database_path = _database_path()
+    _create_legacy_terminal_status_record(database_path)
+
+    store = SQLiteOperationApprovalStore(database_path)
+    pending = _approval_record(
+        approval_id="approval_pending",
+        status=OPERATION_APPROVAL_PENDING,
+        approved_by=None,
+        approval_reason=None,
+        decision_reason="pending approval",
+        decided_at=None,
+    )
+
+    try:
+        store.save_record(pending)
+
+        legacy = store.get_record("approval_legacy")
+        assert legacy.status == OPERATION_APPROVAL_APPROVED
+        assert legacy.approved_by == "ops_manager_legacy"
+        assert store.get_record("approval_pending") == pending
     finally:
         store.close()
         _remove_database(database_path)
@@ -100,10 +240,11 @@ def _approval_record(
     target: str = "fintech_platform_api_async_payment_runs/run_retry_http",
     requested_by: str = "ops_user_001",
     request_reason: str = "Retry after transient worker failure",
-    approved_by: str = "ops_manager_001",
-    approval_reason: str = "Approved retry after reviewing worker failure",
+    approved_by: str | None = "ops_manager_001",
+    approval_reason: str | None = "Approved retry after reviewing worker failure",
     status: str,
     decision_reason: str = "approved",
+    decided_at: datetime | None = None,
 ) -> OperationApprovalRecord:
     return OperationApprovalRecord(
         approval_id=approval_id,
@@ -117,7 +258,11 @@ def _approval_record(
         status=status,
         decision_reason=decision_reason,
         requested_at=_now(),
-        decided_at=_now(),
+        decided_at=(
+            _now()
+            if decided_at is None and status != OPERATION_APPROVAL_PENDING
+            else decided_at
+        ),
     )
 
 
@@ -138,3 +283,63 @@ def _test_data_directory() -> Path:
 def _remove_database(database_path: Path) -> None:
     if database_path.exists():
         database_path.unlink()
+
+
+def _create_legacy_terminal_status_record(database_path: Path) -> None:
+    database_path.parent.mkdir(parents=True, exist_ok=True)
+    connection = sqlite3.connect(str(database_path))
+    try:
+        with connection:
+            connection.executescript(
+                """
+                CREATE TABLE operation_approvals (
+                    approval_id TEXT PRIMARY KEY,
+                    operation_type TEXT NOT NULL,
+                    operation_id TEXT NOT NULL,
+                    target TEXT NOT NULL,
+                    requested_by TEXT NOT NULL,
+                    request_reason TEXT NOT NULL,
+                    approved_by TEXT NOT NULL,
+                    approval_reason TEXT NOT NULL,
+                    status TEXT NOT NULL CHECK (status IN ('approved', 'rejected')),
+                    decision_reason TEXT NOT NULL,
+                    requested_at TEXT NOT NULL,
+                    decided_at TEXT NOT NULL
+                );
+                """
+            )
+            connection.execute(
+                """
+                INSERT INTO operation_approvals (
+                    approval_id,
+                    operation_type,
+                    operation_id,
+                    target,
+                    requested_by,
+                    request_reason,
+                    approved_by,
+                    approval_reason,
+                    status,
+                    decision_reason,
+                    requested_at,
+                    decided_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    "approval_legacy",
+                    "retry_platform_async_run",
+                    "run_legacy",
+                    "fintech_platform_api_async_payment_runs/run_legacy",
+                    "ops_user_legacy",
+                    "Retry legacy run",
+                    "ops_manager_legacy",
+                    "Approved legacy retry",
+                    OPERATION_APPROVAL_APPROVED,
+                    "approved",
+                    _now().isoformat(),
+                    _now().isoformat(),
+                ),
+            )
+    finally:
+        connection.close()

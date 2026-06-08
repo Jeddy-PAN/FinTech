@@ -36,7 +36,11 @@ from platform_investigation_cases import (
     open_platform_access_investigation_cases,
 )
 from platform_operations_report import export_platform_operations_report
-from platform_operation_approval import SQLiteOperationApprovalStore
+from platform_operation_approval import (
+    OPERATION_APPROVAL_PENDING,
+    OperationApprovalRecord,
+    SQLiteOperationApprovalStore,
+)
 from platform_operation_approval_report import export_operation_approval_report
 from platform_report_access import (
     export_platform_consistency_report_with_access,
@@ -394,6 +398,39 @@ def main() -> None:
         print("\nExported platform ledger reconciliation reports:")
         print(f"- {ledger_reconciliation_paths.findings_csv}")
         print(f"- {ledger_reconciliation_paths.html_report}")
+
+        operation_approval_store.save_record(
+            OperationApprovalRecord(
+                approval_id="approval_demo_pending_retry_001",
+                operation_type="retry_platform_async_run",
+                operation_id="run_demo_async_pending_retry_001",
+                target=(
+                    "fintech_platform_api_async_payment_runs/"
+                    "run_demo_async_pending_retry_001"
+                ),
+                requested_by="ops_user_pending_001",
+                request_reason="Request retry approval before execution",
+                approved_by=None,
+                approval_reason=None,
+                status=OPERATION_APPROVAL_PENDING,
+                decision_reason="pending approval",
+                requested_at=datetime(2026, 5, 18, 12, 45, tzinfo=timezone.utc),
+                decided_at=None,
+            )
+        )
+        approved_pending = operation_approval_store.approve_pending(
+            "approval_demo_pending_retry_001",
+            approved_by="ops_manager_pending_001",
+            approval_reason="Approved pending retry request after review",
+            decided_at=datetime(2026, 5, 18, 12, 50, tzinfo=timezone.utc),
+        )
+        print("\nPending operation approval flow")
+        print(
+            f"- {approved_pending.approval_id} "
+            f"status={approved_pending.status} "
+            f"requested_by={approved_pending.requested_by} "
+            f"approved_by={approved_pending.approved_by}"
+        )
 
         print("\nOperation approval records")
         for record in operation_approval_store.records:

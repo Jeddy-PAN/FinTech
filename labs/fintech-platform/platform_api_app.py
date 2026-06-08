@@ -1862,6 +1862,7 @@ def _operations_summary_rows(summary) -> list[tuple[object, ...]]:
 def _approval_summary_rows(summary) -> list[tuple[object, ...]]:
     return [
         ("total_record_count", summary.total_record_count),
+        ("pending_count", summary.pending_count),
         ("approved_count", summary.approved_count),
         ("rejected_count", summary.rejected_count),
         ("retry_operation_count", summary.retry_operation_count),

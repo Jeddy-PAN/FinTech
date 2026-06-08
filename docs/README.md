@@ -1,6 +1,6 @@
 # docs 文档入口
 
-这个目录保存 FinTech 学习笔记、阶段计划和阶段总结。当前文档已经比较多，阅读时不建议从文件名 01 一路顺读到 30，而应按目标选择路径。
+这个目录保存 FinTech 学习笔记、阶段计划和阶段总结。当前文档已经比较多，阅读时不建议从文件名 01 一路顺读到 31，而应按目标选择路径。
 
 ## 推荐阅读路径
 
@@ -29,6 +29,7 @@
 9. [28-stage-15-operation-approval-report.md](28-stage-15-operation-approval-report.md)：operation approval report。
 10. [29-stage-16-console-report-views.md](29-stage-16-console-report-views.md)：console report views。
 11. [30-stage-17-ledger-reconciliation-report.md](30-stage-17-ledger-reconciliation-report.md)：ledger reconciliation report。
+12. [31-stage-18-operation-approval-state-flow.md](31-stage-18-operation-approval-state-flow.md)：operation approval state flow。
 
 ### 路径 C：只看阶段计划和历史
 
@@ -50,6 +51,7 @@
 | [28-stage-15-operation-approval-report.md](28-stage-15-operation-approval-report.md) | operation approval report |
 | [29-stage-16-console-report-views.md](29-stage-16-console-report-views.md) | console report views |
 | [30-stage-17-ledger-reconciliation-report.md](30-stage-17-ledger-reconciliation-report.md) | ledger reconciliation report |
+| [31-stage-18-operation-approval-state-flow.md](31-stage-18-operation-approval-state-flow.md) | operation approval state flow |
 
 ## 当前平台能力地图
 
@@ -92,12 +94,12 @@ failed async run
 -> actor + reason
 -> approved_by + approval_reason
 -> separation of duties check
--> operation approval record approved / rejected
+-> operation approval record pending / approved / rejected
 -> access audit granted / denied
 -> failed -> accepted
 ```
 
-这个流程回答：高影响操作为什么不能只靠一个按钮，需要操作人、审批人、确认文本、结构化审批记录和访问审计。
+这个流程回答：高影响操作为什么不能只靠一个按钮，需要操作人、审批人、确认文本、结构化审批记录、状态流转和访问审计。
 
 ### 访问异常和调查流程
 
@@ -172,7 +174,7 @@ platform / wallet balance snapshot
 
 ## 下一步候选方向
 
-1. 为 operation approval record 增加 pending / approved / rejected 状态流转。
-2. 给 console 增加只读筛选和分页。
-3. 继续推进更真实的 ledger entry 持久化与查询边界。
-4. 继续压缩阶段文档，把历史计划和最终总结的关系标得更清楚。
+1. 给 pending approval 增加最小 HTTP 查询和审批 endpoint。
+2. 把 retry API 改成先创建 pending approval，审批通过后再执行 retry。
+3. 给 console 增加只读筛选和分页。
+4. 继续推进更真实的 ledger entry 持久化与查询边界。

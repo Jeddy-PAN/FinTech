@@ -7,9 +7,11 @@ from pathlib import Path
 
 
 OPERATION_APPROVAL_APPROVED = "approved"
+OPERATION_APPROVAL_PENDING = "pending"
 OPERATION_APPROVAL_REJECTED = "rejected"
 OPERATION_APPROVAL_STATUSES = {
     OPERATION_APPROVAL_APPROVED,
+    OPERATION_APPROVAL_PENDING,
     OPERATION_APPROVAL_REJECTED,
 }
 RETRY_PLATFORM_ASYNC_RUN_OPERATION = "retry_platform_async_run"
@@ -27,12 +29,12 @@ class OperationApprovalRecord:
     target: str
     requested_by: str
     request_reason: str
-    approved_by: str
-    approval_reason: str
+    approved_by: str | None
+    approval_reason: str | None
     status: str
     decision_reason: str
     requested_at: datetime
-    decided_at: datetime
+    decided_at: datetime | None
 
 
 class SQLiteOperationApprovalStore:
@@ -93,6 +95,66 @@ class SQLiteOperationApprovalStore:
                 _record_to_row(record),
             )
 
+    def approve_pending(
+        self,
+        approval_id: str,
+        *,
+        approved_by: str,
+        approval_reason: str,
+        decided_at: datetime,
+    ) -> OperationApprovalRecord:
+        existing = self.get_record(approval_id)
+        if existing.status != OPERATION_APPROVAL_PENDING:
+            raise OperationApprovalError(
+                f"Cannot approve {existing.status} operation approval record"
+            )
+        approved = OperationApprovalRecord(
+            approval_id=existing.approval_id,
+            operation_type=existing.operation_type,
+            operation_id=existing.operation_id,
+            target=existing.target,
+            requested_by=existing.requested_by,
+            request_reason=existing.request_reason,
+            approved_by=approved_by,
+            approval_reason=approval_reason,
+            status=OPERATION_APPROVAL_APPROVED,
+            decision_reason="approved",
+            requested_at=existing.requested_at,
+            decided_at=decided_at,
+        )
+        self.save_record(approved)
+        return approved
+
+    def reject_pending(
+        self,
+        approval_id: str,
+        *,
+        rejected_by: str,
+        rejection_reason: str,
+        decided_at: datetime,
+    ) -> OperationApprovalRecord:
+        existing = self.get_record(approval_id)
+        if existing.status != OPERATION_APPROVAL_PENDING:
+            raise OperationApprovalError(
+                f"Cannot reject {existing.status} operation approval record"
+            )
+        rejected = OperationApprovalRecord(
+            approval_id=existing.approval_id,
+            operation_type=existing.operation_type,
+            operation_id=existing.operation_id,
+            target=existing.target,
+            requested_by=existing.requested_by,
+            request_reason=existing.request_reason,
+            approved_by=rejected_by,
+            approval_reason=rejection_reason,
+            status=OPERATION_APPROVAL_REJECTED,
+            decision_reason="rejected",
+            requested_at=existing.requested_at,
+            decided_at=decided_at,
+        )
+        self.save_record(rejected)
+        return rejected
+
     def get_record(self, approval_id: str) -> OperationApprovalRecord:
         normalized_approval_id = _require_text(approval_id, "approval_id")
         row = self._connection.execute(
@@ -142,6 +204,7 @@ class SQLiteOperationApprovalStore:
         return tuple(_record_from_row(row) for row in rows)
 
     def _create_schema(self) -> None:
+        self._migrate_schema_if_needed()
         with self._connection:
             self._connection.executescript(
                 """
@@ -152,12 +215,12 @@ class SQLiteOperationApprovalStore:
                     target TEXT NOT NULL,
                     requested_by TEXT NOT NULL,
                     request_reason TEXT NOT NULL,
-                    approved_by TEXT NOT NULL,
-                    approval_reason TEXT NOT NULL,
-                    status TEXT NOT NULL CHECK (status IN ('approved', 'rejected')),
+                    approved_by TEXT,
+                    approval_reason TEXT,
+                    status TEXT NOT NULL CHECK (status IN ('pending', 'approved', 'rejected')),
                     decision_reason TEXT NOT NULL,
                     requested_at TEXT NOT NULL,
-                    decided_at TEXT NOT NULL
+                    decided_at TEXT
                 );
 
                 CREATE INDEX IF NOT EXISTS idx_operation_approvals_operation
@@ -168,6 +231,77 @@ class SQLiteOperationApprovalStore:
                 """
             )
 
+    def _migrate_schema_if_needed(self) -> None:
+        row = self._connection.execute(
+            """
+            SELECT sql
+            FROM sqlite_master
+            WHERE type = 'table' AND name = 'operation_approvals'
+            """
+        ).fetchone()
+        if row is None:
+            return
+        schema_sql = row["sql"] or ""
+        if (
+            "'pending'" in schema_sql
+            and "approved_by TEXT NOT NULL" not in schema_sql
+            and "approval_reason TEXT NOT NULL" not in schema_sql
+            and "decided_at TEXT NOT NULL" not in schema_sql
+        ):
+            return
+        with self._connection:
+            self._connection.executescript(
+                """
+                ALTER TABLE operation_approvals RENAME TO operation_approvals_legacy;
+
+                CREATE TABLE operation_approvals (
+                    approval_id TEXT PRIMARY KEY,
+                    operation_type TEXT NOT NULL,
+                    operation_id TEXT NOT NULL,
+                    target TEXT NOT NULL,
+                    requested_by TEXT NOT NULL,
+                    request_reason TEXT NOT NULL,
+                    approved_by TEXT,
+                    approval_reason TEXT,
+                    status TEXT NOT NULL CHECK (status IN ('pending', 'approved', 'rejected')),
+                    decision_reason TEXT NOT NULL,
+                    requested_at TEXT NOT NULL,
+                    decided_at TEXT
+                );
+
+                INSERT INTO operation_approvals (
+                    approval_id,
+                    operation_type,
+                    operation_id,
+                    target,
+                    requested_by,
+                    request_reason,
+                    approved_by,
+                    approval_reason,
+                    status,
+                    decision_reason,
+                    requested_at,
+                    decided_at
+                )
+                SELECT
+                    approval_id,
+                    operation_type,
+                    operation_id,
+                    target,
+                    requested_by,
+                    request_reason,
+                    approved_by,
+                    approval_reason,
+                    status,
+                    decision_reason,
+                    requested_at,
+                    decided_at
+                FROM operation_approvals_legacy;
+
+                DROP TABLE operation_approvals_legacy;
+                """
+            )
+
 
 def _validate_record(record: OperationApprovalRecord) -> None:
     _require_text(record.approval_id, "approval_id")
@@ -175,12 +309,22 @@ def _validate_record(record: OperationApprovalRecord) -> None:
     _require_text(record.operation_id, "operation_id")
     _require_text(record.target, "target")
     requested_by = _require_text(record.requested_by, "requested_by")
-    approved_by = _require_text(record.approved_by, "approved_by")
     _require_text(record.request_reason, "request_reason")
-    _require_text(record.approval_reason, "approval_reason")
     _validate_status(record.status)
     _require_text(record.decision_reason, "decision_reason")
     _timestamp_to_storage(record.requested_at, "requested_at")
+
+    if record.status == OPERATION_APPROVAL_PENDING:
+        if record.approved_by is not None:
+            _require_text(record.approved_by, "approved_by")
+        if record.approval_reason is not None:
+            _require_text(record.approval_reason, "approval_reason")
+        if record.decided_at is not None:
+            raise OperationApprovalError("pending approval must not have decided_at")
+        return
+
+    approved_by = _require_optional_text(record.approved_by, "approved_by")
+    _require_optional_text(record.approval_reason, "approval_reason")
     _timestamp_to_storage(record.decided_at, "decided_at")
     if record.status == OPERATION_APPROVAL_APPROVED and requested_by == approved_by:
         raise OperationApprovalError("approved_by must differ from requested_by")
@@ -199,12 +343,12 @@ def _record_to_row(record: OperationApprovalRecord) -> tuple:
         _require_text(record.target, "target"),
         _require_text(record.requested_by, "requested_by"),
         _require_text(record.request_reason, "request_reason"),
-        _require_text(record.approved_by, "approved_by"),
-        _require_text(record.approval_reason, "approval_reason"),
+        _optional_text_to_storage(record.approved_by, "approved_by"),
+        _optional_text_to_storage(record.approval_reason, "approval_reason"),
         record.status,
         _require_text(record.decision_reason, "decision_reason"),
         _timestamp_to_storage(record.requested_at, "requested_at"),
-        _timestamp_to_storage(record.decided_at, "decided_at"),
+        _optional_timestamp_to_storage(record.decided_at, "decided_at"),
     )
 
 
@@ -221,7 +365,9 @@ def _record_from_row(row: sqlite3.Row) -> OperationApprovalRecord:
         status=row["status"],
         decision_reason=row["decision_reason"],
         requested_at=datetime.fromisoformat(row["requested_at"]),
-        decided_at=datetime.fromisoformat(row["decided_at"]),
+        decided_at=(
+            None if row["decided_at"] is None else datetime.fromisoformat(row["decided_at"])
+        ),
     )
 
 
@@ -232,7 +378,30 @@ def _require_text(value: str, field_name: str) -> str:
     return normalized
 
 
+def _require_optional_text(value: str | None, field_name: str) -> str:
+    if value is None:
+        raise OperationApprovalError(f"{field_name} is required")
+    return _require_text(value, field_name)
+
+
+def _optional_text_to_storage(value: str | None, field_name: str) -> str | None:
+    if value is None:
+        return None
+    return _require_text(value, field_name)
+
+
 def _timestamp_to_storage(value: datetime, field_name: str) -> str:
+    if value is None:
+        raise OperationApprovalError(f"{field_name} is required")
     if value.tzinfo is None or value.utcoffset() is None:
         raise OperationApprovalError(f"{field_name} must be timezone-aware")
     return value.astimezone(timezone.utc).isoformat()
+
+
+def _optional_timestamp_to_storage(
+    value: datetime | None,
+    field_name: str,
+) -> str | None:
+    if value is None:
+        return None
+    return _timestamp_to_storage(value, field_name)

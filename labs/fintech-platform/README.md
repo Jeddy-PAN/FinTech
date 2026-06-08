@@ -221,6 +221,7 @@ investigation_case
 19. 已完成阶段 15 第一版：新增 operation approval report，把 approval records 汇总为 CSV/HTML 报表。
 20. 已完成阶段 16 第一版：把 operations report 和 approval report 的核心摘要接入只读 console。
 21. 已完成阶段 17 第一版：新增 ledger reconciliation report，并把 ledger reconciliation findings 接入 demo 和只读 console。
+22. 已完成阶段 18 第一版：operation approval record 支持 pending / approved / rejected 状态流转，approval report 和 console summary 可统计 pending。
 
 ## 运行示例
 
@@ -263,6 +264,8 @@ demo 现在也会输出 `Exported platform operations reports`，用于观察 `P
 
 demo 现在也会输出 `Exported operation approval reports`，用于观察 `OperationApprovalRecord` 如何汇总为 approval records CSV、approval summary CSV 和 HTML 报告。运行 API 服务后，`FinTech Platform Console` 也会显示 `Operations Report Summary`、`Operation Approval Summary`、`Operations Run Rows` 和 `Approval Records` 只读区块。
 
+demo 现在也会输出 `Pending operation approval flow`，用于观察一条 approval record 如何先保存为 `pending`，再通过 `approve_pending()` 流转为 `approved`。
+
 demo 现在也会输出 `Exported platform ledger reconciliation reports`，用于观察 completed run 的 payment order amount、ledger amount、platform bank balance 和 user wallet balance 是否一致。运行 API 服务后，`FinTech Platform Console` 也会显示 `Ledger Reconciliation Findings` 只读区块。
 
 demo 还会写入并重新读取：
@@ -285,7 +288,7 @@ labs/fintech-platform/.test-data/demo_platform_api_investigation_cases.db
 
 ## 当前状态
 
-这个目录已经包含第一版综合平台设计、最小 orchestration、demo、综合报表导出、SQLite 持久化、历史运行报表、risk review 后续处理、教学版一致性检查、平台报表访问控制与访问审计、平台访问异常检测、平台访问异常调查工单、异步任务、运营控制台、retry 审批边界、运行报告与对账视角、operation approval record、operation approval report、console report views、ledger reconciliation report，以及测试。阶段 8 以来的目标仍然是把已有实验组合成一个清晰的学习平台，而不是立即扩成生产级系统。
+这个目录已经包含第一版综合平台设计、最小 orchestration、demo、综合报表导出、SQLite 持久化、历史运行报表、risk review 后续处理、教学版一致性检查、平台报表访问控制与访问审计、平台访问异常检测、平台访问异常调查工单、异步任务、运营控制台、retry 审批边界、运行报告与对账视角、operation approval record、operation approval report、console report views、ledger reconciliation report、operation approval state flow，以及测试。阶段 8 以来的目标仍然是把已有实验组合成一个清晰的学习平台，而不是立即扩成生产级系统。
 
 阶段 9 已经开始在这个目录上做 API 服务化的第一步：
 
@@ -469,3 +472,15 @@ test_platform_ledger_reconciliation_report.py
 ```
 
 阶段 17 新增教学版 ledger reconciliation report。它基于 `PlatformRunSnapshot` 和 audit payload 检查 completed run 的 payment order amount、ledger posted amount、platform bank balance 和 user wallet balance 是否一致，也检查非入账状态是否没有 ledger artifacts。报告导出 `platform_ledger_reconciliation_findings.csv` 和 `platform_ledger_reconciliation_report.html`，并在 `FinTech Platform Console` 中新增 `Ledger Reconciliation Findings` 只读区块。当前仍不查询底层 `SQLiteLedger` 分录明细，也不代表真实银行流水或清算文件对账。
+
+阶段 18 第一版已完成：
+
+```text
+docs/31-stage-18-operation-approval-state-flow.md
+platform_operation_approval.py
+test_platform_operation_approval.py
+platform_operation_approval_report.py
+test_platform_operation_approval_report.py
+```
+
+阶段 18 让 `OperationApprovalRecord` 支持 `pending / approved / rejected` 状态。pending 记录允许 `approved_by`、`approval_reason` 和 `decided_at` 为空；`approve_pending()` 和 `reject_pending()` 只允许从 pending 流转到终态；旧的 approved/rejected schema 会在 store 初始化时迁移。`OperationApprovalReportSummary` 和 console 的 `Operation Approval Summary` 现在会显示 `pending_count`。当前仍不新增 HTTP approval endpoint，也不把 retry API 改成“先 pending 审批、审批通过后再执行 retry”。
