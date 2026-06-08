@@ -7,7 +7,7 @@
 - 学习对象：有编程背景，金融领域零基础。
 - 学习目标：理解金融业务、FinTech 工程系统、数据分析、风控和合规基础。
 - 学习方式：先学概念，再写最小实验，再把知识沉淀成文档。
-- 当前阶段：阶段 16 第一版已完成，operations report 和 approval report 的核心摘要已接入只读 console。
+- 当前阶段：阶段 17 第一版已完成，ledger reconciliation report 已接入 demo 和只读 console。
 
 ## 环境和语言约定
 
@@ -36,7 +36,7 @@ PYTHONIOENCODING=utf-8
 │   ├── README.md              # 文档入口、阅读路径和平台能力地图
 │   ├── 00-authoritative-sources.md
 │   ├── 01-16-*.md             # 基础概念和早期实验笔记
-│   └── 17-29-*.md             # 阶段计划、总结和平台演进记录
+│   └── 17-30-*.md             # 阶段计划、总结和平台演进记录
 └── labs/                      # 后续代码实验
     ├── ledger-basics/         # 第一个实验：双分录账本
     ├── payment-orders/        # 第二个实验：支付订单系统
@@ -55,8 +55,8 @@ PYTHONIOENCODING=utf-8
 建议按目标选择路径：
 
 1. 从零开始学 FinTech：先读 [docs/00-authoritative-sources.md](docs/00-authoritative-sources.md)、[docs/01-fintech-overview.md](docs/01-fintech-overview.md)、[docs/02-developer-to-finance.md](docs/02-developer-to-finance.md)，再按 `docs/03` 到 `docs/16` 逐步进入账本、支付、风控、KYC/AML 和合规审计。
-2. 直接理解综合平台：先读 [labs/fintech-platform/README.md](labs/fintech-platform/README.md)，再读 [docs/29-stage-16-console-report-views.md](docs/29-stage-16-console-report-views.md) 了解当前最新只读 console 报表视图。
-3. 运行工程作品：执行 `& 'C:\App\Anaconda\python.exe' .\labs\fintech-platform\demo.py`，观察端到端支付、async run、retry、access audit、investigation case、operations report、approval report 和 console report views。
+2. 直接理解综合平台：先读 [labs/fintech-platform/README.md](labs/fintech-platform/README.md)，再读 [docs/30-stage-17-ledger-reconciliation-report.md](docs/30-stage-17-ledger-reconciliation-report.md) 了解当前最新 ledger reconciliation report 和 console 视图。
+3. 运行工程作品：执行 `& 'C:\App\Anaconda\python.exe' .\labs\fintech-platform\demo.py`，观察端到端支付、async run、retry、access audit、investigation case、operations report、approval report、ledger reconciliation report 和 console report views。
 4. 继续协作前：先看 [LEARNING_PROGRESS.md](LEARNING_PROGRESS.md) 的“当前状态”和“最新记录”，确认当前阶段和下一步候选方向。
 
 ## 协作原则

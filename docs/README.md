@@ -1,6 +1,6 @@
 # docs 文档入口
 
-这个目录保存 FinTech 学习笔记、阶段计划和阶段总结。当前文档已经比较多，阅读时不建议从文件名 01 一路顺读到 29，而应按目标选择路径。
+这个目录保存 FinTech 学习笔记、阶段计划和阶段总结。当前文档已经比较多，阅读时不建议从文件名 01 一路顺读到 30，而应按目标选择路径。
 
 ## 推荐阅读路径
 
@@ -28,6 +28,7 @@
 8. [27-stage-14-operation-approval-record.md](27-stage-14-operation-approval-record.md)：独立 operation approval record。
 9. [28-stage-15-operation-approval-report.md](28-stage-15-operation-approval-report.md)：operation approval report。
 10. [29-stage-16-console-report-views.md](29-stage-16-console-report-views.md)：console report views。
+11. [30-stage-17-ledger-reconciliation-report.md](30-stage-17-ledger-reconciliation-report.md)：ledger reconciliation report。
 
 ### 路径 C：只看阶段计划和历史
 
@@ -48,6 +49,7 @@
 | [27-stage-14-operation-approval-record.md](27-stage-14-operation-approval-record.md) | 独立 operation approval record |
 | [28-stage-15-operation-approval-report.md](28-stage-15-operation-approval-report.md) | operation approval report |
 | [29-stage-16-console-report-views.md](29-stage-16-console-report-views.md) | console report views |
+| [30-stage-17-ledger-reconciliation-report.md](30-stage-17-ledger-reconciliation-report.md) | ledger reconciliation report |
 
 ## 当前平台能力地图
 
@@ -147,6 +149,20 @@ OperationApprovalReport
 
 这个流程回答：运营人员如何在同一个页面里观察 async run、对账摘要、retry 审计和审批记录，而不必先下载离线报表。
 
+### Ledger Reconciliation 流程
+
+```text
+PlatformRunSnapshot
+payment_order.succeeded audit payload
+ledger_transaction.posted audit payload
+platform / wallet balance snapshot
+-> PlatformLedgerReconciliationFinding
+-> CSV / HTML report
+-> FinTech Platform Console read-only findings
+```
+
+这个流程回答：完成支付的订单金额、账本入账金额和平台余额快照是否能互相解释；非入账 run 是否没有残留 ledger artifacts。
+
 ## 文档维护约定
 
 - 新金融基础概念优先写在编号文档中，例如账本、支付、风控、KYC/AML、合规审计。
@@ -156,7 +172,7 @@ OperationApprovalReport
 
 ## 下一步候选方向
 
-1. 做更深入的 ledger reconciliation。
-2. 为 operation approval record 增加 pending / approved / rejected 状态流转。
-3. 给 console 增加只读筛选和分页。
+1. 为 operation approval record 增加 pending / approved / rejected 状态流转。
+2. 给 console 增加只读筛选和分页。
+3. 继续推进更真实的 ledger entry 持久化与查询边界。
 4. 继续压缩阶段文档，把历史计划和最终总结的关系标得更清楚。

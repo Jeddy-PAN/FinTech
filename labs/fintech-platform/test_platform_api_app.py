@@ -995,6 +995,15 @@ def test_platform_console_renders_operations_and_approval_report_views() -> None
         _client_with_async_and_operation_approval()
     )
     try:
+        created = client.post(
+            "/platform/payment-runs",
+            json=_payload(
+                run_id="run_console_completed",
+                order_id="order_console_completed",
+            ),
+        )
+        assert created.status_code == 201
+
         client.post(
             "/platform/async-payment-runs",
             json=_payload(run_id="run_retry_http", order_id="order_retry_http"),
@@ -1016,6 +1025,9 @@ def test_platform_console_renders_operations_and_approval_report_views() -> None
         body = console.text
         assert "Operations Report Summary" in body
         assert "Operations Run Rows" in body
+        assert "Ledger Reconciliation Findings" in body
+        assert "Ledger reconciliation findings" in body
+        assert "completed_balances_match_ledger_amount" in body
         assert "retry_granted_count" in body
         assert "warning_finding_count" in body
         assert "run_retry_http" in body

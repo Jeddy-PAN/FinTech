@@ -51,6 +51,9 @@ from platform_operation_approval import (  # noqa: E402
 from platform_operation_approval_report import (  # noqa: E402
     build_operation_approval_report,
 )
+from platform_ledger_reconciliation_report import (  # noqa: E402
+    evaluate_platform_ledger_reconciliation,
+)
 from platform_operations_report import build_platform_operations_report  # noqa: E402
 from sqlite_access_audit_store import SQLiteAccessAuditStore  # noqa: E402
 from sqlite_investigation_case_store import SQLiteInvestigationCaseStore  # noqa: E402
@@ -1271,6 +1274,9 @@ def _render_platform_console_html(
         snapshots=platform_snapshots,
         access_events=access_events,
     )
+    ledger_reconciliation_findings = evaluate_platform_ledger_reconciliation(
+        platform_snapshots,
+    )
     operation_approval_report = build_operation_approval_report(
         records=operation_approval_records,
     )
@@ -1290,6 +1296,14 @@ def _render_platform_console_html(
         ("Open cases", str(_count_case_status(cases, "open"))),
         ("Investigating cases", str(_count_case_status(cases, "investigating"))),
         ("Ops report findings", str(len(operations_report.findings))),
+        (
+            "Ledger reconciliation findings",
+            str(len(ledger_reconciliation_findings)),
+        ),
+        (
+            "Ledger reconciliation failed",
+            str(_count_failed_findings(ledger_reconciliation_findings)),
+        ),
         ("Approval records", str(len(operation_approval_report.records))),
     ]
 
@@ -1523,6 +1537,21 @@ def _render_platform_console_html(
         ],
         _operations_run_rows(operations_report.run_rows),
         empty_message="No operations run rows are available yet.",
+    )}
+  </div>
+
+  <div class="section">
+    <h2>Ledger Reconciliation Findings</h2>
+    {_table(
+        [
+            "run_id",
+            "check_id",
+            "status",
+            "severity",
+            "message",
+        ],
+        _ledger_reconciliation_finding_rows(ledger_reconciliation_findings),
+        empty_message="No ledger reconciliation findings are available yet.",
     )}
   </div>
 
@@ -1855,6 +1884,19 @@ def _operations_run_rows(run_rows) -> list[tuple[object, ...]]:
     ]
 
 
+def _ledger_reconciliation_finding_rows(findings) -> list[tuple[object, ...]]:
+    return [
+        (
+            finding.run_id,
+            finding.check_id,
+            finding.status,
+            finding.severity,
+            finding.message,
+        )
+        for finding in findings
+    ]
+
+
 def _approval_record_rows(
     records: tuple[OperationApprovalRecord, ...],
 ) -> list[tuple[object, ...]]:
@@ -1929,6 +1971,10 @@ def _count_case_status(
     status_name: str,
 ) -> int:
     return sum(1 for case in cases if case.status == status_name)
+
+
+def _count_failed_findings(findings) -> int:
+    return sum(1 for finding in findings if finding.status == "failed")
 
 
 def _investigation_cases(app: FastAPI) -> tuple[AccessAnomalyInvestigationCase, ...]:

@@ -5,9 +5,9 @@
 ## 当前状态
 
 - 学习者背景：程序员，金融和 FinTech 目前按零基础处理。
-- 当前阶段：阶段 16 第一版已完成，operations report 和 approval report 的核心摘要已接入只读 console。
+- 当前阶段：阶段 17 第一版已完成，ledger reconciliation report 已接入 demo 和只读 console。
 - 当前主线：把账本、支付订单、风控规则引擎、KYC/AML 开户筛查和合规审计串成一个最小端到端学习项目，并把这条链路放到 API service 和异步 worker 边界后面，理解外部请求、幂等、状态查询、后台处理、retry、audit trail、报表和调查工单如何协同。
-- 当前仓库状态：已完成账本基础实验、支付订单实验、交易流水分析实验、投资组合分析实验、风控规则引擎实验、KYC/AML 开户筛查实验、合规审计实验、阶段 7 总结与阶段 8 规划文档、阶段 8 总结与验收清单、`labs/fintech-platform/README.md` 综合平台设计、阶段 8 综合平台能力，以及阶段 9 API 服务化计划、纯 Python API service 第一版、FastAPI 路由层第一版、API 访问审计、API 访问异常检测、API 访问异常调查工单、API 工单 HTTP 查询接口、API 工单状态流转 HTTP 接口、最小前端查看页和阶段 9 总结；阶段 10 已完成事件驱动与异步任务设计文档、最小 async run store、最小 async worker、FastAPI async endpoints、async demo 和阶段 10 总结与验收清单；阶段 11 已完成运营控制台增强设计、最小 async run console 展示、failed async run demo 样例、failed async run retry API、控制台 retry form 和阶段 11 收尾总结；阶段 12 已完成操作审计与审批边界第一版；阶段 13 已完成离线 operations report；文档入口已整理，根 `README.md` 保留快速路径，详细导航和平台能力地图迁到 `docs/README.md`；阶段 14 已完成独立 operation approval record；阶段 15 已完成离线 operation approval report；阶段 16 已把 operations report 和 approval report 的核心摘要接入只读 console。
+- 当前仓库状态：已完成账本基础实验、支付订单实验、交易流水分析实验、投资组合分析实验、风控规则引擎实验、KYC/AML 开户筛查实验、合规审计实验、阶段 7 总结与阶段 8 规划文档、阶段 8 总结与验收清单、`labs/fintech-platform/README.md` 综合平台设计、阶段 8 综合平台能力，以及阶段 9 API 服务化计划、纯 Python API service 第一版、FastAPI 路由层第一版、API 访问审计、API 访问异常检测、API 访问异常调查工单、API 工单 HTTP 查询接口、API 工单状态流转 HTTP 接口、最小前端查看页和阶段 9 总结；阶段 10 已完成事件驱动与异步任务设计文档、最小 async run store、最小 async worker、FastAPI async endpoints、async demo 和阶段 10 总结与验收清单；阶段 11 已完成运营控制台增强设计、最小 async run console 展示、failed async run demo 样例、failed async run retry API、控制台 retry form 和阶段 11 收尾总结；阶段 12 已完成操作审计与审批边界第一版；阶段 13 已完成离线 operations report；文档入口已整理，根 `README.md` 保留快速路径，详细导航和平台能力地图迁到 `docs/README.md`；阶段 14 已完成独立 operation approval record；阶段 15 已完成离线 operation approval report；阶段 16 已把 operations report 和 approval report 的核心摘要接入只读 console；阶段 17 已新增 ledger reconciliation report，并把 ledger reconciliation findings 接入 demo 和只读 console。
 
 ## 学习原则
 
@@ -144,6 +144,9 @@
 - 新增 operation approval report 测试：`labs/fintech-platform/test_platform_operation_approval_report.py`
 - 新增阶段 16 console report views 文档：`docs/29-stage-16-console-report-views.md`
 - `FinTech Platform Console` 新增 operations report summary、operation approval summary、operations run rows 和 approval records 只读区块
+- 新增阶段 17 ledger reconciliation report 文档：`docs/30-stage-17-ledger-reconciliation-report.md`
+- 新增端到端 FinTech 平台 ledger reconciliation report：`labs/fintech-platform/platform_ledger_reconciliation_report.py`
+- `FinTech Platform Console` 新增 ledger reconciliation findings 只读区块
 
 ## 当前待学
 
@@ -578,7 +581,7 @@
 - HTML escaping
 - `docs/23-stage-11-operations-console-plan.md`
 
-当前已完成阶段 11 设计与收尾总结，明确不另起前端项目，而是在现有 FastAPI `FinTech Platform Console` 上增强运营视图。当前 console 已能同时展示 payment runs、async runs、failed async runs、API access anomalies、investigation cases 和 recent API access events；completed async run 会关联显示最终 platform status 和 payment order id；demo 也已补充 failed async run 可观察样例，用于观察 `attempt_count` 和 `last_error`。阶段 11B 已新增 failed async run retry API，要求 actor、reason 和 `retry_failed_async_run` confirmation，且成功和失败都会写入 API access audit。阶段 11C 已把 retry 接入 Failed Async Runs 区域的原生 HTML form；form endpoint 只作为浏览器表单适配层，成功后 run 回到 `accepted`，不直接触发 worker。阶段 12 已完成 failed async run retry 二人审批第一版：JSON API 和控制台 form 都要求独立审批人、审批原因和审批确认文本，`actor == approved_by` 会被拒绝并写入 denied audit。阶段 13 已完成运行报告与对账视角第一版：离线报告会按 `run_id` 汇总 async run、platform result、ledger posting 和 retry access audit，生成 run rows、reconciliation findings 和 HTML 报告。文档入口已整理：`docs/README.md` 现在提供阅读路径、阶段文档索引和当前平台能力地图。阶段 14 已完成独立 operation approval record：retry API 和 console retry form 会写入结构化 approval record，access audit 仍保留访问/执行尝试记录。阶段 15 已完成 operation approval report：离线报告会汇总 approval records、approved/rejected、retry operation 和 self-approval rejected 数量，并导出 CSV/HTML 报告。阶段 16 已把 operations report 和 approval report 的核心摘要接入 `FinTech Platform Console`，页面新增只读 report summary 和 recent approval records 区块。下一步可考虑更深入的 ledger reconciliation、approval pending 状态流转，或 console 只读筛选和分页。
+当前已完成阶段 11 设计与收尾总结，明确不另起前端项目，而是在现有 FastAPI `FinTech Platform Console` 上增强运营视图。当前 console 已能同时展示 payment runs、async runs、failed async runs、API access anomalies、investigation cases 和 recent API access events；completed async run 会关联显示最终 platform status 和 payment order id；demo 也已补充 failed async run 可观察样例，用于观察 `attempt_count` 和 `last_error`。阶段 11B 已新增 failed async run retry API，要求 actor、reason 和 `retry_failed_async_run` confirmation，且成功和失败都会写入 API access audit。阶段 11C 已把 retry 接入 Failed Async Runs 区域的原生 HTML form；form endpoint 只作为浏览器表单适配层，成功后 run 回到 `accepted`，不直接触发 worker。阶段 12 已完成 failed async run retry 二人审批第一版：JSON API 和控制台 form 都要求独立审批人、审批原因和审批确认文本，`actor == approved_by` 会被拒绝并写入 denied audit。阶段 13 已完成运行报告与对账视角第一版：离线报告会按 `run_id` 汇总 async run、platform result、ledger posting 和 retry access audit，生成 run rows、reconciliation findings 和 HTML 报告。文档入口已整理：`docs/README.md` 现在提供阅读路径、阶段文档索引和当前平台能力地图。阶段 14 已完成独立 operation approval record：retry API 和 console retry form 会写入结构化 approval record，access audit 仍保留访问/执行尝试记录。阶段 15 已完成 operation approval report：离线报告会汇总 approval records、approved/rejected、retry operation 和 self-approval rejected 数量，并导出 CSV/HTML 报告。阶段 16 已把 operations report 和 approval report 的核心摘要接入 `FinTech Platform Console`，页面新增只读 report summary 和 recent approval records 区块。阶段 17 已新增 ledger reconciliation report：基于 `PlatformRunSnapshot` 和 audit payload 检查 completed run 的 payment amount、ledger amount 和余额快照是否一致，也检查非入账状态是否没有 ledger artifacts；demo 和 console 都已接入。下一步可考虑 approval pending 状态流转、console 只读筛选和分页，或更真实的 ledger entry 持久化与查询边界。
 
 ## 近期计划
 
@@ -790,7 +793,8 @@
 - 读 `docs/27-stage-14-operation-approval-record.md`，理解 access audit 和 operation approval record 的边界
 - 读 `docs/28-stage-15-operation-approval-report.md`，理解 approval report 如何汇总 retry 审批记录
 - 读 `docs/29-stage-16-console-report-views.md`，理解 console 如何只读展示 operations report 和 approval report 摘要
-- 阶段 16 第一版已完成；下一步建议在“更深入的 ledger reconciliation”和“approval pending 状态流转”之间二选一
+- 读 `docs/30-stage-17-ledger-reconciliation-report.md`，理解 ledger reconciliation report 如何检查 payment amount、ledger amount 和余额快照的一致性
+- 阶段 17 第一版已完成；下一步建议在“approval pending 状态流转”“console 只读筛选和分页”“更真实的 ledger entry 持久化与查询边界”之间选择
 
 ## 本机环境记录
 
@@ -1011,3 +1015,4 @@ conda activate fintech-lab
 | 2026-06-08 | 新增阶段 14 operation approval record | `platform_operation_approval.py` 新增 `OperationApprovalRecord` 和 `SQLiteOperationApprovalStore`，retry API 和 console retry form 会写入结构化 approval record；demo 可输出 `Operation approval records`；`test_platform_operation_approval.py` 4 个测试通过，`test_platform_api_app.py` 23 个测试通过，`labs/fintech-platform` 103 个测试通过，全量 `labs` 348 个测试通过 |
 | 2026-06-08 | 新增阶段 15 operation approval report | `platform_operation_approval_report.py` 汇总 approval records、approved/rejected、retry operation 和 self-approval rejected 数量，导出 `platform_operation_approval_records.csv`、`platform_operation_approval_summary.csv` 和 `platform_operation_approval_report.html`；demo 已接入；`test_platform_operation_approval_report.py` 3 个测试通过，`labs/fintech-platform` 106 个测试通过，全量 `labs` 351 个测试通过 |
 | 2026-06-08 | 新增阶段 16 console report views | `platform_api_app.py` 的 `FinTech Platform Console` 新增 `Operations Report Summary`、`Operation Approval Summary`、`Operations Run Rows` 和 `Approval Records` 只读区块；`test_platform_api_app.py` 24 个测试通过，`labs/fintech-platform` 107 个测试通过，全量 `labs` 352 个测试通过 |
+| 2026-06-08 | 新增阶段 17 ledger reconciliation report | `platform_ledger_reconciliation_report.py` 基于 `PlatformRunSnapshot` 和 audit payload 检查 completed run 的 payment amount、ledger amount、platform bank balance 和 user wallet balance 是否一致，并检查非入账状态是否没有 ledger artifacts；demo 已接入；console 新增 `Ledger Reconciliation Findings` 只读区块；`test_platform_ledger_reconciliation_report.py` 5 个测试通过，`test_platform_api_app.py` 24 个测试通过，`labs/fintech-platform` 112 个测试通过，全量 `labs` 357 个测试通过 |

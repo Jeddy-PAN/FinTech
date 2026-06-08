@@ -28,6 +28,9 @@ from platform_api_investigation_cases import (
     open_platform_api_access_investigation_cases,
 )
 from platform_api_app import create_app
+from platform_ledger_reconciliation_report import (
+    export_platform_ledger_reconciliation_report,
+)
 from platform_investigation_cases import (
     export_platform_access_investigation_report,
     open_platform_access_investigation_cases,
@@ -383,6 +386,14 @@ def main() -> None:
         print(f"- {operations_paths.run_rows_csv}")
         print(f"- {operations_paths.findings_csv}")
         print(f"- {operations_paths.html_report}")
+
+        ledger_reconciliation_paths = export_platform_ledger_reconciliation_report(
+            LAB_DIR / "reports",
+            snapshots=operations_snapshots,
+        )
+        print("\nExported platform ledger reconciliation reports:")
+        print(f"- {ledger_reconciliation_paths.findings_csv}")
+        print(f"- {ledger_reconciliation_paths.html_report}")
 
         print("\nOperation approval records")
         for record in operation_approval_store.records:
