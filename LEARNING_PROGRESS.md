@@ -1,13 +1,13 @@
 # Learning Progress
 
-最后更新：2026-06-04
+最后更新：2026-06-08
 
 ## 当前状态
 
 - 学习者背景：程序员，金融和 FinTech 目前按零基础处理。
-- 当前阶段：阶段 12 第一版已完成，failed async run retry 已增加操作审计、二人审批和职责分离边界。
+- 当前阶段：阶段 13 第一版已完成，已新增运行报告与对账视角。
 - 当前主线：把账本、支付订单、风控规则引擎、KYC/AML 开户筛查和合规审计串成一个最小端到端学习项目，并把这条链路放到 API service 和异步 worker 边界后面，理解外部请求、幂等、状态查询、后台处理、retry、audit trail、报表和调查工单如何协同。
-- 当前仓库状态：已完成账本基础实验、支付订单实验、交易流水分析实验、投资组合分析实验、风控规则引擎实验、KYC/AML 开户筛查实验、合规审计实验、阶段 7 总结与阶段 8 规划文档、阶段 8 总结与验收清单、`labs/fintech-platform/README.md` 综合平台设计、阶段 8 综合平台能力，以及阶段 9 API 服务化计划、纯 Python API service 第一版、FastAPI 路由层第一版、API 访问审计、API 访问异常检测、API 访问异常调查工单、API 工单 HTTP 查询接口、API 工单状态流转 HTTP 接口、最小前端查看页和阶段 9 总结；阶段 10 已完成事件驱动与异步任务设计文档、最小 async run store、最小 async worker、FastAPI async endpoints、async demo 和阶段 10 总结与验收清单；阶段 11 已完成运营控制台增强设计、最小 async run console 展示、failed async run demo 样例、failed async run retry API、控制台 retry form 和阶段 11 收尾总结；阶段 12 已完成操作审计与审批边界第一版，并已通过全量 `labs` pytest 验证。下一步可考虑运行报告与对账视角。
+- 当前仓库状态：已完成账本基础实验、支付订单实验、交易流水分析实验、投资组合分析实验、风控规则引擎实验、KYC/AML 开户筛查实验、合规审计实验、阶段 7 总结与阶段 8 规划文档、阶段 8 总结与验收清单、`labs/fintech-platform/README.md` 综合平台设计、阶段 8 综合平台能力，以及阶段 9 API 服务化计划、纯 Python API service 第一版、FastAPI 路由层第一版、API 访问审计、API 访问异常检测、API 访问异常调查工单、API 工单 HTTP 查询接口、API 工单状态流转 HTTP 接口、最小前端查看页和阶段 9 总结；阶段 10 已完成事件驱动与异步任务设计文档、最小 async run store、最小 async worker、FastAPI async endpoints、async demo 和阶段 10 总结与验收清单；阶段 11 已完成运营控制台增强设计、最小 async run console 展示、failed async run demo 样例、failed async run retry API、控制台 retry form 和阶段 11 收尾总结；阶段 12 已完成操作审计与审批边界第一版；阶段 13 已完成离线 operations report，把 async run、platform result、ledger posting 和 retry access audit 汇总为 CSV/HTML 对账报告，并已通过全量 `labs` pytest 验证。
 
 ## 学习原则
 
@@ -130,6 +130,9 @@
 - 完成阶段 11 收尾总结：`docs/23-stage-11-operations-console-plan.md` 已合并运营控制台实现进度、验收清单、工程结论、文档整理约定和阶段 12 候选方向
 - 新增阶段 12 操作审计与审批边界计划：`docs/25-stage-12-operation-approval-boundary.md`
 - 新增阶段 12 failed async run retry 二人审批：JSON API 和控制台 form 要求 `approved_by`、`approval_reason` 和 `approval_confirmation`，并拒绝 self-approval
+- 新增阶段 13 运行报告与对账视角：`docs/26-stage-13-operations-reconciliation-report.md`
+- 新增阶段 13 operations report：`labs/fintech-platform/platform_operations_report.py`
+- 新增阶段 13 operations report 测试：`labs/fintech-platform/test_platform_operations_report.py`
 - 权威资料索引新增 FinCEN 和 OFAC：`docs/00-authoritative-sources.md`
 
 ## 当前待学
@@ -565,7 +568,7 @@
 - HTML escaping
 - `docs/23-stage-11-operations-console-plan.md`
 
-当前已完成阶段 11 设计与收尾总结，明确不另起前端项目，而是在现有 FastAPI `FinTech Platform Console` 上增强运营视图。当前 console 已能同时展示 payment runs、async runs、failed async runs、API access anomalies、investigation cases 和 recent API access events；completed async run 会关联显示最终 platform status 和 payment order id；demo 也已补充 failed async run 可观察样例，用于观察 `attempt_count` 和 `last_error`。阶段 11B 已新增 failed async run retry API，要求 actor、reason 和 `retry_failed_async_run` confirmation，且成功和失败都会写入 API access audit。阶段 11C 已把 retry 接入 Failed Async Runs 区域的原生 HTML form；form endpoint 只作为浏览器表单适配层，成功后 run 回到 `accepted`，不直接触发 worker。阶段 12 已新增 `docs/25-stage-12-operation-approval-boundary.md`，并完成 failed async run retry 二人审批第一版：JSON API 和控制台 form 都要求独立审批人、审批原因和审批确认文本，`actor == approved_by` 会被拒绝并写入 denied audit；全量 `labs` pytest 已通过。下一步可考虑运行报告与对账视角。
+当前已完成阶段 11 设计与收尾总结，明确不另起前端项目，而是在现有 FastAPI `FinTech Platform Console` 上增强运营视图。当前 console 已能同时展示 payment runs、async runs、failed async runs、API access anomalies、investigation cases 和 recent API access events；completed async run 会关联显示最终 platform status 和 payment order id；demo 也已补充 failed async run 可观察样例，用于观察 `attempt_count` 和 `last_error`。阶段 11B 已新增 failed async run retry API，要求 actor、reason 和 `retry_failed_async_run` confirmation，且成功和失败都会写入 API access audit。阶段 11C 已把 retry 接入 Failed Async Runs 区域的原生 HTML form；form endpoint 只作为浏览器表单适配层，成功后 run 回到 `accepted`，不直接触发 worker。阶段 12 已完成 failed async run retry 二人审批第一版：JSON API 和控制台 form 都要求独立审批人、审批原因和审批确认文本，`actor == approved_by` 会被拒绝并写入 denied audit。阶段 13 已完成运行报告与对账视角第一版：离线报告会按 `run_id` 汇总 async run、platform result、ledger posting 和 retry access audit，生成 run rows、reconciliation findings 和 HTML 报告。下一步可考虑把 approval 从 access audit reason 拆成独立 operation approval record，或先整理 docs 入口。
 
 ## 近期计划
 
@@ -772,7 +775,8 @@
 - 读 `docs/22-stage-10-summary-and-acceptance.md`
 - 读 `docs/23-stage-11-operations-console-plan.md`
 - 读 `docs/25-stage-12-operation-approval-boundary.md`
-- 阶段 12 第一版已完成；下一步建议观察 retry API 和控制台 form 的 `approved_by`、`approval_reason`、`approval_confirmation` 字段，以及 self-approval 被拒绝后如何进入 access audit
+- 读 `docs/26-stage-13-operations-reconciliation-report.md`
+- 阶段 13 第一版已完成；下一步建议查看 `platform_operations_run_report.csv`、`platform_operations_reconciliation_findings.csv` 和 `platform_operations_report.html`，观察 async run、platform result、ledger posting 和 retry access audit 如何合成运营对账视角
 
 ## 本机环境记录
 
@@ -988,3 +992,4 @@ conda activate fintech-lab
 | 2026-06-04 | 完成阶段 11 运营控制台增强收尾总结 | `docs/23-stage-11-operations-console-plan.md` 已从设计文档更新为设计与收尾总结，合并 async run 观察、failed sample、retry API、retry form、验收清单、工程结论、文档整理约定和阶段 12 候选方向；全量 `labs` pytest 336 个测试通过 |
 | 2026-06-04 | 新增阶段 12 操作审计与审批边界计划 | `docs/25-stage-12-operation-approval-boundary.md` 明确阶段 12 先围绕 failed async run retry 增加 maker-checker、二人审批、职责分离、审批原因和 access audit 边界；本次仅更新计划与入口文档，尚未改代码 |
 | 2026-06-04 | 新增阶段 12 failed async run retry 二人审批 | `platform_api_app.py` 的 JSON retry API 和 console retry form 已要求 `approved_by`、`approval_reason` 和 `approval_confirmation: approve_retry_failed_async_run`；`actor == approved_by`、错误审批确认和错误 retry confirmation 都会被拒绝并写入 denied access audit；`test_platform_api_app.py` 23 个测试通过，`labs/fintech-platform` 94 个测试通过，全量 `labs` 339 个测试通过 |
+| 2026-06-08 | 新增阶段 13 运行报告与对账视角 | `platform_operations_report.py` 汇总 async run、platform result、ledger posting 和 retry access audit，导出 `platform_operations_run_report.csv`、`platform_operations_reconciliation_findings.csv` 和 `platform_operations_report.html`；demo 已接入；`test_platform_operations_report.py` 5 个测试通过，`labs/fintech-platform` 99 个测试通过，全量 `labs` 344 个测试通过 |

@@ -216,6 +216,7 @@ investigation_case
 14. 已完成阶段 10 async run store、worker、FastAPI async endpoints、demo 展示和阶段总结。
 15. 已完成阶段 11 运营控制台增强、failed async run retry API 和控制台 retry form。
 16. 已完成阶段 12 第一版：failed async run retry 增加二人审批、职责分离和更明确的操作审计边界。
+17. 已完成阶段 13 第一版：新增运行报告与对账视角，把 async run、platform result、ledger posting 和 retry access audit 汇总为离线 CSV/HTML 报告。
 
 ## 运行示例
 
@@ -242,9 +243,14 @@ labs/fintech-platform/reports/platform_access_investigation_cases.csv
 labs/fintech-platform/reports/platform_access_investigation_report.html
 labs/fintech-platform/reports/platform_api_access_investigation_cases.csv
 labs/fintech-platform/reports/platform_api_access_investigation_report.html
+labs/fintech-platform/reports/platform_operations_run_report.csv
+labs/fintech-platform/reports/platform_operations_reconciliation_findings.csv
+labs/fintech-platform/reports/platform_operations_report.html
 ```
 
 demo 还会输出 `Risk review completion`，用于观察 `risk_review_required -> completed` 的人工复核通过闭环。它也会输出 `Async payment run via FastAPI`，用 in-process FastAPI client 展示创建 async run、触发教学版 worker、查询最终 platform result 和 API access audit。随后 demo 会输出 `Failed async run sample for console`，通过真实 API 流程构造一个 request fingerprint 冲突导致的 failed async run，用来观察 console 里的 failed async run、attempt count 和 last error。
+
+demo 现在也会输出 `Exported platform operations reports`，用于观察 `PlatformAsyncRun`、`PlatformRunSnapshot`、`ledger_transaction.posted` audit event 和 `retry_platform_async_run` access audit 如何组成一份运营对账报告。
 
 demo 还会写入并重新读取：
 
@@ -265,7 +271,7 @@ labs/fintech-platform/.test-data/demo_platform_api_investigation_cases.db
 
 ## 当前状态
 
-这个目录已经包含第一版综合平台设计、最小 orchestration、demo、综合报表导出、SQLite 持久化、历史运行报表、risk review 后续处理、教学版一致性检查、平台报表访问控制与访问审计、平台访问异常检测、平台访问异常调查工单，以及测试。阶段 8 的目标仍然是把已有实验组合成一个清晰的学习平台，而不是立即扩成生产级系统。
+这个目录已经包含第一版综合平台设计、最小 orchestration、demo、综合报表导出、SQLite 持久化、历史运行报表、risk review 后续处理、教学版一致性检查、平台报表访问控制与访问审计、平台访问异常检测、平台访问异常调查工单、异步任务、运营控制台、retry 审批边界、运行报告与对账视角，以及测试。阶段 8 以来的目标仍然是把已有实验组合成一个清晰的学习平台，而不是立即扩成生产级系统。
 
 阶段 9 已经开始在这个目录上做 API 服务化的第一步：
 
@@ -399,3 +405,13 @@ docs/25-stage-12-operation-approval-boundary.md
 ```
 
 阶段 12 已把 failed async run retry 从“单人操作 + 原因 + confirmation”升级为“操作人 + 原因 + 独立审批人 + 审批原因 + confirmation”的教学版 maker-checker 边界。JSON API 和控制台 form 都要求 `approved_by`、`approval_reason` 和 `approval_confirmation: approve_retry_failed_async_run`；`actor == approved_by` 会被拒绝并写入 denied access audit。当前仍不引入真实 IAM、审批流数据库或前端框架。
+
+阶段 13 第一版已完成：
+
+```text
+docs/26-stage-13-operations-reconciliation-report.md
+platform_operations_report.py
+test_platform_operations_report.py
+```
+
+阶段 13 新增离线 operations report，不新增 HTTP endpoint 或数据库表。报告按 `run_id` 汇总 async status、platform status、payment order status、ledger transaction id、worker attempt、last error 和 retry granted/denied 次数，并生成 reconciliation finding：completed async run 缺少 platform result、failed async run 待运营复核、completed platform run 缺少 ledger transaction id、ledger transaction id 缺少 matching `ledger_transaction.posted` audit event。

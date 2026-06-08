@@ -32,6 +32,7 @@ from platform_investigation_cases import (
     export_platform_access_investigation_report,
     open_platform_access_investigation_cases,
 )
+from platform_operations_report import export_platform_operations_report
 from platform_report_access import (
     export_platform_consistency_report_with_access,
     export_platform_history_report_with_access,
@@ -39,6 +40,7 @@ from platform_report_access import (
 )
 from sqlite_access_audit_store import SQLiteAccessAuditStore
 from sqlite_investigation_case_store import SQLiteInvestigationCaseStore
+from platform_async_service import SQLitePlatformAsyncRunStore
 from sqlite_platform_store import SQLitePlatformStore
 
 
@@ -328,6 +330,8 @@ def main() -> None:
     )
 
     async_access_store = SQLiteAccessAuditStore(api_access_audit_database_path)
+    async_store = SQLitePlatformAsyncRunStore(async_database_path)
+    operations_platform_store = SQLitePlatformStore(database_path)
     try:
         print("\nAsync API access audit events")
         for event in async_access_store.access_events:
@@ -335,7 +339,24 @@ def main() -> None:
                 f"- {event.occurred_at.isoformat()} actor={event.actor} "
                 f"permission={event.permission} outcome={event.outcome}"
             )
+
+        operations_snapshots = tuple(
+            operations_platform_store.get_run(record.run_id)
+            for record in operations_platform_store.runs
+        )
+        operations_paths = export_platform_operations_report(
+            LAB_DIR / "reports",
+            async_runs=async_store.runs,
+            snapshots=operations_snapshots,
+            access_events=async_access_store.access_events,
+        )
+        print("\nExported platform operations reports:")
+        print(f"- {operations_paths.run_rows_csv}")
+        print(f"- {operations_paths.findings_csv}")
+        print(f"- {operations_paths.html_report}")
     finally:
+        operations_platform_store.close()
+        async_store.close()
         async_access_store.close()
 
     access_audit_database_path = LAB_DIR / ".test-data" / "demo_platform_access_audit.db"

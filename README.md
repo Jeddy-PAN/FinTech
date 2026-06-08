@@ -7,7 +7,7 @@
 - 学习对象：有编程背景，金融领域零基础。
 - 学习目标：理解金融业务、FinTech 工程系统、数据分析、风控和合规基础。
 - 学习方式：先学概念，再写最小实验，再把知识沉淀成文档。
-- 当前阶段：阶段 12 第一版已完成，failed async run retry 已增加操作审计、二人审批和职责分离边界。
+- 当前阶段：阶段 13 第一版已完成，已新增运行报告与对账视角，把 async run、platform result、ledger posting 和 retry access audit 汇总到离线报告。
 
 ## 环境和语言约定
 
@@ -58,7 +58,8 @@ PYTHONIOENCODING=utf-8
 │   ├── 22-stage-10-summary-and-acceptance.md
 │   ├── 23-stage-11-operations-console-plan.md
 │   ├── 24-stage-11b-retry-failed-async-run-design.md
-│   └── 25-stage-12-operation-approval-boundary.md
+│   ├── 25-stage-12-operation-approval-boundary.md
+│   └── 26-stage-13-operations-reconciliation-report.md
 └── labs/                      # 后续代码实验
     ├── ledger-basics/         # 第一个实验：双分录账本
     ├── payment-orders/        # 第二个实验：支付订单系统
@@ -154,6 +155,8 @@ PYTHONIOENCODING=utf-8
 80. 在 `GET /platform/view` 的 Failed Async Runs 区域观察 retry form，理解浏览器表单如何复用同一套 retry 校验和 access audit。
 81. 读 [docs/25-stage-12-operation-approval-boundary.md](docs/25-stage-12-operation-approval-boundary.md)，理解 high-impact operation 为什么需要 maker-checker、separation of duties 和二人审批边界。
 82. 再次调用 retry API 或 console retry form，观察 `approved_by`、`approval_reason` 和 `approval_confirmation` 如何防止同一人自审批高影响操作。
+83. 读 [docs/26-stage-13-operations-reconciliation-report.md](docs/26-stage-13-operations-reconciliation-report.md)，理解 operations report 和 reconciliation 如何把任务状态、业务结果、账本入账和 retry access audit 放在同一份可复核报告中。
+84. 查看 `labs/fintech-platform/reports/platform_operations_run_report.csv`、`platform_operations_reconciliation_findings.csv` 和 `platform_operations_report.html`，观察 completed async run、failed async run、ledger posting 和 retry granted/denied audit 如何形成运营对账视角。
 
 ## 协作原则
 
