@@ -17,6 +17,11 @@ from platform_api_app import (
     create_app,
 )
 from platform_async_service import PlatformAsyncWorker, SQLitePlatformAsyncRunStore
+from platform_operation_approval import (
+    OPERATION_APPROVAL_APPROVED,
+    OPERATION_APPROVAL_REJECTED,
+    SQLiteOperationApprovalStore,
+)
 from sqlite_access_audit_store import SQLiteAccessAuditStore
 from sqlite_platform_store import SQLitePlatformStore
 
@@ -310,8 +315,14 @@ def test_platform_api_worker_processes_async_run_to_platform_result() -> None:
 
 
 def test_platform_api_retries_failed_async_run_and_worker_processes_it() -> None:
-    client, database_path, access_audit_database_path, async_database_path = (
-        _client_with_async()
+    (
+        client,
+        database_path,
+        access_audit_database_path,
+        async_database_path,
+        operation_approval_database_path,
+    ) = (
+        _client_with_async_and_operation_approval()
     )
     try:
         created = client.post(
@@ -369,11 +380,21 @@ def test_platform_api_retries_failed_async_run_and_worker_processes_it() -> None
             "approved_by=ops_manager_001; "
             "approval_reason=Approved retry after reviewing worker failure"
         )
+
+        approval_records = _approval_records(operation_approval_database_path)
+        assert len(approval_records) == 1
+        assert approval_records[0].operation_type == RETRY_PLATFORM_ASYNC_PAYMENT_RUN
+        assert approval_records[0].operation_id == "run_retry_http"
+        assert approval_records[0].requested_by == "ops_user_001"
+        assert approval_records[0].approved_by == "ops_manager_001"
+        assert approval_records[0].status == OPERATION_APPROVAL_APPROVED
+        assert approval_records[0].decision_reason == "approved"
     finally:
         client.close()
         _remove_database(database_path)
         _remove_database(access_audit_database_path)
         _remove_database(async_database_path)
+        _remove_database(operation_approval_database_path)
 
 
 def test_platform_api_rejects_retry_confirmation_error() -> None:
@@ -424,8 +445,14 @@ def test_platform_api_rejects_retry_confirmation_error() -> None:
 
 
 def test_platform_api_rejects_retry_self_approval() -> None:
-    client, database_path, access_audit_database_path, async_database_path = (
-        _client_with_async()
+    (
+        client,
+        database_path,
+        access_audit_database_path,
+        async_database_path,
+        operation_approval_database_path,
+    ) = (
+        _client_with_async_and_operation_approval()
     )
     try:
         client.post(
@@ -470,11 +497,22 @@ def test_platform_api_rejects_retry_self_approval() -> None:
         assert len(retry_events) == 1
         assert retry_events[0].outcome == "denied"
         assert "retry approver must differ from actor" in retry_events[0].reason
+
+        approval_records = _approval_records(operation_approval_database_path)
+        assert len(approval_records) == 1
+        assert approval_records[0].operation_id == "run_retry_http"
+        assert approval_records[0].requested_by == "ops_user_001"
+        assert approval_records[0].approved_by == "ops_user_001"
+        assert approval_records[0].status == OPERATION_APPROVAL_REJECTED
+        assert "retry approver must differ from actor" in approval_records[
+            0
+        ].decision_reason
     finally:
         client.close()
         _remove_database(database_path)
         _remove_database(access_audit_database_path)
         _remove_database(async_database_path)
+        _remove_database(operation_approval_database_path)
 
 
 def test_platform_api_rejects_retry_approval_confirmation_error() -> None:
@@ -873,8 +911,14 @@ def test_platform_console_renders_retry_form_for_failed_async_run() -> None:
 
 
 def test_platform_console_retry_form_requeues_failed_async_run() -> None:
-    client, database_path, access_audit_database_path, async_database_path = (
-        _client_with_async()
+    (
+        client,
+        database_path,
+        access_audit_database_path,
+        async_database_path,
+        operation_approval_database_path,
+    ) = (
+        _client_with_async_and_operation_approval()
     )
     try:
         client.post(
@@ -925,11 +969,19 @@ def test_platform_console_retry_form_requeues_failed_async_run() -> None:
             "approved_by=ops_manager_001; "
             "approval_reason=Approved retry from console"
         )
+
+        approval_records = _approval_records(operation_approval_database_path)
+        assert len(approval_records) == 1
+        assert approval_records[0].operation_id == "run_retry_http"
+        assert approval_records[0].request_reason == "Retry from console"
+        assert approval_records[0].approval_reason == "Approved retry from console"
+        assert approval_records[0].status == OPERATION_APPROVAL_APPROVED
     finally:
         client.close()
         _remove_database(database_path)
         _remove_database(access_audit_database_path)
         _remove_database(async_database_path)
+        _remove_database(operation_approval_database_path)
 
 
 def test_platform_console_retry_form_reports_confirmation_error() -> None:
@@ -1106,6 +1158,27 @@ def _client_with_async():
     )
 
 
+def _client_with_async_and_operation_approval():
+    database_path = _database_path()
+    access_audit_database_path = _access_audit_database_path()
+    async_database_path = _async_database_path()
+    operation_approval_database_path = _operation_approval_database_path()
+    return (
+        TestClient(
+            create_app(
+                database_path=database_path,
+                access_audit_database_path=access_audit_database_path,
+                async_database_path=async_database_path,
+                operation_approval_database_path=operation_approval_database_path,
+            )
+        ),
+        database_path,
+        access_audit_database_path,
+        async_database_path,
+        operation_approval_database_path,
+    )
+
+
 def _client_with_async_and_investigation():
     database_path = _database_path()
     access_audit_database_path = _access_audit_database_path()
@@ -1198,6 +1271,10 @@ def _async_database_path() -> Path:
     return _test_data_directory() / f"platform-api-app-async-{uuid4()}.db"
 
 
+def _operation_approval_database_path() -> Path:
+    return _test_data_directory() / f"platform-api-app-operation-approval-{uuid4()}.db"
+
+
 def _test_data_directory() -> Path:
     directory = Path(__file__).with_name(".test-data")
     directory.mkdir(exist_ok=True)
@@ -1208,6 +1285,14 @@ def _access_events(database_path: Path):
     store = SQLiteAccessAuditStore(database_path)
     try:
         return store.access_events
+    finally:
+        store.close()
+
+
+def _approval_records(database_path: Path):
+    store = SQLiteOperationApprovalStore(database_path)
+    try:
+        return store.records
     finally:
         store.close()
 

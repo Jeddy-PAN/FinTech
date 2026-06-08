@@ -7,7 +7,7 @@
 - 学习对象：有编程背景，金融领域零基础。
 - 学习目标：理解金融业务、FinTech 工程系统、数据分析、风控和合规基础。
 - 学习方式：先学概念，再写最小实验，再把知识沉淀成文档。
-- 当前阶段：阶段 13 第一版已完成，已新增运行报告与对账视角，把 async run、platform result、ledger posting 和 retry access audit 汇总到离线报告。
+- 当前阶段：阶段 15 第一版已完成，operation approval record 已支持离线 CSV/HTML approval report。
 
 ## 环境和语言约定
 
@@ -33,33 +33,10 @@ PYTHONIOENCODING=utf-8
 ├── LEARNING_PROGRESS.md       # 当前学习进度、计划和交接记录
 ├── README.md                  # 仓库入口
 ├── docs/                      # 金融科技基础知识和权威资料
+│   ├── README.md              # 文档入口、阅读路径和平台能力地图
 │   ├── 00-authoritative-sources.md
-│   ├── 01-fintech-overview.md
-│   ├── 02-developer-to-finance.md
-│   ├── 03-ledger-basics.md
-│   ├── 04-ledger-persistence.md
-│   ├── 05-idempotency.md
-│   ├── 06-request-fingerprint.md
-│   ├── 07-payment-order-system.md
-│   ├── 08-refunds-and-reversals.md
-│   ├── 09-payment-order-persistence.md
-│   ├── 10-transactional-outbox.md
-│   ├── 11-outbox-publisher.md
-│   ├── 12-transaction-statement-analysis.md
-│   ├── 13-portfolio-analysis.md
-│   ├── 14-risk-rule-engine.md
-│   ├── 15-kyc-aml-onboarding.md
-│   ├── 16-compliance-audit.md
-│   ├── 17-stage-7-summary-and-stage-8-plan.md
-│   ├── 18-stage-8-summary-and-acceptance.md
-│   ├── 19-stage-9-platform-api-plan.md
-│   ├── 20-stage-9-summary-and-stage-10-plan.md
-│   ├── 21-stage-10-event-driven-async-plan.md
-│   ├── 22-stage-10-summary-and-acceptance.md
-│   ├── 23-stage-11-operations-console-plan.md
-│   ├── 24-stage-11b-retry-failed-async-run-design.md
-│   ├── 25-stage-12-operation-approval-boundary.md
-│   └── 26-stage-13-operations-reconciliation-report.md
+│   ├── 01-16-*.md             # 基础概念和早期实验笔记
+│   └── 17-28-*.md             # 阶段计划、总结和平台演进记录
 └── labs/                      # 后续代码实验
     ├── ledger-basics/         # 第一个实验：双分录账本
     ├── payment-orders/        # 第二个实验：支付订单系统
@@ -71,92 +48,16 @@ PYTHONIOENCODING=utf-8
     └── fintech-platform/      # 第八个实验：端到端 FinTech 工程作品
 ```
 
-## 建议学习顺序
+## 快速阅读路径
 
-1. 先读 [LEARNING_PROGRESS.md](LEARNING_PROGRESS.md)，确认当前进度和下一步任务。
-2. 再读 [docs/00-authoritative-sources.md](docs/00-authoritative-sources.md)，理解哪些资料可以作为权威来源。
-3. 读 [docs/01-fintech-overview.md](docs/01-fintech-overview.md)，建立 FinTech 地图。
-4. 读 [docs/02-developer-to-finance.md](docs/02-developer-to-finance.md)，理解程序员转金融领域需要补什么。
-5. 读 [docs/03-ledger-basics.md](docs/03-ledger-basics.md)，理解账户、交易、分录和借贷平衡。
-6. 读 [docs/04-ledger-persistence.md](docs/04-ledger-persistence.md)，理解 SQLite、数据库事务和原子写入。
-7. 读 [docs/05-idempotency.md](docs/05-idempotency.md)，理解重复请求和幂等键。
-8. 读 [docs/06-request-fingerprint.md](docs/06-request-fingerprint.md)，理解同一个幂等键下的参数一致性检查。
-9. 读 [docs/07-payment-order-system.md](docs/07-payment-order-system.md)，理解支付订单状态机和成功入账。
-10. 读 [docs/08-refunds-and-reversals.md](docs/08-refunds-and-reversals.md)，理解退款和反向账本分录。
-11. 读 [docs/09-payment-order-persistence.md](docs/09-payment-order-persistence.md)，理解订单、webhook event 和账本如何持久化。
-12. 读 [docs/10-transactional-outbox.md](docs/10-transactional-outbox.md)，理解业务变更和待发布事件如何一起保存。
-13. 读 [docs/11-outbox-publisher.md](docs/11-outbox-publisher.md)，理解 pending outbox message 如何发布和重试。
-14. 读 [docs/12-transaction-statement-analysis.md](docs/12-transaction-statement-analysis.md)，理解 CSV 交易流水、SQLite 聚合和 Pandas 月度现金流。
-15. 运行 `labs/transaction-analysis/`，从样例流水生成月度现金流报表。
-16. 读 [docs/13-portfolio-analysis.md](docs/13-portfolio-analysis.md)，理解收益率、波动率和最大回撤。
-17. 运行 `labs/portfolio-analysis/`，用样例价格数据计算投资组合指标。
-18. 读 [docs/14-risk-rule-engine.md](docs/14-risk-rule-engine.md)，理解风控规则、决策、命中原因和限额。
-19. 运行 `labs/risk-rule-engine/`，用最小规则引擎评估交易请求。
-20. 运行 `labs/risk-rule-engine/demo_sqlite.py`，观察风控决策、规则命中和审核案例如何保存到 SQLite。
-21. 读 [docs/15-kyc-aml-onboarding.md](docs/15-kyc-aml-onboarding.md)，理解 KYC、AML、CDD、beneficial owner 和 sanctions screening 的工程形状。
-22. 运行 `labs/kyc-aml-onboarding/`，用教学版开户筛查引擎评估客户申请。
-23. 运行 `labs/kyc-aml-onboarding/demo_sqlite.py`，观察客户申请、KYC/AML 决策、审核案例和审计事件如何保存到 SQLite。
-24. 观察 `labs/kyc-aml-onboarding/demo_sqlite.py` 输出的 KYC 汇总报表，理解客户类型、决策状态、检查命中、风险分数和审核状态如何聚合。
-25. 查看 `labs/kyc-aml-onboarding/reports/`，理解 KYC 汇总报表如何导出为 CSV 和 HTML 文件。
-26. 观察 `watchlist_version_id`，理解 KYC/AML 决策为什么要记录当时使用的名单数据版本。
-27. 观察 `policy_version_id`，理解 KYC/AML 决策为什么也要记录当时使用的策略参数版本。
-28. 观察 `kyc_version_comparison_report.csv`，理解 watchlist/policy 版本对比报表如何比较已保存决策的差异。
-29. 观察 `kyc_replay_report.csv`，理解 replay 如何用新策略或新名单重新评估已保存申请，但不改写原始决策。
-30. 观察 replay run 的 `pending_review -> approved / rejected`，理解规则或名单上线前为什么要保存评估结果和审批记录。
-31. 读 [docs/16-compliance-audit.md](docs/16-compliance-audit.md)，理解 audit event、audit trail、actor、payload、PII 脱敏和记录留存。
-32. 运行 `labs/compliance-audit/demo.py`，观察风控和 KYC/AML 审计事件如何合并成跨系统客户时间线。
-33. 查看 `labs/compliance-audit/reports/`，理解审计事件、主体时间线和汇总结果如何导出为 CSV 和 HTML 报告。
-34. 观察 `audit_viewer`、`audit_analyst` 和 `audit_manager` 的权限差异，理解为什么查看事件、查看 payload 和导出报表应当分开授权。
-35. 观察 demo 输出的 `Audit access events`，理解为什么查看审计日志和导出审计报表本身也需要被记录。
-36. 观察 demo 输出的 `Persisted denied payload access events`，理解访问审计事件为什么需要落盘后再查询和复核。
-37. 观察 demo 输出的 `approved_by: manager_002` 和 `audit_export_approval.granted`，理解为什么敏感导出可以要求申请人与审批人分离。
-38. 观察 demo 输出的 `Audit retention summary`，理解样例留存策略如何把审计事件分成 active、archive_due、delete_due 和 held。
-39. 观察 demo 输出的 `Access anomaly findings`，理解访问审计数据如何进一步生成可疑访问模式线索。
-40. 查看 `labs/compliance-audit/reports/access_anomaly_findings.csv` 和 `access_anomaly_report.html`，理解异常访问发现项如何导出为可复核报告。
-41. 查看 `labs/compliance-audit/reports/audit_retention_decisions.csv` 和 `audit_retention_report.html`，理解留存决策如何导出为可复核报告，但不会真的删除或归档任何记录。
-42. 观察 demo 输出的 `Access anomaly investigation cases`，理解 finding 如何进入 open、investigating、resolved 或 false_positive 的处理闭环。
-43. 观察 demo 输出的 `Persisted open investigation cases`，理解 investigation case 为什么需要落盘后再查询未关闭工单。
-44. 查看 `labs/compliance-audit/reports/access_investigation_cases.csv` 和 `access_investigation_report.html`，理解调查工单状态如何导出为可复核报告。
-45. 观察 demo 输出的 `Investigation case audit events`，理解调查工单创建、接手和关闭动作本身也需要进入 audit trail。
-46. 读 [docs/17-stage-7-summary-and-stage-8-plan.md](docs/17-stage-7-summary-and-stage-8-plan.md)，确认阶段 7 的工程结论和阶段 8 的端到端项目方向。
-47. 读 [docs/18-stage-8-summary-and-acceptance.md](docs/18-stage-8-summary-and-acceptance.md)，查看阶段 8 的收尾总结、验收清单和后续路线。
-48. 读 [labs/fintech-platform/README.md](labs/fintech-platform/README.md)，理解综合平台的最小业务流程、模块边界、数据对象和一致性边界。
-49. 运行 `labs/fintech-platform/demo.py`，观察 KYC/AML、payment order、risk decision、ledger posting 和 audit trail 如何串成一条端到端链路。
-50. 查看 `labs/fintech-platform/reports/platform_payment_result.csv`、`platform_audit_timeline.csv` 和 `platform_report.html`，理解端到端结果如何导出为可复核报告。
-51. 观察 demo 输出的 `Persisted platform run`，理解端到端运行结果和 customer audit timeline 为什么需要落盘后再查询。
-52. 查看 `labs/fintech-platform/reports/platform_run_history.csv`、`platform_run_audit_events.csv` 和 `platform_run_history.html`，理解多次端到端运行如何导出为历史运行报表。
-53. 观察 demo 输出的 `Risk review completion`，理解 `risk_review_required -> completed` 如何经过人工通过、支付成功和账本入账形成闭环。
-54. 查看 `labs/fintech-platform/reports/platform_consistency_findings.csv` 和 `platform_consistency_report.html`，理解 platform status、payment order status、ledger transaction 和 audit events 为什么需要互相吻合。
-55. 观察 demo 输出的 `Platform report access audit events`，理解谁导出了平台报表、导出目标是什么、访问记录如何落到 SQLite。
-56. 观察 demo 输出的 `Platform access anomaly findings`，理解非授权导出尝试和重复拒绝访问如何变成 finding。
-57. 查看 `labs/fintech-platform/reports/platform_access_anomaly_findings.csv` 和 `platform_access_anomaly_report.html`，理解平台访问异常如何导出为可复核报告。
-58. 观察 demo 输出的 `Platform access investigation cases`，理解平台 access anomaly finding 如何进入调查工单闭环。
-59. 观察 demo 输出的 `Persisted open platform investigation cases`，理解平台调查工单为什么需要落盘后再查询未关闭工单。
-60. 查看 `labs/fintech-platform/reports/platform_access_investigation_cases.csv` 和 `platform_access_investigation_report.html`，理解平台调查工单状态如何导出为可复核报告。
-61. 观察 demo 输出的 `Platform investigation case audit events`，理解工单创建、接手和关闭动作为什么也要进入 audit trail。
-62. 阶段 8 的收尾已经完成，接下来进入 [docs/19-stage-9-platform-api-plan.md](docs/19-stage-9-platform-api-plan.md)，把这套学习平台拆成一个简单的 API service。
-63. 查看 `labs/fintech-platform/platform_api_service.py`，理解外部请求如何被转换成 `PlatformPaymentRequest`，并保存成 platform run。
-64. 观察 `run_id` 和 request fingerprint 如何配合，理解 API 层幂等为什么不能只看一个 key。
-65. 查看 `labs/fintech-platform/platform_api_app.py`，理解 FastAPI 路由层如何保持很薄，只负责请求/响应和状态码映射。
-66. 运行 `python -m uvicorn platform_api_app:app --app-dir .\labs\fintech-platform --reload`，观察 HTTP 请求如何驱动平台链路。
-67. 调用 `GET /platform/api-access-events`，理解 API 调用本身为什么也需要形成 access audit trail。
-68. 查看 `labs/fintech-platform/reports/platform_api_access_anomaly_findings.csv`，理解 API 访问审计如何进一步生成 repeated denied access finding。
-69. 查看 `labs/fintech-platform/reports/platform_api_access_investigation_cases.csv`，理解 API access anomaly 如何进入 investigation case 处理闭环。
-70. 调用 `GET /platform/api-access-investigation-cases`，理解 API 工单如何通过 HTTP 查询持久化结果。
-71. 调用 `PATCH /platform/api-access-investigation-cases/{case_id}/start` 和 `/resolve`，理解 API 工单状态流转如何也进入访问审计。
-72. 访问 `http://127.0.0.1:8000/` 或 `/platform/view`，观察最小前端查看页如何把 payment runs、API access anomalies、investigation cases 和 recent API access events 放在一个只读页面里。
-73. 读 [docs/20-stage-9-summary-and-stage-10-plan.md](docs/20-stage-9-summary-and-stage-10-plan.md)，确认阶段 9 的工程结论、验收清单和阶段 10 候选路线。
-74. 读 [docs/21-stage-10-event-driven-async-plan.md](docs/21-stage-10-event-driven-async-plan.md)，理解阶段 10 如何把同步 API service 拆成 accepted async run、后台 worker、状态查询、重试和幂等边界。
-75. 调用 `POST /platform/async-payment-runs`、`POST /platform/async-worker/process-next` 和 `GET /platform/async-payment-runs/{run_id}`，观察 `accepted -> completed` 与最终 platform run 的关系。
-76. 读 [docs/22-stage-10-summary-and-acceptance.md](docs/22-stage-10-summary-and-acceptance.md)，确认阶段 10 的工程结论、验收清单、当前边界和阶段 11 候选路线。
-77. 读 [docs/23-stage-11-operations-console-plan.md](docs/23-stage-11-operations-console-plan.md)，理解运营控制台为什么要同时展示 payment runs、async runs、API access events 和 investigation cases。
-78. 访问 `GET /platform/view`，观察 `FinTech Platform Console` 如何展示 async run summary、recent async runs、failed async runs 和最终 platform result。
-79. 调用 `POST /platform/async-payment-runs/{run_id}/retry`，理解 failed async run 为什么要通过权限、确认、状态约束、幂等和 access audit 才能重新进入 `accepted` 队列。
-80. 在 `GET /platform/view` 的 Failed Async Runs 区域观察 retry form，理解浏览器表单如何复用同一套 retry 校验和 access audit。
-81. 读 [docs/25-stage-12-operation-approval-boundary.md](docs/25-stage-12-operation-approval-boundary.md)，理解 high-impact operation 为什么需要 maker-checker、separation of duties 和二人审批边界。
-82. 再次调用 retry API 或 console retry form，观察 `approved_by`、`approval_reason` 和 `approval_confirmation` 如何防止同一人自审批高影响操作。
-83. 读 [docs/26-stage-13-operations-reconciliation-report.md](docs/26-stage-13-operations-reconciliation-report.md)，理解 operations report 和 reconciliation 如何把任务状态、业务结果、账本入账和 retry access audit 放在同一份可复核报告中。
-84. 查看 `labs/fintech-platform/reports/platform_operations_run_report.csv`、`platform_operations_reconciliation_findings.csv` 和 `platform_operations_report.html`，观察 completed async run、failed async run、ledger posting 和 retry granted/denied audit 如何形成运营对账视角。
+详细文档导航、阶段文档说明和当前平台能力地图见 [docs/README.md](docs/README.md)。
+
+建议按目标选择路径：
+
+1. 从零开始学 FinTech：先读 [docs/00-authoritative-sources.md](docs/00-authoritative-sources.md)、[docs/01-fintech-overview.md](docs/01-fintech-overview.md)、[docs/02-developer-to-finance.md](docs/02-developer-to-finance.md)，再按 `docs/03` 到 `docs/16` 逐步进入账本、支付、风控、KYC/AML 和合规审计。
+2. 直接理解综合平台：先读 [labs/fintech-platform/README.md](labs/fintech-platform/README.md)，再读 [docs/28-stage-15-operation-approval-report.md](docs/28-stage-15-operation-approval-report.md) 了解当前最新操作审批报表边界。
+3. 运行工程作品：执行 `& 'C:\App\Anaconda\python.exe' .\labs\fintech-platform\demo.py`，观察端到端支付、async run、retry、access audit、investigation case、operations report 和 approval report。
+4. 继续协作前：先看 [LEARNING_PROGRESS.md](LEARNING_PROGRESS.md) 的“当前状态”和“最新记录”，确认当前阶段和下一步候选方向。
 
 ## 协作原则
 

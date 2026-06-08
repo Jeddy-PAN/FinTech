@@ -5,6 +5,7 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 import sys
 from urllib.parse import parse_qs, quote
+from uuid import uuid4
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, status
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -41,6 +42,12 @@ from platform_api_access_anomaly_report import (  # noqa: E402
 from platform_api_investigation_cases import (  # noqa: E402
     open_platform_api_access_investigation_cases,
 )
+from platform_operation_approval import (  # noqa: E402
+    OPERATION_APPROVAL_APPROVED,
+    OPERATION_APPROVAL_REJECTED,
+    OperationApprovalRecord,
+    SQLiteOperationApprovalStore,
+)
 from sqlite_access_audit_store import SQLiteAccessAuditStore  # noqa: E402
 from sqlite_investigation_case_store import SQLiteInvestigationCaseStore  # noqa: E402
 from sqlite_platform_store import SQLitePlatformStore, SQLitePlatformStoreError  # noqa: E402
@@ -53,6 +60,9 @@ DEFAULT_ACCESS_AUDIT_DATABASE_PATH = (
 DEFAULT_ASYNC_DATABASE_PATH = LAB_DIR / ".test-data" / "platform_api_async_runs.db"
 DEFAULT_INVESTIGATION_DATABASE_PATH = (
     LAB_DIR / ".test-data" / "platform_api_investigation_cases.db"
+)
+DEFAULT_OPERATION_APPROVAL_DATABASE_PATH = (
+    LAB_DIR / ".test-data" / "platform_api_operation_approvals.db"
 )
 
 CREATE_PLATFORM_PAYMENT_RUN = "create_platform_payment_run"
@@ -133,12 +143,14 @@ def create_app(
     access_audit_database_path: str | Path = DEFAULT_ACCESS_AUDIT_DATABASE_PATH,
     async_database_path: str | Path = DEFAULT_ASYNC_DATABASE_PATH,
     investigation_database_path: str | Path = DEFAULT_INVESTIGATION_DATABASE_PATH,
+    operation_approval_database_path: str | Path = DEFAULT_OPERATION_APPROVAL_DATABASE_PATH,
 ) -> FastAPI:
     app = FastAPI(title="FinTech Platform API", version="0.1.0")
     app.state.database_path = Path(database_path)
     app.state.access_audit_database_path = Path(access_audit_database_path)
     app.state.async_database_path = Path(async_database_path)
     app.state.investigation_database_path = Path(investigation_database_path)
+    app.state.operation_approval_database_path = Path(operation_approval_database_path)
 
     def get_service() -> PlatformApiService:
         app.state.database_path.parent.mkdir(parents=True, exist_ok=True)
@@ -760,6 +772,14 @@ def _investigation_store(app: FastAPI) -> SQLiteInvestigationCaseStore:
     return SQLiteInvestigationCaseStore(app.state.investigation_database_path)
 
 
+def _operation_approval_store(app: FastAPI) -> SQLiteOperationApprovalStore:
+    app.state.operation_approval_database_path.parent.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+    return SQLiteOperationApprovalStore(app.state.operation_approval_database_path)
+
+
 def _access_events(app: FastAPI) -> tuple[AuditAccessEvent, ...]:
     store = _access_audit_store(app)
     try:
@@ -947,6 +967,17 @@ def _retry_async_run(
         )
     except PlatformAsyncRunStoreError as error:
         http_status = _status_for_async_run_store_error(error)
+        _record_retry_operation_approval(
+            app,
+            run_id=run_id,
+            target=target,
+            actor=actor,
+            reason=reason,
+            approved_by=approved_by,
+            approval_reason=approval_reason,
+            status=OPERATION_APPROVAL_REJECTED,
+            decision_reason=f"{http_status} {type(error).__name__}: {error}",
+        )
         _record_api_access(
             app,
             actor=normalized_actor,
@@ -968,6 +999,17 @@ def _retry_async_run(
             f"approval_reason={normalized_approval_reason}"
         ),
     )
+    _record_retry_operation_approval(
+        app,
+        run_id=run_id,
+        target=target,
+        actor=normalized_actor,
+        reason=normalized_reason,
+        approved_by=normalized_approved_by,
+        approval_reason=normalized_approval_reason,
+        status=OPERATION_APPROVAL_APPROVED,
+        decision_reason="approved",
+    )
     return run
 
 
@@ -985,6 +1027,54 @@ def _required_request_text(value: str | None, field_name: str) -> str:
     if not normalized:
         raise PlatformAsyncRunStoreError(f"{field_name} is required")
     return normalized
+
+
+def _record_retry_operation_approval(
+    app: FastAPI,
+    *,
+    run_id: str,
+    target: str,
+    actor: str | None,
+    reason: str | None,
+    approved_by: str | None,
+    approval_reason: str | None,
+    status: str,
+    decision_reason: str,
+) -> None:
+    occurred_at = datetime.now(timezone.utc)
+    store = _operation_approval_store(app)
+    try:
+        store.save_record(
+            OperationApprovalRecord(
+                approval_id=str(uuid4()),
+                operation_type=RETRY_PLATFORM_ASYNC_PAYMENT_RUN,
+                operation_id=run_id,
+                target=target,
+                requested_by=_api_actor(actor),
+                request_reason=_approval_text_or_default(
+                    reason,
+                    "missing request reason",
+                ),
+                approved_by=_api_actor(approved_by),
+                approval_reason=_approval_text_or_default(
+                    approval_reason,
+                    "missing approval reason",
+                ),
+                status=status,
+                decision_reason=decision_reason,
+                requested_at=occurred_at,
+                decided_at=occurred_at,
+            )
+        )
+    finally:
+        store.close()
+
+
+def _approval_text_or_default(value: str | None, default: str) -> str:
+    if value is None:
+        return default
+    normalized = value.strip()
+    return normalized or default
 
 
 def _record_api_access(

@@ -33,6 +33,8 @@ from platform_investigation_cases import (
     open_platform_access_investigation_cases,
 )
 from platform_operations_report import export_platform_operations_report
+from platform_operation_approval import SQLiteOperationApprovalStore
+from platform_operation_approval_report import export_operation_approval_report
 from platform_report_access import (
     export_platform_consistency_report_with_access,
     export_platform_history_report_with_access,
@@ -226,7 +228,14 @@ def main() -> None:
     api_access_audit_database_path = (
         LAB_DIR / ".test-data" / "demo_platform_api_access_audit.db"
     )
-    for path in (async_database_path, api_access_audit_database_path):
+    operation_approval_database_path = (
+        LAB_DIR / ".test-data" / "demo_platform_operation_approvals.db"
+    )
+    for path in (
+        async_database_path,
+        api_access_audit_database_path,
+        operation_approval_database_path,
+    ):
         if path.exists():
             path.unlink()
 
@@ -234,6 +243,7 @@ def main() -> None:
         database_path=database_path,
         access_audit_database_path=api_access_audit_database_path,
         async_database_path=async_database_path,
+        operation_approval_database_path=operation_approval_database_path,
     )
     async_payload = {
         "run_id": "run_demo_async_001",
@@ -298,6 +308,17 @@ def main() -> None:
             "/platform/view",
             headers={"x-actor-id": "console_reader_001"},
         ).text
+        retry_failed_async_body = client.post(
+            "/platform/async-payment-runs/run_demo_async_failed_001/retry",
+            json={
+                "actor": "ops_user_001",
+                "reason": "Retry demo failed async run after review",
+                "confirmation": "retry_failed_async_run",
+                "approved_by": "ops_manager_001",
+                "approval_reason": "Approved demo retry after review",
+                "approval_confirmation": "approve_retry_failed_async_run",
+            },
+        ).json()
 
     print("\nAsync payment run via FastAPI")
     print(f"- Create HTTP style: {accepted_body['http_status']}")
@@ -328,10 +349,18 @@ def main() -> None:
         "- Console shows failed async run: "
         f"{'run_demo_async_failed_001' in console_body}"
     )
+    print(
+        f"- Retry approval API result: "
+        f"{retry_failed_async_body['run']['run_id']} "
+        f"status={retry_failed_async_body['run']['status']}"
+    )
 
     async_access_store = SQLiteAccessAuditStore(api_access_audit_database_path)
     async_store = SQLitePlatformAsyncRunStore(async_database_path)
     operations_platform_store = SQLitePlatformStore(database_path)
+    operation_approval_store = SQLiteOperationApprovalStore(
+        operation_approval_database_path
+    )
     try:
         print("\nAsync API access audit events")
         for event in async_access_store.access_events:
@@ -354,7 +383,27 @@ def main() -> None:
         print(f"- {operations_paths.run_rows_csv}")
         print(f"- {operations_paths.findings_csv}")
         print(f"- {operations_paths.html_report}")
+
+        print("\nOperation approval records")
+        for record in operation_approval_store.records:
+            print(
+                f"- {record.operation_type} "
+                f"run_id={record.operation_id} "
+                f"status={record.status} "
+                f"requested_by={record.requested_by} "
+                f"approved_by={record.approved_by}"
+            )
+
+        operation_approval_paths = export_operation_approval_report(
+            LAB_DIR / "reports",
+            records=operation_approval_store.records,
+        )
+        print("\nExported operation approval reports:")
+        print(f"- {operation_approval_paths.records_csv}")
+        print(f"- {operation_approval_paths.summary_csv}")
+        print(f"- {operation_approval_paths.html_report}")
     finally:
+        operation_approval_store.close()
         operations_platform_store.close()
         async_store.close()
         async_access_store.close()
