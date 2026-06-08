@@ -48,9 +48,17 @@ from platform_operation_approval import (  # noqa: E402
     OperationApprovalRecord,
     SQLiteOperationApprovalStore,
 )
+from platform_operation_approval_report import (  # noqa: E402
+    build_operation_approval_report,
+)
+from platform_operations_report import build_platform_operations_report  # noqa: E402
 from sqlite_access_audit_store import SQLiteAccessAuditStore  # noqa: E402
 from sqlite_investigation_case_store import SQLiteInvestigationCaseStore  # noqa: E402
-from sqlite_platform_store import SQLitePlatformStore, SQLitePlatformStoreError  # noqa: E402
+from sqlite_platform_store import (  # noqa: E402
+    PlatformRunSnapshot,
+    SQLitePlatformStore,
+    SQLitePlatformStoreError,
+)
 
 
 DEFAULT_DATABASE_PATH = LAB_DIR / ".test-data" / "platform_api.db"
@@ -788,6 +796,14 @@ def _access_events(app: FastAPI) -> tuple[AuditAccessEvent, ...]:
         store.close()
 
 
+def _operation_approval_records(app: FastAPI) -> tuple[OperationApprovalRecord, ...]:
+    store = _operation_approval_store(app)
+    try:
+        return store.records
+    finally:
+        store.close()
+
+
 def _process_async_worker(
     app: FastAPI,
     *,
@@ -1248,6 +1264,16 @@ def _render_platform_console_html(
 
     access_events = _access_events(app)
     async_runs = _async_runs(app)
+    platform_snapshots = _platform_snapshots(app, runs)
+    operation_approval_records = _operation_approval_records(app)
+    operations_report = build_platform_operations_report(
+        async_runs=async_runs,
+        snapshots=platform_snapshots,
+        access_events=access_events,
+    )
+    operation_approval_report = build_operation_approval_report(
+        records=operation_approval_records,
+    )
     findings = detect_platform_api_access_anomalies(access_events)
     cases = _investigation_cases(app)
 
@@ -1263,6 +1289,8 @@ def _render_platform_console_html(
         ("Investigation cases", str(len(cases))),
         ("Open cases", str(_count_case_status(cases, "open"))),
         ("Investigating cases", str(_count_case_status(cases, "investigating"))),
+        ("Ops report findings", str(len(operations_report.findings))),
+        ("Approval records", str(len(operation_approval_report.records))),
     ]
 
     return f"""<!doctype html>
@@ -1276,8 +1304,14 @@ def _render_platform_console_html(
       color: #1f2937;
       font-family: Arial, sans-serif;
       line-height: 1.5;
-      margin: 24px;
+      margin: 0;
       max-width: 1320px;
+      padding: 16px;
+    }}
+    @media (min-width: 768px) {{
+      body {{
+        padding: 24px;
+      }}
     }}
     h1, h2 {{
       margin: 0 0 12px;
@@ -1313,7 +1347,7 @@ def _render_platform_console_html(
     table {{
       border-collapse: collapse;
       margin-top: 8px;
-      min-width: 720px;
+      min-width: 680px;
       width: 100%;
     }}
     th, td {{
@@ -1328,6 +1362,17 @@ def _render_platform_console_html(
     .section {{
       margin-top: 24px;
       overflow-x: auto;
+    }}
+    .section-grid {{
+      display: grid;
+      gap: 24px;
+      grid-template-columns: 1fr;
+      margin-top: 24px;
+    }}
+    @media (min-width: 1024px) {{
+      .section-grid {{
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }}
     }}
     .muted {{
       color: #6b7280;
@@ -1441,6 +1486,60 @@ def _render_platform_console_html(
     {_failed_async_runs_table(
         _failed_async_runs(async_runs),
         empty_message="No failed async runs have been recorded yet.",
+    )}
+  </div>
+
+  <div class="section-grid">
+    <div class="section">
+      <h2>Operations Report Summary</h2>
+      {_table(
+        ["metric", "value"],
+        _operations_summary_rows(operations_report.summary),
+        empty_message="No operations report summary is available yet.",
+      )}
+    </div>
+
+    <div class="section">
+      <h2>Operation Approval Summary</h2>
+      {_table(
+        ["metric", "value"],
+        _approval_summary_rows(operation_approval_report.summary),
+        empty_message="No operation approval summary is available yet.",
+      )}
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>Operations Run Rows</h2>
+    {_table(
+        [
+            "run_id",
+            "async_status",
+            "platform_status",
+            "attempt_count",
+            "retry_granted_count",
+            "retry_denied_count",
+            "reconciliation_status",
+        ],
+        _operations_run_rows(operations_report.run_rows),
+        empty_message="No operations run rows are available yet.",
+    )}
+  </div>
+
+  <div class="section">
+    <h2>Approval Records</h2>
+    {_table(
+        [
+            "approval_id",
+            "operation_id",
+            "requested_by",
+            "request_reason",
+            "approved_by",
+            "status",
+            "decision_reason",
+        ],
+        _approval_record_rows(operation_approval_report.records),
+        empty_message="No operation approval records have been recorded yet.",
     )}
   </div>
 
@@ -1632,6 +1731,23 @@ def _latest_rows(rows: tuple[dict, ...], *, key: str, limit: int = 5) -> tuple[d
     return tuple(sorted(rows, key=lambda row: row[key], reverse=True)[:limit])
 
 
+def _platform_snapshots(
+    app: FastAPI,
+    runs: tuple[dict, ...],
+) -> tuple[PlatformRunSnapshot, ...]:
+    store = SQLitePlatformStore(app.state.database_path)
+    snapshots: list[PlatformRunSnapshot] = []
+    try:
+        for run in runs:
+            try:
+                snapshots.append(store.get_run(run["run_id"]))
+            except SQLitePlatformStoreError:
+                continue
+    finally:
+        store.close()
+    return tuple(snapshots)
+
+
 def _async_runs(app: FastAPI) -> tuple[PlatformAsyncRun, ...]:
     app.state.async_database_path.parent.mkdir(parents=True, exist_ok=True)
     store = SQLitePlatformAsyncRunStore(app.state.async_database_path)
@@ -1699,6 +1815,74 @@ def _platform_result_field(platform_result: dict | None, field_name: str) -> str
         return ""
     value = platform_result.get(field_name)
     return "" if value is None else str(value)
+
+
+def _operations_summary_rows(summary) -> list[tuple[object, ...]]:
+    return [
+        ("async_run_count", summary.async_run_count),
+        ("platform_run_count", summary.platform_run_count),
+        ("completed_async_run_count", summary.completed_async_run_count),
+        ("failed_async_run_count", summary.failed_async_run_count),
+        ("retry_granted_count", summary.retry_granted_count),
+        ("retry_denied_count", summary.retry_denied_count),
+        ("failed_finding_count", summary.failed_finding_count),
+        ("warning_finding_count", summary.warning_finding_count),
+    ]
+
+
+def _approval_summary_rows(summary) -> list[tuple[object, ...]]:
+    return [
+        ("total_record_count", summary.total_record_count),
+        ("approved_count", summary.approved_count),
+        ("rejected_count", summary.rejected_count),
+        ("retry_operation_count", summary.retry_operation_count),
+        ("self_approval_rejected_count", summary.self_approval_rejected_count),
+    ]
+
+
+def _operations_run_rows(run_rows) -> list[tuple[object, ...]]:
+    return [
+        (
+            row.run_id,
+            row.async_status or "",
+            row.platform_status or "",
+            "" if row.attempt_count is None else row.attempt_count,
+            row.retry_granted_count,
+            row.retry_denied_count,
+            row.reconciliation_status,
+        )
+        for row in run_rows
+    ]
+
+
+def _approval_record_rows(
+    records: tuple[OperationApprovalRecord, ...],
+) -> list[tuple[object, ...]]:
+    return [
+        (
+            record.approval_id,
+            record.operation_id,
+            record.requested_by,
+            record.request_reason,
+            record.approved_by,
+            record.status,
+            record.decision_reason,
+        )
+        for record in _latest_approval_records(records)
+    ]
+
+
+def _latest_approval_records(
+    records: tuple[OperationApprovalRecord, ...],
+    limit: int = 5,
+) -> tuple[OperationApprovalRecord, ...]:
+    return tuple(
+        sorted(
+            records,
+            key=lambda record: (record.requested_at, record.approval_id),
+            reverse=True,
+        )[:limit]
+    )
 
 
 def _latest_findings(

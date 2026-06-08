@@ -1,6 +1,6 @@
 # docs 文档入口
 
-这个目录保存 FinTech 学习笔记、阶段计划和阶段总结。当前文档已经比较多，阅读时不建议从文件名 01 一路顺读到 28，而应按目标选择路径。
+这个目录保存 FinTech 学习笔记、阶段计划和阶段总结。当前文档已经比较多，阅读时不建议从文件名 01 一路顺读到 29，而应按目标选择路径。
 
 ## 推荐阅读路径
 
@@ -27,6 +27,7 @@
 7. [26-stage-13-operations-reconciliation-report.md](26-stage-13-operations-reconciliation-report.md)：运行报告与对账视角。
 8. [27-stage-14-operation-approval-record.md](27-stage-14-operation-approval-record.md)：独立 operation approval record。
 9. [28-stage-15-operation-approval-report.md](28-stage-15-operation-approval-report.md)：operation approval report。
+10. [29-stage-16-console-report-views.md](29-stage-16-console-report-views.md)：console report views。
 
 ### 路径 C：只看阶段计划和历史
 
@@ -46,6 +47,7 @@
 | [26-stage-13-operations-reconciliation-report.md](26-stage-13-operations-reconciliation-report.md) | 运行报告与对账视角 |
 | [27-stage-14-operation-approval-record.md](27-stage-14-operation-approval-record.md) | 独立 operation approval record |
 | [28-stage-15-operation-approval-report.md](28-stage-15-operation-approval-report.md) | operation approval report |
+| [29-stage-16-console-report-views.md](29-stage-16-console-report-views.md) | console report views |
 
 ## 当前平台能力地图
 
@@ -133,6 +135,18 @@ OperationApprovalRecord
 
 这个流程回答：运营和合规人员如何汇总查看 retry 审批记录、审批通过/拒绝分布，以及 self-approval 拒绝尝试。
 
+### Console 报表视图
+
+```text
+PlatformOperationsReport
+OperationApprovalReport
+-> FinTech Platform Console
+-> read-only report summaries
+-> recent operations / approval rows
+```
+
+这个流程回答：运营人员如何在同一个页面里观察 async run、对账摘要、retry 审计和审批记录，而不必先下载离线报表。
+
 ## 文档维护约定
 
 - 新金融基础概念优先写在编号文档中，例如账本、支付、风控、KYC/AML、合规审计。
@@ -142,7 +156,7 @@ OperationApprovalRecord
 
 ## 下一步候选方向
 
-1. 把 operations report 或 approval report 接入只读 console。
+1. 做更深入的 ledger reconciliation。
 2. 为 operation approval record 增加 pending / approved / rejected 状态流转。
-3. 做更深入的 ledger reconciliation。
+3. 给 console 增加只读筛选和分页。
 4. 继续压缩阶段文档，把历史计划和最终总结的关系标得更清楚。

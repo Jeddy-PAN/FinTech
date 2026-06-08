@@ -984,6 +984,55 @@ def test_platform_console_retry_form_requeues_failed_async_run() -> None:
         _remove_database(operation_approval_database_path)
 
 
+def test_platform_console_renders_operations_and_approval_report_views() -> None:
+    (
+        client,
+        database_path,
+        access_audit_database_path,
+        async_database_path,
+        operation_approval_database_path,
+    ) = (
+        _client_with_async_and_operation_approval()
+    )
+    try:
+        client.post(
+            "/platform/async-payment-runs",
+            json=_payload(run_id="run_retry_http", order_id="order_retry_http"),
+        )
+        _fail_async_run(
+            database_path=database_path,
+            async_database_path=async_database_path,
+        )
+        retry = client.post(
+            "/platform/async-payment-runs/run_retry_http/retry",
+            json=_retry_payload(),
+        )
+
+        assert retry.status_code == 200
+
+        console = client.get("/platform/view")
+
+        assert console.status_code == 200
+        body = console.text
+        assert "Operations Report Summary" in body
+        assert "Operations Run Rows" in body
+        assert "retry_granted_count" in body
+        assert "warning_finding_count" in body
+        assert "run_retry_http" in body
+        assert "Operation Approval Summary" in body
+        assert "Approval Records" in body
+        assert "approved_count" in body
+        assert "self_approval_rejected_count" in body
+        assert "Retry after transient worker failure" in body
+        assert "ops_manager_001" in body
+    finally:
+        client.close()
+        _remove_database(database_path)
+        _remove_database(access_audit_database_path)
+        _remove_database(async_database_path)
+        _remove_database(operation_approval_database_path)
+
+
 def test_platform_console_retry_form_reports_confirmation_error() -> None:
     client, database_path, access_audit_database_path, async_database_path = (
         _client_with_async()

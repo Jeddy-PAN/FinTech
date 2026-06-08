@@ -219,6 +219,7 @@ investigation_case
 17. 已完成阶段 13 第一版：新增运行报告与对账视角，把 async run、platform result、ledger posting 和 retry access audit 汇总为离线 CSV/HTML 报告。
 18. 已完成阶段 14 第一版：把 retry 审批从 access audit reason 拆成独立 operation approval record。
 19. 已完成阶段 15 第一版：新增 operation approval report，把 approval records 汇总为 CSV/HTML 报表。
+20. 已完成阶段 16 第一版：把 operations report 和 approval report 的核心摘要接入只读 console。
 
 ## 运行示例
 
@@ -257,7 +258,7 @@ demo 还会输出 `Risk review completion`，用于观察 `risk_review_required 
 
 demo 现在也会输出 `Exported platform operations reports`，用于观察 `PlatformAsyncRun`、`PlatformRunSnapshot`、`ledger_transaction.posted` audit event 和 `retry_platform_async_run` access audit 如何组成一份运营对账报告。
 
-demo 现在也会输出 `Exported operation approval reports`，用于观察 `OperationApprovalRecord` 如何汇总为 approval records CSV、approval summary CSV 和 HTML 报告。
+demo 现在也会输出 `Exported operation approval reports`，用于观察 `OperationApprovalRecord` 如何汇总为 approval records CSV、approval summary CSV 和 HTML 报告。运行 API 服务后，`FinTech Platform Console` 也会显示 `Operations Report Summary`、`Operation Approval Summary`、`Operations Run Rows` 和 `Approval Records` 只读区块。
 
 demo 还会写入并重新读取：
 
@@ -279,7 +280,7 @@ labs/fintech-platform/.test-data/demo_platform_api_investigation_cases.db
 
 ## 当前状态
 
-这个目录已经包含第一版综合平台设计、最小 orchestration、demo、综合报表导出、SQLite 持久化、历史运行报表、risk review 后续处理、教学版一致性检查、平台报表访问控制与访问审计、平台访问异常检测、平台访问异常调查工单、异步任务、运营控制台、retry 审批边界、运行报告与对账视角、operation approval record、operation approval report，以及测试。阶段 8 以来的目标仍然是把已有实验组合成一个清晰的学习平台，而不是立即扩成生产级系统。
+这个目录已经包含第一版综合平台设计、最小 orchestration、demo、综合报表导出、SQLite 持久化、历史运行报表、risk review 后续处理、教学版一致性检查、平台报表访问控制与访问审计、平台访问异常检测、平台访问异常调查工单、异步任务、运营控制台、retry 审批边界、运行报告与对账视角、operation approval record、operation approval report、console report views，以及测试。阶段 8 以来的目标仍然是把已有实验组合成一个清晰的学习平台，而不是立即扩成生产级系统。
 
 阶段 9 已经开始在这个目录上做 API 服务化的第一步：
 
@@ -443,3 +444,13 @@ test_platform_operation_approval_report.py
 ```
 
 阶段 15 新增离线 operation approval report，不新增 HTTP endpoint 或数据库表。报告从 `OperationApprovalRecord` 汇总 total records、approved、rejected、retry operation 和 self-approval rejected 数量，并导出 `platform_operation_approval_records.csv`、`platform_operation_approval_summary.csv` 和 `platform_operation_approval_report.html`。HTML 会转义 approval 明细中的用户可控字段。
+
+阶段 16 第一版已完成：
+
+```text
+docs/29-stage-16-console-report-views.md
+platform_api_app.py
+test_platform_api_app.py
+```
+
+阶段 16 把 `build_platform_operations_report()` 和 `build_operation_approval_report()` 的核心输出接入现有 `FinTech Platform Console`。页面新增 `Operations Report Summary`、`Operation Approval Summary`、`Operations Run Rows` 和 `Approval Records` 只读区块，不新增下载按钮、HTTP report endpoint 或数据库表。
