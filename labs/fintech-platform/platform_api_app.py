@@ -45,6 +45,7 @@ from platform_api_investigation_cases import (  # noqa: E402
 from platform_operation_approval import (  # noqa: E402
     OPERATION_APPROVAL_APPROVED,
     OPERATION_APPROVAL_REJECTED,
+    OperationApprovalError,
     OperationApprovalRecord,
     SQLiteOperationApprovalStore,
 )
@@ -89,6 +90,8 @@ VIEW_PLATFORM_API_ACCESS_ANOMALY_FINDINGS = "view_platform_api_access_anomaly_fi
 CREATE_PLATFORM_API_INVESTIGATION_CASES = "create_platform_api_investigation_cases"
 VIEW_PLATFORM_API_INVESTIGATION_CASES = "view_platform_api_investigation_cases"
 UPDATE_PLATFORM_API_INVESTIGATION_CASES = "update_platform_api_investigation_cases"
+VIEW_PLATFORM_OPERATION_APPROVALS = "view_platform_operation_approvals"
+UPDATE_PLATFORM_OPERATION_APPROVALS = "update_platform_operation_approvals"
 VIEW_PLATFORM_CONSOLE = "view_platform_console"
 CHECK_PLATFORM_API_HEALTH = "check_platform_api_health"
 
@@ -103,6 +106,7 @@ PLATFORM_API_ACCESS_ANOMALY_FINDINGS_TARGET = (
 PLATFORM_API_INVESTIGATION_CASES_TARGET = (
     "fintech_platform_api_investigation_cases"
 )
+PLATFORM_OPERATION_APPROVALS_TARGET = "fintech_platform_operation_approvals"
 PLATFORM_CONSOLE_TARGET = "fintech_platform_api_console"
 RETRY_FAILED_ASYNC_RUN_CONFIRMATION = "retry_failed_async_run"
 APPROVE_RETRY_FAILED_ASYNC_RUN_CONFIRMATION = "approve_retry_failed_async_run"
@@ -146,6 +150,12 @@ class CloseInvestigationRequest(BaseModel):
     closed_by: str = Field(min_length=1)
     reason: str = Field(min_length=1)
     closed_at: datetime
+
+
+class DecideOperationApprovalRequest(BaseModel):
+    decided_by: str = Field(min_length=1)
+    decision_reason: str = Field(min_length=1)
+    decided_at: datetime
 
 
 def create_app(
@@ -597,6 +607,138 @@ def create_app(
         )
         return {"cases": [_investigation_case_response(case) for case in cases]}
 
+    @app.get("/platform/operation-approvals")
+    def list_operation_approvals(
+        status_filter: str | None = Query(default=None, alias="status"),
+        operation_type: str | None = None,
+        operation_id: str | None = None,
+        x_actor_id: str | None = Header(default=None),
+    ) -> dict:
+        store = _operation_approval_store(app)
+        try:
+            records = store.query_records(
+                status=status_filter,
+                operation_type=operation_type,
+                operation_id=operation_id,
+            )
+        except OperationApprovalError as error:
+            _record_operation_approval_access_denial(
+                app,
+                approval_id=None,
+                actor=x_actor_id,
+                permission=VIEW_PLATFORM_OPERATION_APPROVALS,
+                error=error,
+            )
+            raise _http_exception_from_operation_approval_error(error) from error
+        finally:
+            store.close()
+        _record_api_access(
+            app,
+            actor=_api_actor(x_actor_id),
+            permission=VIEW_PLATFORM_OPERATION_APPROVALS,
+            target=PLATFORM_OPERATION_APPROVALS_TARGET,
+            outcome="granted",
+        )
+        return {"records": [_operation_approval_record_response(record) for record in records]}
+
+    @app.get("/platform/operation-approvals/{approval_id}")
+    def get_operation_approval(
+        approval_id: str,
+        x_actor_id: str | None = Header(default=None),
+    ) -> dict:
+        store = _operation_approval_store(app)
+        try:
+            record = store.get_record(approval_id)
+        except OperationApprovalError as error:
+            _record_operation_approval_access_denial(
+                app,
+                approval_id=approval_id,
+                actor=x_actor_id,
+                permission=VIEW_PLATFORM_OPERATION_APPROVALS,
+                error=error,
+            )
+            raise _http_exception_from_operation_approval_error(error) from error
+        finally:
+            store.close()
+        _record_api_access(
+            app,
+            actor=_api_actor(x_actor_id),
+            permission=VIEW_PLATFORM_OPERATION_APPROVALS,
+            target=_operation_approval_target(approval_id),
+            outcome="granted",
+        )
+        return {"record": _operation_approval_record_response(record)}
+
+    @app.patch("/platform/operation-approvals/{approval_id}/approve")
+    def approve_operation_approval(
+        approval_id: str,
+        request: DecideOperationApprovalRequest,
+        x_actor_id: str | None = Header(default=None),
+    ) -> dict:
+        store = _operation_approval_store(app)
+        try:
+            record = store.approve_pending(
+                approval_id,
+                approved_by=request.decided_by,
+                approval_reason=request.decision_reason,
+                decided_at=_aware_timestamp(request.decided_at),
+            )
+        except OperationApprovalError as error:
+            _record_operation_approval_access_denial(
+                app,
+                approval_id=approval_id,
+                actor=x_actor_id,
+                permission=UPDATE_PLATFORM_OPERATION_APPROVALS,
+                error=error,
+            )
+            raise _http_exception_from_operation_approval_error(error) from error
+        finally:
+            store.close()
+        _record_api_access(
+            app,
+            actor=_api_actor(x_actor_id),
+            permission=UPDATE_PLATFORM_OPERATION_APPROVALS,
+            target=_operation_approval_target(approval_id),
+            outcome="granted",
+            reason="approved",
+        )
+        return {"record": _operation_approval_record_response(record)}
+
+    @app.patch("/platform/operation-approvals/{approval_id}/reject")
+    def reject_operation_approval(
+        approval_id: str,
+        request: DecideOperationApprovalRequest,
+        x_actor_id: str | None = Header(default=None),
+    ) -> dict:
+        store = _operation_approval_store(app)
+        try:
+            record = store.reject_pending(
+                approval_id,
+                rejected_by=request.decided_by,
+                rejection_reason=request.decision_reason,
+                decided_at=_aware_timestamp(request.decided_at),
+            )
+        except OperationApprovalError as error:
+            _record_operation_approval_access_denial(
+                app,
+                approval_id=approval_id,
+                actor=x_actor_id,
+                permission=UPDATE_PLATFORM_OPERATION_APPROVALS,
+                error=error,
+            )
+            raise _http_exception_from_operation_approval_error(error) from error
+        finally:
+            store.close()
+        _record_api_access(
+            app,
+            actor=_api_actor(x_actor_id),
+            permission=UPDATE_PLATFORM_OPERATION_APPROVALS,
+            target=_operation_approval_target(approval_id),
+            outcome="granted",
+            reason="rejected",
+        )
+        return {"record": _operation_approval_record_response(record)}
+
     @app.get("/platform/api-access-investigation-cases")
     def list_api_access_investigation_cases(
         status_filter: str | None = Query(default=None, alias="status"),
@@ -910,6 +1052,31 @@ def _record_case_update_denial(
     )
 
 
+def _record_operation_approval_access_denial(
+    app: FastAPI,
+    *,
+    approval_id: str | None,
+    actor: str | None,
+    permission: str,
+    error: OperationApprovalError,
+) -> None:
+    _record_api_access(
+        app,
+        actor=_api_actor(actor),
+        permission=permission,
+        target=(
+            PLATFORM_OPERATION_APPROVALS_TARGET
+            if approval_id is None
+            else _operation_approval_target(approval_id)
+        ),
+        outcome="denied",
+        reason=(
+            f"{_status_for_operation_approval_error(error)} "
+            f"{type(error).__name__}: {error}"
+        ),
+    )
+
+
 def _http_exception_from_compliance_error(error: ComplianceAuditError) -> HTTPException:
     return HTTPException(
         status_code=_status_for_compliance_error(error),
@@ -920,9 +1087,30 @@ def _http_exception_from_compliance_error(error: ComplianceAuditError) -> HTTPEx
     )
 
 
+def _http_exception_from_operation_approval_error(
+    error: OperationApprovalError,
+) -> HTTPException:
+    return HTTPException(
+        status_code=_status_for_operation_approval_error(error),
+        detail={
+            "error": type(error).__name__,
+            "message": str(error),
+        },
+    )
+
+
 def _status_for_compliance_error(error: ComplianceAuditError) -> int:
     if str(error).startswith("Unknown investigation case:"):
         return status.HTTP_404_NOT_FOUND
+    return status.HTTP_400_BAD_REQUEST
+
+
+def _status_for_operation_approval_error(error: OperationApprovalError) -> int:
+    message = str(error)
+    if message.startswith("Unknown operation approval record:"):
+        return status.HTTP_404_NOT_FOUND
+    if message.startswith("Cannot approve ") or message.startswith("Cannot reject "):
+        return status.HTTP_409_CONFLICT
     return status.HTTP_400_BAD_REQUEST
 
 
@@ -1141,6 +1329,10 @@ def _async_payment_run_target(run_id: str) -> str:
     return f"{PLATFORM_API_ASYNC_PAYMENT_RUNS_TARGET}/{run_id}"
 
 
+def _operation_approval_target(approval_id: str) -> str:
+    return f"{PLATFORM_OPERATION_APPROVALS_TARGET}/{approval_id}"
+
+
 def _aware_timestamp(value: datetime) -> datetime:
     if value.tzinfo is None or value.utcoffset() is None:
         return value.replace(tzinfo=timezone.utc)
@@ -1247,6 +1439,25 @@ def _investigation_case_response(case: AccessAnomalyInvestigationCase) -> dict:
         ),
         "resolution_reason": case.resolution_reason,
         "finding": _finding_response(case.finding),
+    }
+
+
+def _operation_approval_record_response(record: OperationApprovalRecord) -> dict:
+    return {
+        "approval_id": record.approval_id,
+        "operation_type": record.operation_type,
+        "operation_id": record.operation_id,
+        "target": record.target,
+        "requested_by": record.requested_by,
+        "request_reason": record.request_reason,
+        "approved_by": record.approved_by,
+        "approval_reason": record.approval_reason,
+        "status": record.status,
+        "decision_reason": record.decision_reason,
+        "requested_at": record.requested_at.isoformat(),
+        "decided_at": (
+            None if record.decided_at is None else record.decided_at.isoformat()
+        ),
     }
 
 

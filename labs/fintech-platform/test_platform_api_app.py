@@ -12,14 +12,18 @@ from platform_api_app import (
     LIST_PLATFORM_PAYMENT_RUNS,
     PROCESS_PLATFORM_ASYNC_PAYMENT_RUNS,
     RETRY_PLATFORM_ASYNC_PAYMENT_RUN,
+    UPDATE_PLATFORM_OPERATION_APPROVALS,
     VIEW_PLATFORM_ASYNC_PAYMENT_RUN,
+    VIEW_PLATFORM_OPERATION_APPROVALS,
     VIEW_PLATFORM_PAYMENT_RUN,
     create_app,
 )
 from platform_async_service import PlatformAsyncWorker, SQLitePlatformAsyncRunStore
 from platform_operation_approval import (
     OPERATION_APPROVAL_APPROVED,
+    OPERATION_APPROVAL_PENDING,
     OPERATION_APPROVAL_REJECTED,
+    OperationApprovalRecord,
     SQLiteOperationApprovalStore,
 )
 from sqlite_access_audit_store import SQLiteAccessAuditStore
@@ -1157,6 +1161,148 @@ def test_platform_console_retry_form_reports_self_approval_error() -> None:
         _remove_database(async_database_path)
 
 
+def test_platform_api_lists_and_gets_operation_approval_records() -> None:
+    (
+        client,
+        database_path,
+        access_audit_database_path,
+        async_database_path,
+        operation_approval_database_path,
+    ) = _client_with_async_and_operation_approval()
+    try:
+        _save_pending_approval(operation_approval_database_path)
+
+        listed = client.get(
+            "/platform/operation-approvals",
+            params={"status": OPERATION_APPROVAL_PENDING},
+            headers={"x-actor-id": "approval_viewer_001"},
+        )
+        single = client.get(
+            "/platform/operation-approvals/approval_pending_001",
+            headers={"x-actor-id": "approval_viewer_001"},
+        )
+
+        assert listed.status_code == 200
+        assert listed.json()["records"][0]["approval_id"] == "approval_pending_001"
+        assert listed.json()["records"][0]["status"] == OPERATION_APPROVAL_PENDING
+        assert listed.json()["records"][0]["approved_by"] is None
+        assert listed.json()["records"][0]["decided_at"] is None
+        assert single.status_code == 200
+        assert single.json()["record"]["approval_id"] == "approval_pending_001"
+
+        events = [
+            event
+            for event in _access_events(access_audit_database_path)
+            if event.permission == VIEW_PLATFORM_OPERATION_APPROVALS
+        ]
+        assert len(events) == 2
+        assert {event.outcome for event in events} == {"granted"}
+    finally:
+        client.close()
+        _remove_database(database_path)
+        _remove_database(access_audit_database_path)
+        _remove_database(async_database_path)
+        _remove_database(operation_approval_database_path)
+
+
+def test_platform_api_approves_pending_operation_approval() -> None:
+    (
+        client,
+        database_path,
+        access_audit_database_path,
+        async_database_path,
+        operation_approval_database_path,
+    ) = _client_with_async_and_operation_approval()
+    try:
+        _save_pending_approval(operation_approval_database_path)
+
+        response = client.patch(
+            "/platform/operation-approvals/approval_pending_001/approve",
+            json={
+                "decided_by": "ops_manager_001",
+                "decision_reason": "Approved pending retry after review",
+                "decided_at": "2026-06-08T09:30:00Z",
+            },
+            headers={"x-actor-id": "ops_manager_001"},
+        )
+
+        assert response.status_code == 200
+        body = response.json()["record"]
+        assert body["approval_id"] == "approval_pending_001"
+        assert body["status"] == OPERATION_APPROVAL_APPROVED
+        assert body["approved_by"] == "ops_manager_001"
+        assert body["approval_reason"] == "Approved pending retry after review"
+        assert body["decided_at"] == "2026-06-08T09:30:00+00:00"
+
+        saved = _approval_records(operation_approval_database_path)
+        assert saved[0].status == OPERATION_APPROVAL_APPROVED
+        assert saved[0].approved_by == "ops_manager_001"
+
+        events = [
+            event
+            for event in _access_events(access_audit_database_path)
+            if event.permission == UPDATE_PLATFORM_OPERATION_APPROVALS
+        ]
+        assert len(events) == 1
+        assert events[0].actor == "ops_manager_001"
+        assert events[0].outcome == "granted"
+    finally:
+        client.close()
+        _remove_database(database_path)
+        _remove_database(access_audit_database_path)
+        _remove_database(async_database_path)
+        _remove_database(operation_approval_database_path)
+
+
+def test_platform_api_rejects_pending_and_denies_invalid_transition() -> None:
+    (
+        client,
+        database_path,
+        access_audit_database_path,
+        async_database_path,
+        operation_approval_database_path,
+    ) = _client_with_async_and_operation_approval()
+    try:
+        _save_pending_approval(operation_approval_database_path)
+
+        rejected = client.patch(
+            "/platform/operation-approvals/approval_pending_001/reject",
+            json={
+                "decided_by": "ops_manager_001",
+                "decision_reason": "Retry evidence is incomplete",
+                "decided_at": "2026-06-08T09:30:00Z",
+            },
+            headers={"x-actor-id": "ops_manager_001"},
+        )
+        duplicate = client.patch(
+            "/platform/operation-approvals/approval_pending_001/approve",
+            json={
+                "decided_by": "ops_manager_002",
+                "decision_reason": "Duplicate approval",
+                "decided_at": "2026-06-08T09:35:00Z",
+            },
+            headers={"x-actor-id": "ops_manager_002"},
+        )
+
+        assert rejected.status_code == 200
+        assert rejected.json()["record"]["status"] == OPERATION_APPROVAL_REJECTED
+        assert duplicate.status_code == 409
+        assert "Cannot approve rejected" in duplicate.json()["detail"]["message"]
+
+        events = [
+            event
+            for event in _access_events(access_audit_database_path)
+            if event.permission == UPDATE_PLATFORM_OPERATION_APPROVALS
+        ]
+        assert [event.outcome for event in events] == ["granted", "denied"]
+    finally:
+        client.close()
+        _remove_database(database_path)
+        _remove_database(access_audit_database_path)
+        _remove_database(async_database_path)
+        _remove_database(operation_approval_database_path)
+
+
 def create_failed_async_run_sample(client: TestClient, **kwargs):
     spec = importlib.util.spec_from_file_location(
         "fintech_platform_demo",
@@ -1357,6 +1503,35 @@ def _approval_records(database_path: Path):
         return store.records
     finally:
         store.close()
+
+
+def _save_pending_approval(database_path: Path) -> None:
+    store = SQLiteOperationApprovalStore(database_path)
+    try:
+        store.save_record(
+            OperationApprovalRecord(
+                approval_id="approval_pending_001",
+                operation_type=RETRY_PLATFORM_ASYNC_PAYMENT_RUN,
+                operation_id="run_retry_http",
+                target="fintech_platform_api_async_payment_runs/run_retry_http",
+                requested_by="ops_user_001",
+                request_reason="Request retry approval",
+                approved_by=None,
+                approval_reason=None,
+                status=OPERATION_APPROVAL_PENDING,
+                decision_reason="pending approval",
+                requested_at=_now(),
+                decided_at=None,
+            )
+        )
+    finally:
+        store.close()
+
+
+def _now():
+    from datetime import datetime, timezone
+
+    return datetime(2026, 6, 8, 9, 0, tzinfo=timezone.utc)
 
 
 def _remove_database(database_path: Path) -> None:

@@ -418,18 +418,30 @@ def main() -> None:
                 decided_at=None,
             )
         )
-        approved_pending = operation_approval_store.approve_pending(
-            "approval_demo_pending_retry_001",
-            approved_by="ops_manager_pending_001",
-            approval_reason="Approved pending retry request after review",
-            decided_at=datetime(2026, 5, 18, 12, 50, tzinfo=timezone.utc),
+        operation_approval_store.close()
+        with TestClient(api_app) as client:
+            pending_approval_body = client.get(
+                "/platform/operation-approvals/approval_demo_pending_retry_001",
+                headers={"x-actor-id": "approval_viewer_001"},
+            ).json()
+            approved_pending_body = client.patch(
+                "/platform/operation-approvals/approval_demo_pending_retry_001/approve",
+                json={
+                    "decided_by": "ops_manager_pending_001",
+                    "decision_reason": "Approved pending retry request after review",
+                    "decided_at": "2026-05-18T12:50:00Z",
+                },
+                headers={"x-actor-id": "ops_manager_pending_001"},
+            ).json()
+        operation_approval_store = SQLiteOperationApprovalStore(
+            operation_approval_database_path
         )
         print("\nPending operation approval flow")
         print(
-            f"- {approved_pending.approval_id} "
-            f"status={approved_pending.status} "
-            f"requested_by={approved_pending.requested_by} "
-            f"approved_by={approved_pending.approved_by}"
+            f"- before={pending_approval_body['record']['status']} "
+            f"after={approved_pending_body['record']['status']} "
+            f"requested_by={approved_pending_body['record']['requested_by']} "
+            f"approved_by={approved_pending_body['record']['approved_by']}"
         )
 
         print("\nOperation approval records")

@@ -7,7 +7,7 @@
 - 学习对象：有编程背景，金融领域零基础。
 - 学习目标：理解金融业务、FinTech 工程系统、数据分析、风控和合规基础。
 - 学习方式：先学概念，再写最小实验，再把知识沉淀成文档。
-- 当前阶段：阶段 18 第一版已完成，operation approval record 支持 pending / approved / rejected 状态流转。
+- 当前阶段：阶段 19 第一版已完成，pending operation approval 支持 HTTP 查询和 approve/reject。
 
 ## 环境和语言约定
 
@@ -36,7 +36,7 @@ PYTHONIOENCODING=utf-8
 │   ├── README.md              # 文档入口、阅读路径和平台能力地图
 │   ├── 00-authoritative-sources.md
 │   ├── 01-16-*.md             # 基础概念和早期实验笔记
-│   └── 17-31-*.md             # 阶段计划、总结和平台演进记录
+│   └── 17-32-*.md             # 阶段计划、总结和平台演进记录
 └── labs/                      # 后续代码实验
     ├── ledger-basics/         # 第一个实验：双分录账本
     ├── payment-orders/        # 第二个实验：支付订单系统
@@ -55,7 +55,7 @@ PYTHONIOENCODING=utf-8
 建议按目标选择路径：
 
 1. 从零开始学 FinTech：先读 [docs/00-authoritative-sources.md](docs/00-authoritative-sources.md)、[docs/01-fintech-overview.md](docs/01-fintech-overview.md)、[docs/02-developer-to-finance.md](docs/02-developer-to-finance.md)，再按 `docs/03` 到 `docs/16` 逐步进入账本、支付、风控、KYC/AML 和合规审计。
-2. 直接理解综合平台：先读 [labs/fintech-platform/README.md](labs/fintech-platform/README.md)，再读 [docs/31-stage-18-operation-approval-state-flow.md](docs/31-stage-18-operation-approval-state-flow.md) 了解当前最新 operation approval 状态流转。
+2. 直接理解综合平台：先读 [labs/fintech-platform/README.md](labs/fintech-platform/README.md)，再读 [docs/32-stage-19-operation-approval-http-endpoints.md](docs/32-stage-19-operation-approval-http-endpoints.md) 了解当前最新 operation approval HTTP endpoints。
 3. 运行工程作品：执行 `& 'C:\App\Anaconda\python.exe' .\labs\fintech-platform\demo.py`，观察端到端支付、async run、retry、access audit、investigation case、operations report、approval report、ledger reconciliation report 和 console report views。
 4. 继续协作前：先看 [LEARNING_PROGRESS.md](LEARNING_PROGRESS.md) 的“当前状态”和“最新记录”，确认当前阶段和下一步候选方向。
 

@@ -1,6 +1,6 @@
 # docs 文档入口
 
-这个目录保存 FinTech 学习笔记、阶段计划和阶段总结。当前文档已经比较多，阅读时不建议从文件名 01 一路顺读到 31，而应按目标选择路径。
+这个目录保存 FinTech 学习笔记、阶段计划和阶段总结。当前文档已经比较多，阅读时不建议从文件名 01 一路顺读到 32，而应按目标选择路径。
 
 ## 推荐阅读路径
 
@@ -30,6 +30,7 @@
 10. [29-stage-16-console-report-views.md](29-stage-16-console-report-views.md)：console report views。
 11. [30-stage-17-ledger-reconciliation-report.md](30-stage-17-ledger-reconciliation-report.md)：ledger reconciliation report。
 12. [31-stage-18-operation-approval-state-flow.md](31-stage-18-operation-approval-state-flow.md)：operation approval state flow。
+13. [32-stage-19-operation-approval-http-endpoints.md](32-stage-19-operation-approval-http-endpoints.md)：operation approval HTTP endpoints。
 
 ### 路径 C：只看阶段计划和历史
 
@@ -52,6 +53,7 @@
 | [29-stage-16-console-report-views.md](29-stage-16-console-report-views.md) | console report views |
 | [30-stage-17-ledger-reconciliation-report.md](30-stage-17-ledger-reconciliation-report.md) | ledger reconciliation report |
 | [31-stage-18-operation-approval-state-flow.md](31-stage-18-operation-approval-state-flow.md) | operation approval state flow |
+| [32-stage-19-operation-approval-http-endpoints.md](32-stage-19-operation-approval-http-endpoints.md) | operation approval HTTP endpoints |
 
 ## 当前平台能力地图
 
@@ -139,6 +141,18 @@ OperationApprovalRecord
 
 这个流程回答：运营和合规人员如何汇总查看 retry 审批记录、审批通过/拒绝分布，以及 self-approval 拒绝尝试。
 
+### 操作审批 HTTP 流程
+
+```text
+OperationApprovalRecord
+-> GET /platform/operation-approvals
+-> GET /platform/operation-approvals/{approval_id}
+-> PATCH approve / reject
+-> access audit granted / denied
+```
+
+这个流程回答：pending approval 如何通过 API 被查看和流转到 approved / rejected，并留下访问审计。
+
 ### Console 报表视图
 
 ```text
@@ -174,7 +188,7 @@ platform / wallet balance snapshot
 
 ## 下一步候选方向
 
-1. 给 pending approval 增加最小 HTTP 查询和审批 endpoint。
+1. 新增创建 pending approval 的 HTTP endpoint。
 2. 把 retry API 改成先创建 pending approval，审批通过后再执行 retry。
-3. 给 console 增加只读筛选和分页。
-4. 继续推进更真实的 ledger entry 持久化与查询边界。
+3. 把 operation approval HTTP endpoint 接入 console 的只读筛选。
+4. 给 console 增加只读筛选和分页。
