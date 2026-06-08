@@ -12,6 +12,7 @@ from platform_api_app import (
     LIST_PLATFORM_PAYMENT_RUNS,
     PROCESS_PLATFORM_ASYNC_PAYMENT_RUNS,
     RETRY_PLATFORM_ASYNC_PAYMENT_RUN,
+    CREATE_PLATFORM_OPERATION_APPROVALS,
     UPDATE_PLATFORM_OPERATION_APPROVALS,
     VIEW_PLATFORM_ASYNC_PAYMENT_RUN,
     VIEW_PLATFORM_OPERATION_APPROVALS,
@@ -1205,6 +1206,96 @@ def test_platform_api_lists_and_gets_operation_approval_records() -> None:
         _remove_database(operation_approval_database_path)
 
 
+def test_platform_api_creates_pending_operation_approval() -> None:
+    (
+        client,
+        database_path,
+        access_audit_database_path,
+        async_database_path,
+        operation_approval_database_path,
+    ) = _client_with_async_and_operation_approval()
+    try:
+        response = client.post(
+            "/platform/operation-approvals",
+            json=_pending_approval_payload(),
+            headers={"x-actor-id": "approval_requester_001"},
+        )
+
+        assert response.status_code == 201
+        body = response.json()["record"]
+        assert body["approval_id"] == "approval_pending_001"
+        assert body["operation_type"] == RETRY_PLATFORM_ASYNC_PAYMENT_RUN
+        assert body["status"] == OPERATION_APPROVAL_PENDING
+        assert body["approved_by"] is None
+        assert body["approval_reason"] is None
+        assert body["decided_at"] is None
+
+        saved = _approval_records(operation_approval_database_path)
+        assert len(saved) == 1
+        assert saved[0].approval_id == "approval_pending_001"
+        assert saved[0].status == OPERATION_APPROVAL_PENDING
+
+        events = [
+            event
+            for event in _access_events(access_audit_database_path)
+            if event.permission == CREATE_PLATFORM_OPERATION_APPROVALS
+        ]
+        assert len(events) == 1
+        assert events[0].actor == "approval_requester_001"
+        assert events[0].outcome == "granted"
+    finally:
+        client.close()
+        _remove_database(database_path)
+        _remove_database(access_audit_database_path)
+        _remove_database(async_database_path)
+        _remove_database(operation_approval_database_path)
+
+
+def test_platform_api_rejects_duplicate_operation_approval_id() -> None:
+    (
+        client,
+        database_path,
+        access_audit_database_path,
+        async_database_path,
+        operation_approval_database_path,
+    ) = _client_with_async_and_operation_approval()
+    try:
+        first = client.post(
+            "/platform/operation-approvals",
+            json=_pending_approval_payload(),
+            headers={"x-actor-id": "approval_requester_001"},
+        )
+        duplicate = client.post(
+            "/platform/operation-approvals",
+            json={
+                **_pending_approval_payload(),
+                "request_reason": "Duplicate approval request",
+            },
+            headers={"x-actor-id": "approval_requester_001"},
+        )
+
+        assert first.status_code == 201
+        assert duplicate.status_code == 409
+        assert "already exists" in duplicate.json()["detail"]["message"]
+
+        records = _approval_records(operation_approval_database_path)
+        assert len(records) == 1
+        assert records[0].request_reason == "Request retry approval"
+
+        events = [
+            event
+            for event in _access_events(access_audit_database_path)
+            if event.permission == CREATE_PLATFORM_OPERATION_APPROVALS
+        ]
+        assert [event.outcome for event in events] == ["granted", "denied"]
+    finally:
+        client.close()
+        _remove_database(database_path)
+        _remove_database(access_audit_database_path)
+        _remove_database(async_database_path)
+        _remove_database(operation_approval_database_path)
+
+
 def test_platform_api_approves_pending_operation_approval() -> None:
     (
         client,
@@ -1442,6 +1533,18 @@ def _retry_payload() -> dict:
         "approved_by": "ops_manager_001",
         "approval_reason": "Approved retry after reviewing worker failure",
         "approval_confirmation": "approve_retry_failed_async_run",
+    }
+
+
+def _pending_approval_payload() -> dict:
+    return {
+        "approval_id": "approval_pending_001",
+        "operation_type": RETRY_PLATFORM_ASYNC_PAYMENT_RUN,
+        "operation_id": "run_retry_http",
+        "target": "fintech_platform_api_async_payment_runs/run_retry_http",
+        "requested_by": "ops_user_001",
+        "request_reason": "Request retry approval",
+        "requested_at": "2026-06-08T09:00:00Z",
     }
 
 

@@ -223,6 +223,7 @@ investigation_case
 21. 已完成阶段 17 第一版：新增 ledger reconciliation report，并把 ledger reconciliation findings 接入 demo 和只读 console。
 22. 已完成阶段 18 第一版：operation approval record 支持 pending / approved / rejected 状态流转，approval report 和 console summary 可统计 pending。
 23. 已完成阶段 19 第一版：pending operation approval 支持 HTTP 查询和 approve/reject，并记录 API access audit。
+24. 已完成阶段 20 第一版：pending operation approval 支持 HTTP 创建、查询和 approve/reject，并记录 API access audit。
 
 ## 运行示例
 
@@ -265,7 +266,7 @@ demo 现在也会输出 `Exported platform operations reports`，用于观察 `P
 
 demo 现在也会输出 `Exported operation approval reports`，用于观察 `OperationApprovalRecord` 如何汇总为 approval records CSV、approval summary CSV 和 HTML 报告。运行 API 服务后，`FinTech Platform Console` 也会显示 `Operations Report Summary`、`Operation Approval Summary`、`Operations Run Rows` 和 `Approval Records` 只读区块。
 
-demo 现在也会输出 `Pending operation approval flow`，用于观察一条 approval record 如何先保存为 `pending`，再通过 HTTP 查询和 approve endpoint 流转为 `approved`。
+demo 现在也会输出 `Pending operation approval flow`，用于观察一条 approval record 如何通过 HTTP 创建为 `pending`，再通过 HTTP 查询和 approve endpoint 流转为 `approved`。
 
 demo 现在也会输出 `Exported platform ledger reconciliation reports`，用于观察 completed run 的 payment order amount、ledger amount、platform bank balance 和 user wallet balance 是否一致。运行 API 服务后，`FinTech Platform Console` 也会显示 `Ledger Reconciliation Findings` 只读区块。
 
@@ -289,7 +290,7 @@ labs/fintech-platform/.test-data/demo_platform_api_investigation_cases.db
 
 ## 当前状态
 
-这个目录已经包含第一版综合平台设计、最小 orchestration、demo、综合报表导出、SQLite 持久化、历史运行报表、risk review 后续处理、教学版一致性检查、平台报表访问控制与访问审计、平台访问异常检测、平台访问异常调查工单、异步任务、运营控制台、retry 审批边界、运行报告与对账视角、operation approval record、operation approval report、console report views、ledger reconciliation report、operation approval state flow、operation approval HTTP endpoints，以及测试。阶段 8 以来的目标仍然是把已有实验组合成一个清晰的学习平台，而不是立即扩成生产级系统。
+这个目录已经包含第一版综合平台设计、最小 orchestration、demo、综合报表导出、SQLite 持久化、历史运行报表、risk review 后续处理、教学版一致性检查、平台报表访问控制与访问审计、平台访问异常检测、平台访问异常调查工单、异步任务、运营控制台、retry 审批边界、运行报告与对账视角、operation approval record、operation approval report、console report views、ledger reconciliation report、operation approval state flow、operation approval HTTP endpoints、create operation approval HTTP endpoint，以及测试。阶段 8 以来的目标仍然是把已有实验组合成一个清晰的学习平台，而不是立即扩成生产级系统。
 
 阶段 9 已经开始在这个目录上做 API 服务化的第一步：
 
@@ -494,4 +495,15 @@ platform_api_app.py
 test_platform_api_app.py
 ```
 
-阶段 19 新增 operation approval HTTP endpoints：`GET /platform/operation-approvals`、`GET /platform/operation-approvals/{approval_id}`、`PATCH /approve` 和 `PATCH /reject`。列表接口支持按 status、operation_type 和 operation_id 筛选；approve/reject 只负责把已有 pending approval 流转到终态，并写入 `view_platform_operation_approvals` 或 `update_platform_operation_approvals` 的 API access audit。当前仍不新增创建 pending approval 的 HTTP endpoint，也不让 approve endpoint 自动执行 retry。
+阶段 19 新增 operation approval HTTP endpoints：`GET /platform/operation-approvals`、`GET /platform/operation-approvals/{approval_id}`、`PATCH /approve` 和 `PATCH /reject`。列表接口支持按 status、operation_type 和 operation_id 筛选；approve/reject 只负责把已有 pending approval 流转到终态，并写入 `view_platform_operation_approvals` 或 `update_platform_operation_approvals` 的 API access audit。阶段 19 当时还没有创建 pending approval 的 HTTP endpoint，也不让 approve endpoint 自动执行 retry。
+
+阶段 20 第一版已完成：
+
+```text
+docs/33-stage-20-create-operation-approval-http-endpoint.md
+platform_api_app.py
+test_platform_api_app.py
+demo.py
+```
+
+阶段 20 新增 `POST /platform/operation-approvals`，用于通过 HTTP 创建 pending operation approval。创建接口只保存审批申请，不执行 retry；`approval_id` 重复会返回 `409 Conflict`，不会覆盖原记录；成功和失败都会写入 `create_platform_operation_approvals` API access audit。demo 的 `Pending operation approval flow` 现在通过 HTTP 完成 create、query 和 approve。当前仍不修改 failed async run retry API 的执行语义，也不让 approve endpoint 自动执行 retry。

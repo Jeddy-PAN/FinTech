@@ -44,6 +44,7 @@ from platform_api_investigation_cases import (  # noqa: E402
 )
 from platform_operation_approval import (  # noqa: E402
     OPERATION_APPROVAL_APPROVED,
+    OPERATION_APPROVAL_PENDING,
     OPERATION_APPROVAL_REJECTED,
     OperationApprovalError,
     OperationApprovalRecord,
@@ -90,6 +91,7 @@ VIEW_PLATFORM_API_ACCESS_ANOMALY_FINDINGS = "view_platform_api_access_anomaly_fi
 CREATE_PLATFORM_API_INVESTIGATION_CASES = "create_platform_api_investigation_cases"
 VIEW_PLATFORM_API_INVESTIGATION_CASES = "view_platform_api_investigation_cases"
 UPDATE_PLATFORM_API_INVESTIGATION_CASES = "update_platform_api_investigation_cases"
+CREATE_PLATFORM_OPERATION_APPROVALS = "create_platform_operation_approvals"
 VIEW_PLATFORM_OPERATION_APPROVALS = "view_platform_operation_approvals"
 UPDATE_PLATFORM_OPERATION_APPROVALS = "update_platform_operation_approvals"
 VIEW_PLATFORM_CONSOLE = "view_platform_console"
@@ -156,6 +158,16 @@ class DecideOperationApprovalRequest(BaseModel):
     decided_by: str = Field(min_length=1)
     decision_reason: str = Field(min_length=1)
     decided_at: datetime
+
+
+class CreateOperationApprovalRequest(BaseModel):
+    approval_id: str = Field(min_length=1)
+    operation_type: str = Field(min_length=1)
+    operation_id: str = Field(min_length=1)
+    target: str = Field(min_length=1)
+    requested_by: str = Field(min_length=1)
+    request_reason: str = Field(min_length=1)
+    requested_at: datetime
 
 
 def create_app(
@@ -606,6 +618,61 @@ def create_app(
             reason=f"cases={len(cases)}",
         )
         return {"cases": [_investigation_case_response(case) for case in cases]}
+
+    @app.post(
+        "/platform/operation-approvals",
+        status_code=status.HTTP_201_CREATED,
+    )
+    def create_operation_approval(
+        request: CreateOperationApprovalRequest,
+        x_actor_id: str | None = Header(default=None),
+    ) -> dict:
+        store = _operation_approval_store(app)
+        try:
+            try:
+                store.get_record(request.approval_id)
+            except OperationApprovalError as error:
+                if not str(error).startswith("Unknown operation approval record:"):
+                    raise
+            else:
+                raise OperationApprovalError(
+                    f"Operation approval record already exists: {request.approval_id}"
+                )
+            record = OperationApprovalRecord(
+                approval_id=request.approval_id,
+                operation_type=request.operation_type,
+                operation_id=request.operation_id,
+                target=request.target,
+                requested_by=request.requested_by,
+                request_reason=request.request_reason,
+                approved_by=None,
+                approval_reason=None,
+                status=OPERATION_APPROVAL_PENDING,
+                decision_reason="pending approval",
+                requested_at=_aware_timestamp(request.requested_at),
+                decided_at=None,
+            )
+            store.save_record(record)
+        except OperationApprovalError as error:
+            _record_operation_approval_access_denial(
+                app,
+                approval_id=request.approval_id,
+                actor=x_actor_id,
+                permission=CREATE_PLATFORM_OPERATION_APPROVALS,
+                error=error,
+            )
+            raise _http_exception_from_operation_approval_error(error) from error
+        finally:
+            store.close()
+        _record_api_access(
+            app,
+            actor=_api_actor(x_actor_id),
+            permission=CREATE_PLATFORM_OPERATION_APPROVALS,
+            target=_operation_approval_target(record.approval_id),
+            outcome="granted",
+            reason="created pending approval",
+        )
+        return {"record": _operation_approval_record_response(record)}
 
     @app.get("/platform/operation-approvals")
     def list_operation_approvals(
@@ -1109,6 +1176,8 @@ def _status_for_operation_approval_error(error: OperationApprovalError) -> int:
     message = str(error)
     if message.startswith("Unknown operation approval record:"):
         return status.HTTP_404_NOT_FOUND
+    if message.startswith("Operation approval record already exists:"):
+        return status.HTTP_409_CONFLICT
     if message.startswith("Cannot approve ") or message.startswith("Cannot reject "):
         return status.HTTP_409_CONFLICT
     return status.HTTP_400_BAD_REQUEST

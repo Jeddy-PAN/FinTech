@@ -1,6 +1,6 @@
 # docs 文档入口
 
-这个目录保存 FinTech 学习笔记、阶段计划和阶段总结。当前文档已经比较多，阅读时不建议从文件名 01 一路顺读到 32，而应按目标选择路径。
+这个目录保存 FinTech 学习笔记、阶段计划和阶段总结。当前文档已经比较多，阅读时不建议从文件名 01 一路顺读到 33，而应按目标选择路径。
 
 ## 推荐阅读路径
 
@@ -30,7 +30,8 @@
 10. [29-stage-16-console-report-views.md](29-stage-16-console-report-views.md)：console report views。
 11. [30-stage-17-ledger-reconciliation-report.md](30-stage-17-ledger-reconciliation-report.md)：ledger reconciliation report。
 12. [31-stage-18-operation-approval-state-flow.md](31-stage-18-operation-approval-state-flow.md)：operation approval state flow。
-13. [32-stage-19-operation-approval-http-endpoints.md](32-stage-19-operation-approval-http-endpoints.md)：operation approval HTTP endpoints。
+13. [32-stage-19-operation-approval-http-endpoints.md](32-stage-19-operation-approval-http-endpoints.md)：operation approval HTTP 查询和 approve/reject endpoints。
+14. [33-stage-20-create-operation-approval-http-endpoint.md](33-stage-20-create-operation-approval-http-endpoint.md)：创建 pending operation approval 的 HTTP endpoint。
 
 ### 路径 C：只看阶段计划和历史
 
@@ -54,6 +55,7 @@
 | [30-stage-17-ledger-reconciliation-report.md](30-stage-17-ledger-reconciliation-report.md) | ledger reconciliation report |
 | [31-stage-18-operation-approval-state-flow.md](31-stage-18-operation-approval-state-flow.md) | operation approval state flow |
 | [32-stage-19-operation-approval-http-endpoints.md](32-stage-19-operation-approval-http-endpoints.md) | operation approval HTTP endpoints |
+| [33-stage-20-create-operation-approval-http-endpoint.md](33-stage-20-create-operation-approval-http-endpoint.md) | create operation approval HTTP endpoint |
 
 ## 当前平台能力地图
 
@@ -145,13 +147,14 @@ OperationApprovalRecord
 
 ```text
 OperationApprovalRecord
+-> POST /platform/operation-approvals
 -> GET /platform/operation-approvals
 -> GET /platform/operation-approvals/{approval_id}
 -> PATCH approve / reject
 -> access audit granted / denied
 ```
 
-这个流程回答：pending approval 如何通过 API 被查看和流转到 approved / rejected，并留下访问审计。
+这个流程回答：pending approval 如何通过 API 被创建、查看和流转到 approved / rejected，并留下访问审计。
 
 ### Console 报表视图
 
@@ -188,7 +191,7 @@ platform / wallet balance snapshot
 
 ## 下一步候选方向
 
-1. 新增创建 pending approval 的 HTTP endpoint。
-2. 把 retry API 改成先创建 pending approval，审批通过后再执行 retry。
-3. 把 operation approval HTTP endpoint 接入 console 的只读筛选。
-4. 给 console 增加只读筛选和分页。
+1. 把 retry API 改成先创建 pending approval，审批通过后再执行 retry。
+2. 把 operation approval HTTP endpoint 接入 console 的只读筛选。
+3. 给 operation approval 列表增加分页和排序。
+4. 增加 approval 与 async run 的只读关联视图。
