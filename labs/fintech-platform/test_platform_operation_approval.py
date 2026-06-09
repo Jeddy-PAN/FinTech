@@ -87,6 +87,61 @@ def test_operation_approval_store_saves_and_queries_pending_record() -> None:
         _remove_database(database_path)
 
 
+def test_operation_approval_store_sorts_and_paginates_records() -> None:
+    database_path = _database_path()
+    store = SQLiteOperationApprovalStore(database_path)
+    oldest = _approval_record(
+        approval_id="approval_oldest",
+        operation_id="run_oldest",
+        status=OPERATION_APPROVAL_APPROVED,
+        requested_at=_timestamp("2026-06-08T09:00:00+00:00"),
+    )
+    newest = _approval_record(
+        approval_id="approval_newest",
+        operation_id="run_newest",
+        status=OPERATION_APPROVAL_APPROVED,
+        requested_at=_timestamp("2026-06-08T11:00:00+00:00"),
+    )
+    middle = _approval_record(
+        approval_id="approval_middle",
+        operation_id="run_middle",
+        status=OPERATION_APPROVAL_APPROVED,
+        requested_at=_timestamp("2026-06-08T10:00:00+00:00"),
+    )
+
+    try:
+        store.save_record(oldest)
+        store.save_record(newest)
+        store.save_record(middle)
+
+        page = store.query_records(
+            sort_by="requested_at",
+            sort_order="desc",
+            limit=2,
+            offset=1,
+        )
+
+        assert [record.approval_id for record in page] == [
+            "approval_middle",
+            "approval_oldest",
+        ]
+    finally:
+        store.close()
+        _remove_database(database_path)
+
+
+def test_operation_approval_store_rejects_unknown_sort_field() -> None:
+    database_path = _database_path()
+    store = SQLiteOperationApprovalStore(database_path)
+
+    try:
+        with pytest.raises(OperationApprovalError, match="Unknown approval sort field"):
+            store.query_records(sort_by="created_at")
+    finally:
+        store.close()
+        _remove_database(database_path)
+
+
 def test_operation_approval_store_approves_pending_record() -> None:
     database_path = _database_path()
     store = SQLiteOperationApprovalStore(database_path)
@@ -244,6 +299,7 @@ def _approval_record(
     approval_reason: str | None = "Approved retry after reviewing worker failure",
     status: str,
     decision_reason: str = "approved",
+    requested_at: datetime | None = None,
     decided_at: datetime | None = None,
 ) -> OperationApprovalRecord:
     return OperationApprovalRecord(
@@ -257,7 +313,7 @@ def _approval_record(
         approval_reason=approval_reason,
         status=status,
         decision_reason=decision_reason,
-        requested_at=_now(),
+        requested_at=_now() if requested_at is None else requested_at,
         decided_at=(
             _now()
             if decided_at is None and status != OPERATION_APPROVAL_PENDING
@@ -268,6 +324,10 @@ def _approval_record(
 
 def _now() -> datetime:
     return datetime(2026, 6, 8, 9, 0, tzinfo=timezone.utc)
+
+
+def _timestamp(value: str) -> datetime:
+    return datetime.fromisoformat(value)
 
 
 def _database_path() -> Path:

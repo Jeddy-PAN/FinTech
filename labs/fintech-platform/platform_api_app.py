@@ -47,6 +47,8 @@ from platform_operation_approval import (  # noqa: E402
     OPERATION_APPROVAL_APPROVED,
     OPERATION_APPROVAL_PENDING,
     OPERATION_APPROVAL_REJECTED,
+    OPERATION_APPROVAL_SORT_FIELDS,
+    OPERATION_APPROVAL_SORT_ORDERS,
     OperationApprovalError,
     OperationApprovalRecord,
     SQLiteOperationApprovalStore,
@@ -668,6 +670,10 @@ def create_app(
         status_filter: str | None = Query(default=None, alias="status"),
         operation_type: str | None = None,
         operation_id: str | None = None,
+        limit: int | None = Query(default=None, ge=1, le=100),
+        offset: int = Query(default=0, ge=0),
+        sort_by: str = Query(default="requested_at"),
+        sort_order: str = Query(default="desc"),
         x_actor_id: str | None = Header(default=None),
     ) -> dict:
         store = _operation_approval_store(app)
@@ -676,6 +682,10 @@ def create_app(
                 status=status_filter,
                 operation_type=operation_type,
                 operation_id=operation_id,
+                sort_by=sort_by,
+                sort_order=sort_order,
+                limit=limit,
+                offset=offset,
             )
         except OperationApprovalError as error:
             _record_operation_approval_access_denial(
@@ -694,8 +704,21 @@ def create_app(
             permission=VIEW_PLATFORM_OPERATION_APPROVALS,
             target=PLATFORM_OPERATION_APPROVALS_TARGET,
             outcome="granted",
+            reason=(
+                f"sort_by={sort_by} sort_order={sort_order} "
+                f"limit={limit} offset={offset}"
+            ),
         )
-        return {"records": [_operation_approval_record_response(record) for record in records]}
+        return {
+            "records": [_operation_approval_record_response(record) for record in records],
+            "pagination": {
+                "limit": limit,
+                "offset": offset,
+                "returned_count": len(records),
+                "sort_by": sort_by,
+                "sort_order": sort_order,
+            },
+        }
 
     @app.get("/platform/operation-approvals/{approval_id}")
     def get_operation_approval(
@@ -2227,7 +2250,7 @@ def _approval_record_rows(
             record.status,
             record.decision_reason,
         )
-        for record in _latest_approval_records(records)
+        for record in _sorted_approval_records(records, limit=5)
     ]
 
 
@@ -2249,21 +2272,51 @@ def _pending_operation_approval_rows(
             record.request_reason,
             record.requested_at.isoformat(),
         )
-        for record in _latest_approval_records(pending_records)
+        for record in _sorted_approval_records(pending_records, limit=5)
     ]
 
 
-def _latest_approval_records(
+def _sorted_approval_records(
     records: tuple[OperationApprovalRecord, ...],
-    limit: int = 5,
+    *,
+    sort_by: str = "requested_at",
+    sort_order: str = "desc",
+    limit: int | None = None,
+    offset: int = 0,
 ) -> tuple[OperationApprovalRecord, ...]:
-    return tuple(
-        sorted(
-            records,
-            key=lambda record: (record.requested_at, record.approval_id),
-            reverse=True,
-        )[:limit]
+    normalized_sort_order = sort_order.lower()
+    if sort_by not in OPERATION_APPROVAL_SORT_FIELDS:
+        raise ValueError(f"Unknown approval sort field: {sort_by}")
+    if normalized_sort_order not in OPERATION_APPROVAL_SORT_ORDERS:
+        raise ValueError(f"Unknown approval sort order: {sort_order}")
+    if offset < 0:
+        raise ValueError("offset must be greater than or equal to 0")
+    if limit is not None and limit <= 0:
+        raise ValueError("limit must be greater than 0")
+
+    sorted_records = sorted(
+        records,
+        key=lambda record: (
+            _operation_approval_sort_value(record, sort_by),
+            record.approval_id,
+        ),
+        reverse=normalized_sort_order == "desc",
     )
+    if limit is None:
+        return tuple(sorted_records[offset:])
+    return tuple(sorted_records[offset : offset + limit])
+
+
+def _operation_approval_sort_value(
+    record: OperationApprovalRecord,
+    sort_by: str,
+) -> object:
+    value = getattr(record, sort_by)
+    if isinstance(value, datetime):
+        return value.isoformat()
+    if value is None:
+        return ""
+    return value
 
 
 def _latest_findings(

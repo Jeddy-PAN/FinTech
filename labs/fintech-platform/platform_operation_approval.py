@@ -15,6 +15,16 @@ OPERATION_APPROVAL_STATUSES = {
     OPERATION_APPROVAL_REJECTED,
 }
 RETRY_PLATFORM_ASYNC_RUN_OPERATION = "retry_platform_async_run"
+OPERATION_APPROVAL_SORT_FIELDS = {
+    "approval_id",
+    "operation_type",
+    "operation_id",
+    "requested_by",
+    "status",
+    "requested_at",
+    "decided_at",
+}
+OPERATION_APPROVAL_SORT_ORDERS = {"asc", "desc"}
 
 
 class OperationApprovalError(ValueError):
@@ -177,9 +187,13 @@ class SQLiteOperationApprovalStore:
         status: str | None = None,
         operation_type: str | None = None,
         operation_id: str | None = None,
+        sort_by: str = "requested_at",
+        sort_order: str = "asc",
+        limit: int | None = None,
+        offset: int = 0,
     ) -> tuple[OperationApprovalRecord, ...]:
         conditions: list[str] = []
-        parameters: list[str] = []
+        parameters: list[object] = []
         if status is not None:
             _validate_status(status)
             conditions.append("status = ?")
@@ -192,12 +206,19 @@ class SQLiteOperationApprovalStore:
             parameters.append(_require_text(operation_id, "operation_id"))
 
         where_sql = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+        order_by_sql = _order_by_sql(sort_by=sort_by, sort_order=sort_order)
+        pagination_sql = _pagination_sql(limit=limit, offset=offset)
+        if limit is not None:
+            parameters.append(limit)
+        if offset:
+            parameters.append(offset)
         rows = self._connection.execute(
             f"""
             SELECT *
             FROM operation_approvals
             {where_sql}
-            ORDER BY requested_at, approval_id
+            {order_by_sql}
+            {pagination_sql}
             """,
             tuple(parameters),
         ).fetchall()
@@ -333,6 +354,33 @@ def _validate_record(record: OperationApprovalRecord) -> None:
 def _validate_status(status: str) -> None:
     if status not in OPERATION_APPROVAL_STATUSES:
         raise OperationApprovalError(f"Unknown approval status: {status}")
+
+
+def _order_by_sql(*, sort_by: str, sort_order: str) -> str:
+    normalized_sort_by = _require_text(sort_by, "sort_by")
+    normalized_sort_order = _require_text(sort_order, "sort_order").lower()
+    if normalized_sort_by not in OPERATION_APPROVAL_SORT_FIELDS:
+        raise OperationApprovalError(f"Unknown approval sort field: {sort_by}")
+    if normalized_sort_order not in OPERATION_APPROVAL_SORT_ORDERS:
+        raise OperationApprovalError(f"Unknown approval sort order: {sort_order}")
+    direction = "DESC" if normalized_sort_order == "desc" else "ASC"
+    if normalized_sort_by == "approval_id":
+        return f"ORDER BY approval_id {direction}"
+    return f"ORDER BY {normalized_sort_by} {direction}, approval_id {direction}"
+
+
+def _pagination_sql(*, limit: int | None, offset: int) -> str:
+    if offset < 0:
+        raise OperationApprovalError("offset must be greater than or equal to 0")
+    if limit is None:
+        if offset:
+            raise OperationApprovalError("limit is required when offset is provided")
+        return ""
+    if limit <= 0:
+        raise OperationApprovalError("limit must be greater than 0")
+    if offset:
+        return "LIMIT ? OFFSET ?"
+    return "LIMIT ?"
 
 
 def _record_to_row(record: OperationApprovalRecord) -> tuple:

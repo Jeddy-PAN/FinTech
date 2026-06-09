@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
 
@@ -1238,6 +1239,80 @@ def test_platform_api_lists_and_gets_operation_approval_records() -> None:
         _remove_database(operation_approval_database_path)
 
 
+def test_platform_api_paginates_and_sorts_operation_approval_records() -> None:
+    (
+        client,
+        database_path,
+        access_audit_database_path,
+        async_database_path,
+        operation_approval_database_path,
+    ) = _client_with_async_and_operation_approval()
+    try:
+        _save_pending_approval(
+            operation_approval_database_path,
+            approval_id="approval_oldest",
+            operation_id="run_oldest",
+            requested_at=datetime(2026, 6, 8, 9, 0, tzinfo=timezone.utc),
+        )
+        _save_pending_approval(
+            operation_approval_database_path,
+            approval_id="approval_middle",
+            operation_id="run_middle",
+            requested_at=datetime(2026, 6, 8, 10, 0, tzinfo=timezone.utc),
+        )
+        _save_pending_approval(
+            operation_approval_database_path,
+            approval_id="approval_newest",
+            operation_id="run_newest",
+            requested_at=datetime(2026, 6, 8, 11, 0, tzinfo=timezone.utc),
+        )
+
+        listed = client.get(
+            "/platform/operation-approvals",
+            params={
+                "sort_by": "requested_at",
+                "sort_order": "desc",
+                "limit": "2",
+                "offset": "1",
+            },
+            headers={"x-actor-id": "approval_viewer_001"},
+        )
+        invalid_sort = client.get(
+            "/platform/operation-approvals",
+            params={"sort_by": "created_at"},
+            headers={"x-actor-id": "approval_viewer_001"},
+        )
+
+        assert listed.status_code == 200
+        body = listed.json()
+        assert [record["approval_id"] for record in body["records"]] == [
+            "approval_middle",
+            "approval_oldest",
+        ]
+        assert body["pagination"] == {
+            "limit": 2,
+            "offset": 1,
+            "returned_count": 2,
+            "sort_by": "requested_at",
+            "sort_order": "desc",
+        }
+        assert invalid_sort.status_code == 400
+        assert "Unknown approval sort field" in invalid_sort.json()["detail"]["message"]
+
+        events = [
+            event
+            for event in _access_events(access_audit_database_path)
+            if event.permission == VIEW_PLATFORM_OPERATION_APPROVALS
+        ]
+        assert [event.outcome for event in events] == ["granted", "denied"]
+    finally:
+        client.close()
+        _remove_database(database_path)
+        _remove_database(access_audit_database_path)
+        _remove_database(async_database_path)
+        _remove_database(operation_approval_database_path)
+
+
 def test_platform_api_creates_pending_operation_approval() -> None:
     (
         client,
@@ -1661,22 +1736,28 @@ def _approval_records(database_path: Path):
         store.close()
 
 
-def _save_pending_approval(database_path: Path) -> None:
+def _save_pending_approval(
+    database_path: Path,
+    *,
+    approval_id: str = "approval_pending_001",
+    operation_id: str = "run_retry_http",
+    requested_at: datetime | None = None,
+) -> None:
     store = SQLiteOperationApprovalStore(database_path)
     try:
         store.save_record(
             OperationApprovalRecord(
-                approval_id="approval_pending_001",
+                approval_id=approval_id,
                 operation_type=RETRY_PLATFORM_ASYNC_PAYMENT_RUN,
-                operation_id="run_retry_http",
-                target="fintech_platform_api_async_payment_runs/run_retry_http",
+                operation_id=operation_id,
+                target=f"fintech_platform_api_async_payment_runs/{operation_id}",
                 requested_by="ops_user_001",
                 request_reason="Request retry approval",
                 approved_by=None,
                 approval_reason=None,
                 status=OPERATION_APPROVAL_PENDING,
                 decision_reason="pending approval",
-                requested_at=_now(),
+                requested_at=_now() if requested_at is None else requested_at,
                 decided_at=None,
             )
         )
@@ -1685,8 +1766,6 @@ def _save_pending_approval(database_path: Path) -> None:
 
 
 def _now():
-    from datetime import datetime, timezone
-
     return datetime(2026, 6, 8, 9, 0, tzinfo=timezone.utc)
 
 
