@@ -1,6 +1,6 @@
 # docs 文档入口
 
-这个目录保存 FinTech 学习笔记、阶段计划和阶段总结。当前文档已经比较多，阅读时不建议从文件名 01 一路顺读到 34，而应按目标选择路径。
+这个目录保存 FinTech 学习笔记、阶段计划和阶段总结。当前文档已经比较多，阅读时不建议从文件名 01 一路顺读到 35，而应按目标选择路径。
 
 ## 推荐阅读路径
 
@@ -33,6 +33,7 @@
 13. [32-stage-19-operation-approval-http-endpoints.md](32-stage-19-operation-approval-http-endpoints.md)：operation approval HTTP 查询和 approve/reject endpoints。
 14. [33-stage-20-create-operation-approval-http-endpoint.md](33-stage-20-create-operation-approval-http-endpoint.md)：创建 pending operation approval 的 HTTP endpoint。
 15. [34-stage-21-retry-approval-before-execution.md](34-stage-21-retry-approval-before-execution.md)：retry 先审批后执行。
+16. [35-stage-22-operation-approval-console-view.md](35-stage-22-operation-approval-console-view.md)：pending operation approval console 只读视图。
 
 ### 路径 C：只看阶段计划和历史
 
@@ -58,6 +59,7 @@
 | [32-stage-19-operation-approval-http-endpoints.md](32-stage-19-operation-approval-http-endpoints.md) | operation approval HTTP endpoints |
 | [33-stage-20-create-operation-approval-http-endpoint.md](33-stage-20-create-operation-approval-http-endpoint.md) | create operation approval HTTP endpoint |
 | [34-stage-21-retry-approval-before-execution.md](34-stage-21-retry-approval-before-execution.md) | retry approval before execution |
+| [35-stage-22-operation-approval-console-view.md](35-stage-22-operation-approval-console-view.md) | operation approval console view |
 
 ## 当前平台能力地图
 
@@ -165,9 +167,10 @@ OperationApprovalReport
 -> FinTech Platform Console
 -> read-only report summaries
 -> recent operations / approval rows
+-> pending approval rows with async status
 ```
 
-这个流程回答：运营人员如何在同一个页面里观察 async run、对账摘要、retry 审计和审批记录，而不必先下载离线报表。
+这个流程回答：运营人员如何在同一个页面里观察 async run、对账摘要、retry 审计、审批记录和待审批 approval，而不必先下载离线报表。
 
 ### Ledger Reconciliation 流程
 
@@ -192,7 +195,7 @@ platform / wallet balance snapshot
 
 ## 下一步候选方向
 
-1. 把 operation approval HTTP endpoint 接入 console 的只读筛选。
-2. 给 operation approval 列表增加分页和排序。
-3. 增加 approval 与 async run 的只读关联视图。
-4. 为 pending approval 增加过期或取消状态。
+1. 给 operation approval 列表增加分页和排序。
+2. 增加 approval 与 async run 的只读详情视图。
+3. 为 pending approval 增加过期或取消状态。
+4. 在保持 maker-checker 边界的前提下，设计 console approve / reject 的表单和权限约束。

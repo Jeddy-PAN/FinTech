@@ -1026,6 +1026,29 @@ def test_platform_console_renders_operations_and_approval_report_views() -> None
             json=_retry_payload(),
         )
         approval_id = retry.json()["record"]["approval_id"]
+
+        assert retry.status_code == 202
+
+        client.post(
+            "/platform/async-payment-runs",
+            json=_payload(
+                run_id="run_retry_pending_console",
+                order_id="order_retry_pending_console",
+            ),
+        )
+        _fail_async_run(
+            database_path=database_path,
+            async_database_path=async_database_path,
+            run_id="run_retry_pending_console",
+        )
+        pending_retry = client.post(
+            "/platform/async-payment-runs/run_retry_pending_console/retry",
+            json=_retry_payload(),
+        )
+        pending_approval_id = pending_retry.json()["record"]["approval_id"]
+
+        assert pending_retry.status_code == 202
+
         approved = client.patch(
             f"/platform/operation-approvals/{approval_id}/approve",
             json={
@@ -1036,7 +1059,6 @@ def test_platform_console_renders_operations_and_approval_report_views() -> None
             headers={"x-actor-id": "ops_manager_001"},
         )
 
-        assert retry.status_code == 202
         assert approved.status_code == 200
 
         console = client.get("/platform/view")
@@ -1052,10 +1074,15 @@ def test_platform_console_renders_operations_and_approval_report_views() -> None
         assert "warning_finding_count" in body
         assert "run_retry_http" in body
         assert "Operation Approval Summary" in body
+        assert "Pending Operation Approvals" in body
         assert "Approval Records" in body
         assert "pending_count" in body
+        assert "Pending approvals" in body
         assert "approved_count" in body
         assert "self_approval_rejected_count" in body
+        assert pending_approval_id in body
+        assert "run_retry_pending_console" in body
+        assert "failed" in body
         assert "Retry after transient worker failure" in body
         assert "ops_manager_001" in body
     finally:
@@ -1569,7 +1596,12 @@ def _pending_approval_payload() -> dict:
     }
 
 
-def _fail_async_run(*, database_path: Path, async_database_path: Path) -> None:
+def _fail_async_run(
+    *,
+    database_path: Path,
+    async_database_path: Path,
+    run_id: str = "run_retry_http",
+) -> None:
     async_store = SQLitePlatformAsyncRunStore(async_database_path)
     platform_store = SQLitePlatformStore(database_path)
     try:
@@ -1580,7 +1612,7 @@ def _fail_async_run(*, database_path: Path, async_database_path: Path) -> None:
         )
         for _ in range(3):
             worker.process_next()
-        assert async_store.get_run("run_retry_http").status == "failed"
+        assert async_store.get_run(run_id).status == "failed"
     finally:
         async_store.close()
         platform_store.close()

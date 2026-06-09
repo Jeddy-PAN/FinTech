@@ -1603,6 +1603,7 @@ def _render_platform_console_html(
             str(_count_failed_findings(ledger_reconciliation_findings)),
         ),
         ("Approval records", str(len(operation_approval_report.records))),
+        ("Pending approvals", str(operation_approval_report.summary.pending_count)),
     ]
 
     return f"""<!doctype html>
@@ -1850,6 +1851,26 @@ def _render_platform_console_html(
         ],
         _ledger_reconciliation_finding_rows(ledger_reconciliation_findings),
         empty_message="No ledger reconciliation findings are available yet.",
+    )}
+  </div>
+
+  <div class="section">
+    <h2>Pending Operation Approvals</h2>
+    {_table(
+        [
+            "approval_id",
+            "operation_type",
+            "operation_id",
+            "async_status",
+            "requested_by",
+            "request_reason",
+            "requested_at",
+        ],
+        _pending_operation_approval_rows(
+            operation_approval_report.records,
+            async_runs,
+        ),
+        empty_message="No pending operation approvals have been recorded yet.",
     )}
   </div>
 
@@ -2207,6 +2228,28 @@ def _approval_record_rows(
             record.decision_reason,
         )
         for record in _latest_approval_records(records)
+    ]
+
+
+def _pending_operation_approval_rows(
+    records: tuple[OperationApprovalRecord, ...],
+    async_runs: tuple[PlatformAsyncRun, ...],
+) -> list[tuple[object, ...]]:
+    async_status_by_run_id = {run.run_id: run.status for run in async_runs}
+    pending_records = tuple(
+        record for record in records if record.status == OPERATION_APPROVAL_PENDING
+    )
+    return [
+        (
+            record.approval_id,
+            record.operation_type,
+            record.operation_id,
+            async_status_by_run_id.get(record.operation_id, ""),
+            record.requested_by,
+            record.request_reason,
+            record.requested_at.isoformat(),
+        )
+        for record in _latest_approval_records(pending_records)
     ]
 
 

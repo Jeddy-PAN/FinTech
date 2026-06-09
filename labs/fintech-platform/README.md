@@ -225,6 +225,7 @@ investigation_case
 23. 已完成阶段 19 第一版：pending operation approval 支持 HTTP 查询和 approve/reject，并记录 API access audit。
 24. 已完成阶段 20 第一版：pending operation approval 支持 HTTP 创建、查询和 approve/reject，并记录 API access audit。
 25. 已完成阶段 21 第一版：failed async run retry 改成先创建 pending approval，审批通过后再执行 retry。
+26. 已完成阶段 22 第一版：console 新增 pending operation approvals 只读视图，并显示关联 async run 状态。
 
 ## 运行示例
 
@@ -265,7 +266,7 @@ demo 还会输出 `Risk review completion`，用于观察 `risk_review_required 
 
 demo 现在也会输出 `Exported platform operations reports`，用于观察 `PlatformAsyncRun`、`PlatformRunSnapshot`、`ledger_transaction.posted` audit event 和 `retry_platform_async_run` access audit 如何组成一份运营对账报告。
 
-demo 现在也会输出 `Exported operation approval reports`，用于观察 `OperationApprovalRecord` 如何汇总为 approval records CSV、approval summary CSV 和 HTML 报告。运行 API 服务后，`FinTech Platform Console` 也会显示 `Operations Report Summary`、`Operation Approval Summary`、`Operations Run Rows` 和 `Approval Records` 只读区块。
+demo 现在也会输出 `Exported operation approval reports`，用于观察 `OperationApprovalRecord` 如何汇总为 approval records CSV、approval summary CSV 和 HTML 报告。运行 API 服务后，`FinTech Platform Console` 也会显示 `Operations Report Summary`、`Operation Approval Summary`、`Operations Run Rows`、`Pending Operation Approvals` 和 `Approval Records` 只读区块。
 
 demo 现在也会输出 `Pending operation approval flow`，用于观察 retry approval request 如何先创建 `pending` approval，再通过 approve endpoint 流转为 `approved`，并在审批通过后把 failed async run 放回 `accepted`。
 
@@ -291,7 +292,7 @@ labs/fintech-platform/.test-data/demo_platform_api_investigation_cases.db
 
 ## 当前状态
 
-这个目录已经包含第一版综合平台设计、最小 orchestration、demo、综合报表导出、SQLite 持久化、历史运行报表、risk review 后续处理、教学版一致性检查、平台报表访问控制与访问审计、平台访问异常检测、平台访问异常调查工单、异步任务、运营控制台、retry 审批边界、运行报告与对账视角、operation approval record、operation approval report、console report views、ledger reconciliation report、operation approval state flow、operation approval HTTP endpoints、create operation approval HTTP endpoint、retry approval before execution，以及测试。阶段 8 以来的目标仍然是把已有实验组合成一个清晰的学习平台，而不是立即扩成生产级系统。
+这个目录已经包含第一版综合平台设计、最小 orchestration、demo、综合报表导出、SQLite 持久化、历史运行报表、risk review 后续处理、教学版一致性检查、平台报表访问控制与访问审计、平台访问异常检测、平台访问异常调查工单、异步任务、运营控制台、retry 审批边界、运行报告与对账视角、operation approval record、operation approval report、console report views、ledger reconciliation report、operation approval state flow、operation approval HTTP endpoints、create operation approval HTTP endpoint、retry approval before execution、operation approval console view，以及测试。阶段 8 以来的目标仍然是把已有实验组合成一个清晰的学习平台，而不是立即扩成生产级系统。
 
 阶段 9 已经开始在这个目录上做 API 服务化的第一步：
 
@@ -519,3 +520,13 @@ demo.py
 ```
 
 阶段 21 把 failed async run retry 改成先审批后执行：`POST /platform/async-payment-runs/{run_id}/retry` 现在只校验 failed run 并创建 pending operation approval，返回 `202 Accepted` 风格响应，不直接把 run 改成 `accepted`；`PATCH /platform/operation-approvals/{approval_id}/approve` 在审批 retry approval 时才执行 `failed -> accepted`，并写入 `retry_platform_async_run` execution access audit。console retry form 现在只创建 pending approval，不直接执行 retry。
+
+阶段 22 第一版已完成：
+
+```text
+docs/35-stage-22-operation-approval-console-view.md
+platform_api_app.py
+test_platform_api_app.py
+```
+
+阶段 22 在 `FinTech Platform Console` 新增 `Pending Operation Approvals` 只读区块，展示 pending approval 的 `approval_id`、`operation_type`、`operation_id`、关联 `async_status`、申请人、申请理由和申请时间。页面 summary 也新增 `Pending approvals` 计数。当前不在 console 增加 approve/reject 按钮，也不做分页、排序、IAM、通知或 SLA。
