@@ -1,6 +1,6 @@
 # docs 文档入口
 
-这个目录保存 FinTech 学习笔记、阶段计划和阶段总结。当前文档已经比较多，阅读时不建议从文件名 01 一路顺读到 33，而应按目标选择路径。
+这个目录保存 FinTech 学习笔记、阶段计划和阶段总结。当前文档已经比较多，阅读时不建议从文件名 01 一路顺读到 34，而应按目标选择路径。
 
 ## 推荐阅读路径
 
@@ -32,6 +32,7 @@
 12. [31-stage-18-operation-approval-state-flow.md](31-stage-18-operation-approval-state-flow.md)：operation approval state flow。
 13. [32-stage-19-operation-approval-http-endpoints.md](32-stage-19-operation-approval-http-endpoints.md)：operation approval HTTP 查询和 approve/reject endpoints。
 14. [33-stage-20-create-operation-approval-http-endpoint.md](33-stage-20-create-operation-approval-http-endpoint.md)：创建 pending operation approval 的 HTTP endpoint。
+15. [34-stage-21-retry-approval-before-execution.md](34-stage-21-retry-approval-before-execution.md)：retry 先审批后执行。
 
 ### 路径 C：只看阶段计划和历史
 
@@ -56,6 +57,7 @@
 | [31-stage-18-operation-approval-state-flow.md](31-stage-18-operation-approval-state-flow.md) | operation approval state flow |
 | [32-stage-19-operation-approval-http-endpoints.md](32-stage-19-operation-approval-http-endpoints.md) | operation approval HTTP endpoints |
 | [33-stage-20-create-operation-approval-http-endpoint.md](33-stage-20-create-operation-approval-http-endpoint.md) | create operation approval HTTP endpoint |
+| [34-stage-21-retry-approval-before-execution.md](34-stage-21-retry-approval-before-execution.md) | retry approval before execution |
 
 ## 当前平台能力地图
 
@@ -94,16 +96,15 @@ POST /platform/async-payment-runs
 
 ```text
 failed async run
--> retry request
--> actor + reason
--> approved_by + approval_reason
--> separation of duties check
--> operation approval record pending / approved / rejected
--> access audit granted / denied
+-> retry approval request
+-> operation approval record pending
+-> approve / reject approval
+-> approval access audit granted / denied
+-> retry execution access audit
 -> failed -> accepted
 ```
 
-这个流程回答：高影响操作为什么不能只靠一个按钮，需要操作人、审批人、确认文本、结构化审批记录、状态流转和访问审计。
+这个流程回答：高影响操作为什么不能只靠一个按钮，需要把申请、审批和执行拆开，并留下结构化审批记录与访问审计。
 
 ### 访问异常和调查流程
 
@@ -191,7 +192,7 @@ platform / wallet balance snapshot
 
 ## 下一步候选方向
 
-1. 把 retry API 改成先创建 pending approval，审批通过后再执行 retry。
-2. 把 operation approval HTTP endpoint 接入 console 的只读筛选。
-3. 给 operation approval 列表增加分页和排序。
-4. 增加 approval 与 async run 的只读关联视图。
+1. 把 operation approval HTTP endpoint 接入 console 的只读筛选。
+2. 给 operation approval 列表增加分页和排序。
+3. 增加 approval 与 async run 的只读关联视图。
+4. 为 pending approval 增加过期或取消状态。

@@ -30,6 +30,7 @@ from platform_api_service import (
     service_error_response,
 )
 from platform_async_service import (  # noqa: E402
+    ASYNC_RUN_FAILED,
     PlatformAsyncRun,
     PlatformAsyncRunStoreError,
     PlatformAsyncWorker,
@@ -111,7 +112,6 @@ PLATFORM_API_INVESTIGATION_CASES_TARGET = (
 PLATFORM_OPERATION_APPROVALS_TARGET = "fintech_platform_operation_approvals"
 PLATFORM_CONSOLE_TARGET = "fintech_platform_api_console"
 RETRY_FAILED_ASYNC_RUN_CONFIRMATION = "retry_failed_async_run"
-APPROVE_RETRY_FAILED_ASYNC_RUN_CONFIRMATION = "approve_retry_failed_async_run"
 ANONYMOUS_API_CLIENT = "anonymous_api_client"
 
 
@@ -138,9 +138,6 @@ class RetryAsyncRunRequest(BaseModel):
     actor: str | None = None
     reason: str | None = None
     confirmation: str | None = None
-    approved_by: str | None = None
-    approval_reason: str | None = None
-    approval_confirmation: str | None = None
 
 
 class StartInvestigationRequest(BaseModel):
@@ -458,37 +455,32 @@ def create_app(
         )
         return _async_run_response(app, run)
 
-    @app.post("/platform/async-payment-runs/{run_id}/retry")
+    @app.post(
+        "/platform/async-payment-runs/{run_id}/retry",
+        status_code=status.HTTP_202_ACCEPTED,
+    )
     def retry_async_payment_run(
         run_id: str,
         request: RetryAsyncRunRequest,
         async_store: SQLitePlatformAsyncRunStore = Depends(get_async_store),
     ) -> dict:
         try:
-            run = _retry_async_run(
+            record = _request_retry_async_run_approval(
                 app,
                 async_store,
                 run_id,
                 actor=request.actor,
                 reason=request.reason,
                 confirmation=request.confirmation,
-                approved_by=request.approved_by,
-                approval_reason=request.approval_reason,
-                approval_confirmation=request.approval_confirmation,
             )
         except PlatformAsyncRunStoreError as error:
-            http_status = _status_for_async_run_store_error(error)
-            raise HTTPException(
-                status_code=http_status,
-                detail={
-                    "error": type(error).__name__,
-                    "message": str(error),
-                },
-            ) from error
+            raise _http_exception_from_async_run_store_error(error) from error
+        except OperationApprovalError as error:
+            raise _http_exception_from_operation_approval_error(error) from error
         finally:
             async_store.close()
 
-        return {"run": _async_run_response(app, run)}
+        return {"record": _operation_approval_record_response(record)}
 
     @app.post("/platform/async-payment-runs/{run_id}/retry-form")
     async def retry_async_payment_run_form(
@@ -500,18 +492,15 @@ def create_app(
         app.state.async_database_path.parent.mkdir(parents=True, exist_ok=True)
         async_store = SQLitePlatformAsyncRunStore(app.state.async_database_path)
         try:
-            _retry_async_run(
+            _request_retry_async_run_approval(
                 app,
                 async_store,
                 run_id,
                 actor=_form_value(form, "actor"),
                 reason=_form_value(form, "reason"),
                 confirmation=_form_value(form, "confirmation"),
-                approved_by=_form_value(form, "approved_by"),
-                approval_reason=_form_value(form, "approval_reason"),
-                approval_confirmation=_form_value(form, "approval_confirmation"),
             )
-        except PlatformAsyncRunStoreError as error:
+        except (OperationApprovalError, PlatformAsyncRunStoreError) as error:
             message = quote(str(error), safe="")
             return RedirectResponse(
                 url=f"/platform/view?retry_error={message}",
@@ -520,7 +509,7 @@ def create_app(
         finally:
             async_store.close()
         return RedirectResponse(
-            url="/platform/view?retry_status=success",
+            url="/platform/view?retry_status=pending_approval",
             status_code=status.HTTP_303_SEE_OTHER,
         )
 
@@ -743,13 +732,23 @@ def create_app(
         x_actor_id: str | None = Header(default=None),
     ) -> dict:
         store = _operation_approval_store(app)
+        retried_run: PlatformAsyncRun | None = None
         try:
+            existing = store.get_record(approval_id)
+            if existing.status != OPERATION_APPROVAL_PENDING:
+                raise OperationApprovalError(
+                    f"Cannot approve {existing.status} operation approval record"
+                )
+            if existing.operation_type == RETRY_PLATFORM_ASYNC_PAYMENT_RUN:
+                retried_run = _validate_retry_approval_can_execute(app, existing)
             record = store.approve_pending(
                 approval_id,
                 approved_by=request.decided_by,
                 approval_reason=request.decision_reason,
                 decided_at=_aware_timestamp(request.decided_at),
             )
+            if existing.operation_type == RETRY_PLATFORM_ASYNC_PAYMENT_RUN:
+                retried_run = _execute_approved_retry(app, record)
         except OperationApprovalError as error:
             _record_operation_approval_access_denial(
                 app,
@@ -759,6 +758,19 @@ def create_app(
                 error=error,
             )
             raise _http_exception_from_operation_approval_error(error) from error
+        except PlatformAsyncRunStoreError as error:
+            _record_api_access(
+                app,
+                actor=_api_actor(x_actor_id),
+                permission=UPDATE_PLATFORM_OPERATION_APPROVALS,
+                target=_operation_approval_target(approval_id),
+                outcome="denied",
+                reason=(
+                    f"{_status_for_async_run_store_error(error)} "
+                    f"{type(error).__name__}: {error}"
+                ),
+            )
+            raise _http_exception_from_async_run_store_error(error) from error
         finally:
             store.close()
         _record_api_access(
@@ -769,7 +781,10 @@ def create_app(
             outcome="granted",
             reason="approved",
         )
-        return {"record": _operation_approval_record_response(record)}
+        response = {"record": _operation_approval_record_response(record)}
+        if retried_run is not None:
+            response["run"] = _async_run_response(app, retried_run)
+        return response
 
     @app.patch("/platform/operation-approvals/{approval_id}/reject")
     def reject_operation_approval(
@@ -1166,6 +1181,18 @@ def _http_exception_from_operation_approval_error(
     )
 
 
+def _http_exception_from_async_run_store_error(
+    error: PlatformAsyncRunStoreError,
+) -> HTTPException:
+    return HTTPException(
+        status_code=_status_for_async_run_store_error(error),
+        detail={
+            "error": type(error).__name__,
+            "message": str(error),
+        },
+    )
+
+
 def _status_for_compliance_error(error: ComplianceAuditError) -> int:
     if str(error).startswith("Unknown investigation case:"):
         return status.HTTP_404_NOT_FOUND
@@ -1192,7 +1219,7 @@ def _status_for_async_run_store_error(error: PlatformAsyncRunStoreError) -> int:
     return status.HTTP_400_BAD_REQUEST
 
 
-def _retry_async_run(
+def _request_retry_async_run_approval(
     app: FastAPI,
     async_store: SQLitePlatformAsyncRunStore,
     run_id: str,
@@ -1200,10 +1227,7 @@ def _retry_async_run(
     actor: str | None,
     reason: str | None,
     confirmation: str | None,
-    approved_by: str | None,
-    approval_reason: str | None,
-    approval_confirmation: str | None,
-) -> PlatformAsyncRun:
+) -> OperationApprovalRecord:
     normalized_actor = _api_actor(actor)
     target = _async_payment_run_target(run_id)
     try:
@@ -1217,76 +1241,111 @@ def _retry_async_run(
             raise PlatformAsyncRunStoreError(
                 "confirmation must be retry_failed_async_run"
             )
-        normalized_approved_by = _required_request_text(approved_by, "approved_by")
-        normalized_approval_reason = _required_request_text(
-            approval_reason,
-            "approval_reason",
-        )
-        normalized_approval_confirmation = _required_request_text(
-            approval_confirmation,
-            "approval_confirmation",
-        )
-        if (
-            normalized_approval_confirmation
-            != APPROVE_RETRY_FAILED_ASYNC_RUN_CONFIRMATION
-        ):
+        run = async_store.get_run(run_id)
+        if run.status != ASYNC_RUN_FAILED:
             raise PlatformAsyncRunStoreError(
-                "approval_confirmation must be approve_retry_failed_async_run"
+                f"Cannot retry {run.status} async run: {run.run_id}"
             )
-        if normalized_approved_by == normalized_actor:
-            raise PlatformAsyncRunStoreError(
-                "retry approver must differ from actor"
-            )
-        run = async_store.retry_failed(
-            run_id,
-            retried_at=datetime.now(timezone.utc),
+        record = OperationApprovalRecord(
+            approval_id=str(uuid4()),
+            operation_type=RETRY_PLATFORM_ASYNC_PAYMENT_RUN,
+            operation_id=run.run_id,
+            target=target,
+            requested_by=normalized_actor,
+            request_reason=normalized_reason,
+            approved_by=None,
+            approval_reason=None,
+            status=OPERATION_APPROVAL_PENDING,
+            decision_reason="pending approval",
+            requested_at=datetime.now(timezone.utc),
+            decided_at=None,
         )
+        store = _operation_approval_store(app)
+        try:
+            store.save_record(record)
+        finally:
+            store.close()
     except PlatformAsyncRunStoreError as error:
         http_status = _status_for_async_run_store_error(error)
-        _record_retry_operation_approval(
-            app,
-            run_id=run_id,
-            target=target,
-            actor=actor,
-            reason=reason,
-            approved_by=approved_by,
-            approval_reason=approval_reason,
-            status=OPERATION_APPROVAL_REJECTED,
-            decision_reason=f"{http_status} {type(error).__name__}: {error}",
-        )
         _record_api_access(
             app,
             actor=normalized_actor,
-            permission=RETRY_PLATFORM_ASYNC_PAYMENT_RUN,
+            permission=CREATE_PLATFORM_OPERATION_APPROVALS,
             target=target,
             outcome="denied",
             reason=f"{http_status} {type(error).__name__}: {error}",
         )
         raise
+    except OperationApprovalError as error:
+        _record_api_access(
+            app,
+            actor=normalized_actor,
+            permission=CREATE_PLATFORM_OPERATION_APPROVALS,
+            target=target,
+            outcome="denied",
+            reason=(
+                f"{_status_for_operation_approval_error(error)} "
+                f"{type(error).__name__}: {error}"
+            ),
+        )
+        raise
     _record_api_access(
         app,
         actor=normalized_actor,
+        permission=CREATE_PLATFORM_OPERATION_APPROVALS,
+        target=_operation_approval_target(record.approval_id),
+        outcome="granted",
+        reason=f"requested retry approval for run_id={run.run_id}",
+    )
+    return record
+
+
+def _validate_retry_approval_can_execute(
+    app: FastAPI,
+    record: OperationApprovalRecord,
+) -> PlatformAsyncRun:
+    async_store = _async_run_store(app)
+    try:
+        run = async_store.get_run(record.operation_id)
+        if run.status != ASYNC_RUN_FAILED:
+            raise PlatformAsyncRunStoreError(
+                f"Cannot retry {run.status} async run: {run.run_id}"
+            )
+        return run
+    finally:
+        async_store.close()
+
+
+def _execute_approved_retry(
+    app: FastAPI,
+    record: OperationApprovalRecord,
+) -> PlatformAsyncRun:
+    async_store = _async_run_store(app)
+    try:
+        run = async_store.retry_failed(
+            record.operation_id,
+            retried_at=datetime.now(timezone.utc),
+        )
+    finally:
+        async_store.close()
+    _record_api_access(
+        app,
+        actor=_api_actor(record.approved_by),
         permission=RETRY_PLATFORM_ASYNC_PAYMENT_RUN,
-        target=target,
+        target=record.target,
         outcome="granted",
         reason=(
-            f"reason={normalized_reason}; "
-            f"approved_by={normalized_approved_by}; "
-            f"approval_reason={normalized_approval_reason}"
+            f"approval_id={record.approval_id}; "
+            f"requested_by={record.requested_by}; "
+            f"approval_reason={record.approval_reason}"
         ),
     )
-    _record_retry_operation_approval(
-        app,
-        run_id=run_id,
-        target=target,
-        actor=normalized_actor,
-        reason=normalized_reason,
-        approved_by=normalized_approved_by,
-        approval_reason=normalized_approval_reason,
-        status=OPERATION_APPROVAL_APPROVED,
-        decision_reason="approved",
-    )
     return run
+
+
+def _async_run_store(app: FastAPI) -> SQLitePlatformAsyncRunStore:
+    app.state.async_database_path.parent.mkdir(parents=True, exist_ok=True)
+    return SQLitePlatformAsyncRunStore(app.state.async_database_path)
 
 
 def _form_value(form: dict[str, list[str]], field_name: str) -> str | None:
@@ -1303,47 +1362,6 @@ def _required_request_text(value: str | None, field_name: str) -> str:
     if not normalized:
         raise PlatformAsyncRunStoreError(f"{field_name} is required")
     return normalized
-
-
-def _record_retry_operation_approval(
-    app: FastAPI,
-    *,
-    run_id: str,
-    target: str,
-    actor: str | None,
-    reason: str | None,
-    approved_by: str | None,
-    approval_reason: str | None,
-    status: str,
-    decision_reason: str,
-) -> None:
-    occurred_at = datetime.now(timezone.utc)
-    store = _operation_approval_store(app)
-    try:
-        store.save_record(
-            OperationApprovalRecord(
-                approval_id=str(uuid4()),
-                operation_type=RETRY_PLATFORM_ASYNC_PAYMENT_RUN,
-                operation_id=run_id,
-                target=target,
-                requested_by=_api_actor(actor),
-                request_reason=_approval_text_or_default(
-                    reason,
-                    "missing request reason",
-                ),
-                approved_by=_api_actor(approved_by),
-                approval_reason=_approval_text_or_default(
-                    approval_reason,
-                    "missing approval reason",
-                ),
-                status=status,
-                decision_reason=decision_reason,
-                requested_at=occurred_at,
-                decided_at=occurred_at,
-            )
-        )
-    finally:
-        store.close()
 
 
 def _approval_text_or_default(value: str | None, default: str) -> str:
@@ -1958,8 +1976,12 @@ def _retry_feedback_html(
             f"Retry failed: {html.escape(retry_error)}"
             "</div>"
         )
-    if retry_status == "success":
-        return '<div class="notice notice-success">Retry accepted.</div>'
+    if retry_status == "pending_approval":
+        return (
+            '<div class="notice notice-success">'
+            "Retry approval request created."
+            "</div>"
+        )
     return ""
 
 
@@ -2019,19 +2041,12 @@ def _retry_form_html(run_id: str) -> str:
     escaped_run_id = html.escape(run_id, quote=True)
     action = f"/platform/async-payment-runs/{escaped_run_id}/retry-form"
     confirmation = html.escape(RETRY_FAILED_ASYNC_RUN_CONFIRMATION, quote=True)
-    approval_confirmation = html.escape(
-        APPROVE_RETRY_FAILED_ASYNC_RUN_CONFIRMATION,
-        quote=True,
-    )
     return f"""
       <form class="retry-form" method="post" action="{action}">
         <input name="actor" type="text" placeholder="actor" required>
         <input name="reason" type="text" placeholder="reason" required>
         <input name="confirmation" type="text" value="{confirmation}" required>
-        <input name="approved_by" type="text" placeholder="approved_by" required>
-        <input name="approval_reason" type="text" placeholder="approval_reason" required>
-        <input name="approval_confirmation" type="text" value="{approval_confirmation}" required>
-        <button type="submit">Retry</button>
+        <button type="submit">Request Approval</button>
       </form>
     """
 

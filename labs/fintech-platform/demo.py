@@ -311,16 +311,27 @@ def main() -> None:
             "/platform/view",
             headers={"x-actor-id": "console_reader_001"},
         ).text
-        retry_failed_async_body = client.post(
+        retry_approval_request_body = client.post(
             "/platform/async-payment-runs/run_demo_async_failed_001/retry",
             json={
                 "actor": "ops_user_001",
                 "reason": "Retry demo failed async run after review",
                 "confirmation": "retry_failed_async_run",
-                "approved_by": "ops_manager_001",
-                "approval_reason": "Approved demo retry after review",
-                "approval_confirmation": "approve_retry_failed_async_run",
             },
+        ).json()
+        retry_approval_id = retry_approval_request_body["record"]["approval_id"]
+        retry_pending_approval_body = client.get(
+            f"/platform/operation-approvals/{retry_approval_id}",
+            headers={"x-actor-id": "approval_viewer_001"},
+        ).json()
+        approved_retry_body = client.patch(
+            f"/platform/operation-approvals/{retry_approval_id}/approve",
+            json={
+                "decided_by": "ops_manager_001",
+                "decision_reason": "Approved demo retry after review",
+                "decided_at": "2026-05-18T12:50:00Z",
+            },
+            headers={"x-actor-id": "ops_manager_001"},
         ).json()
 
     print("\nAsync payment run via FastAPI")
@@ -353,9 +364,14 @@ def main() -> None:
         f"{'run_demo_async_failed_001' in console_body}"
     )
     print(
-        f"- Retry approval API result: "
-        f"{retry_failed_async_body['run']['run_id']} "
-        f"status={retry_failed_async_body['run']['status']}"
+        f"- Retry approval request: "
+        f"{retry_pending_approval_body['record']['approval_id']} "
+        f"status={retry_pending_approval_body['record']['status']}"
+    )
+    print(
+        f"- Retry approval decision: "
+        f"approval_status={approved_retry_body['record']['status']} "
+        f"async_status={approved_retry_body['run']['status']}"
     )
 
     async_access_store = SQLiteAccessAuditStore(api_access_audit_database_path)
@@ -395,46 +411,13 @@ def main() -> None:
         print(f"- {ledger_reconciliation_paths.findings_csv}")
         print(f"- {ledger_reconciliation_paths.html_report}")
 
-        operation_approval_store.close()
-        with TestClient(api_app) as client:
-            client.post(
-                "/platform/operation-approvals",
-                json={
-                    "approval_id": "approval_demo_pending_retry_001",
-                    "operation_type": "retry_platform_async_run",
-                    "operation_id": "run_demo_async_pending_retry_001",
-                    "target": (
-                        "fintech_platform_api_async_payment_runs/"
-                        "run_demo_async_pending_retry_001"
-                    ),
-                    "requested_by": "ops_user_pending_001",
-                    "request_reason": "Request retry approval before execution",
-                    "requested_at": "2026-05-18T12:45:00Z",
-                },
-                headers={"x-actor-id": "ops_user_pending_001"},
-            )
-            pending_approval_body = client.get(
-                "/platform/operation-approvals/approval_demo_pending_retry_001",
-                headers={"x-actor-id": "approval_viewer_001"},
-            ).json()
-            approved_pending_body = client.patch(
-                "/platform/operation-approvals/approval_demo_pending_retry_001/approve",
-                json={
-                    "decided_by": "ops_manager_pending_001",
-                    "decision_reason": "Approved pending retry request after review",
-                    "decided_at": "2026-05-18T12:50:00Z",
-                },
-                headers={"x-actor-id": "ops_manager_pending_001"},
-            ).json()
-        operation_approval_store = SQLiteOperationApprovalStore(
-            operation_approval_database_path
-        )
         print("\nPending operation approval flow")
         print(
-            f"- before={pending_approval_body['record']['status']} "
-            f"after={approved_pending_body['record']['status']} "
-            f"requested_by={approved_pending_body['record']['requested_by']} "
-            f"approved_by={approved_pending_body['record']['approved_by']}"
+            f"- before={retry_pending_approval_body['record']['status']} "
+            f"after={approved_retry_body['record']['status']} "
+            f"requested_by={approved_retry_body['record']['requested_by']} "
+            f"approved_by={approved_retry_body['record']['approved_by']} "
+            f"async_status={approved_retry_body['run']['status']}"
         )
 
         print("\nOperation approval records")
