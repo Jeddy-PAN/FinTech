@@ -1882,6 +1882,67 @@ def _operation_approval_platform_result_rows(
     return [(field, platform_result.get(field) or "") for field in fields]
 
 
+def _operation_approval_lifecycle_timeline_rows(
+    record: OperationApprovalRecord,
+    access_events: tuple[AuditAccessEvent, ...],
+) -> list[tuple[object, ...]]:
+    rows: list[tuple[datetime, str, str, str, str]] = [
+        (
+            record.requested_at,
+            "approval_requested",
+            record.requested_by,
+            OPERATION_APPROVAL_PENDING,
+            record.request_reason,
+        )
+    ]
+    if record.decided_at is not None:
+        rows.append(
+            (
+                record.decided_at,
+                "approval_decided",
+                record.approved_by or "",
+                record.status,
+                record.approval_reason or record.decision_reason,
+            )
+        )
+    for event in _retry_execution_events_for_approval(record, access_events):
+        rows.append(
+            (
+                event.occurred_at,
+                "retry_execution",
+                event.actor,
+                event.outcome,
+                event.reason,
+            )
+        )
+    return [
+        (
+            occurred_at.isoformat(),
+            event_type,
+            actor,
+            outcome,
+            reason,
+        )
+        for occurred_at, event_type, actor, outcome, reason in sorted(
+            rows,
+            key=lambda row: (row[0], row[1], row[2]),
+        )
+    ]
+
+
+def _retry_execution_events_for_approval(
+    record: OperationApprovalRecord,
+    access_events: tuple[AuditAccessEvent, ...],
+) -> tuple[AuditAccessEvent, ...]:
+    approval_marker = f"approval_id={record.approval_id}"
+    return tuple(
+        event
+        for event in access_events
+        if event.permission == RETRY_PLATFORM_ASYNC_PAYMENT_RUN
+        and approval_marker in event.reason
+    )
+
+
 def _render_operation_approval_detail_html(
     app: FastAPI,
     record: OperationApprovalRecord,
@@ -1890,6 +1951,10 @@ def _render_operation_approval_detail_html(
     platform_result = None
     if async_run is not None and async_run.status == "completed":
         platform_result = _platform_result_or_none(app, async_run.run_id)
+    lifecycle_rows = _operation_approval_lifecycle_timeline_rows(
+        record,
+        _access_events(app),
+    )
 
     return f"""<!doctype html>
 <html lang="en">
@@ -1964,6 +2029,15 @@ def _render_operation_approval_detail_html(
         ["field", "value"],
         _operation_approval_detail_rows(record),
         empty_message="No approval record is available.",
+    )}
+  </div>
+
+  <div class="section">
+    <h2>Lifecycle Timeline</h2>
+    {_table(
+        ["occurred_at", "event_type", "actor", "outcome", "reason"],
+        lifecycle_rows,
+        empty_message="No lifecycle events are available.",
     )}
   </div>
 

@@ -230,6 +230,7 @@ investigation_case
 28. 已完成阶段 24 第一版：operation approval 支持只读详情页，可查看 approval、关联 async run 和 completed platform result 摘要。
 29. 已完成阶段 25 第一版：operation approval 支持 cancelled / expired 生命周期状态。
 30. 已完成阶段 26 第一版：console 支持 pending operation approval approve / reject 表单。
+31. 已完成阶段 27 第一版：operation approval 详情页新增只读 lifecycle timeline。
 
 ## 运行示例
 
@@ -296,7 +297,7 @@ labs/fintech-platform/.test-data/demo_platform_api_investigation_cases.db
 
 ## 当前状态
 
-这个目录已经包含第一版综合平台设计、最小 orchestration、demo、综合报表导出、SQLite 持久化、历史运行报表、risk review 后续处理、教学版一致性检查、平台报表访问控制与访问审计、平台访问异常检测、平台访问异常调查工单、异步任务、运营控制台、retry 审批边界、运行报告与对账视角、operation approval record、operation approval report、console report views、ledger reconciliation report、operation approval state flow、operation approval HTTP endpoints、create operation approval HTTP endpoint、retry approval before execution、operation approval console view、operation approval pagination and sorting、operation approval detail view、operation approval lifecycle、console approval actions，以及测试。阶段 8 以来的目标仍然是把已有实验组合成一个清晰的学习平台，而不是立即扩成生产级系统。
+这个目录已经包含第一版综合平台设计、最小 orchestration、demo、综合报表导出、SQLite 持久化、历史运行报表、risk review 后续处理、教学版一致性检查、平台报表访问控制与访问审计、平台访问异常检测、平台访问异常调查工单、异步任务、运营控制台、retry 审批边界、运行报告与对账视角、operation approval record、operation approval report、console report views、ledger reconciliation report、operation approval state flow、operation approval HTTP endpoints、create operation approval HTTP endpoint、retry approval before execution、operation approval console view、operation approval pagination and sorting、operation approval detail view、operation approval lifecycle、console approval actions、approval lifecycle timeline，以及测试。阶段 8 以来的目标仍然是把已有实验组合成一个清晰的学习平台，而不是立即扩成生产级系统。
 
 阶段 9 已经开始在这个目录上做 API 服务化的第一步：
 
@@ -581,3 +582,13 @@ test_platform_api_app.py
 ```
 
 阶段 26 在 `FinTech Platform Console` 的 `Pending Operation Approvals` 表格中新增 approve / reject 表单，并新增 `POST /platform/operation-approvals/{approval_id}/approve-form` 与 `POST /platform/operation-approvals/{approval_id}/reject-form` 作为浏览器表单适配层。表单要求 `decided_by`、`decision_reason`、`decided_at` 和 confirmation；成功或失败都会回到 console 并显示反馈。JSON API 和 form endpoint 复用同一套内部 approve/reject 逻辑，因此 approve retry approval 仍会执行 `failed -> accepted`，reject 不会执行 retry。当前仍不做 cancel / expire 表单、真实 IAM、登录、CSRF、批量审批、认领、锁定、通知或 SLA。
+
+阶段 27 第一版已完成：
+
+```text
+docs/40-stage-27-approval-lifecycle-timeline.md
+platform_api_app.py
+test_platform_api_app.py
+```
+
+阶段 27 在 `GET /platform/operation-approvals/{approval_id}/view` 只读详情页新增 `Lifecycle Timeline` 区块，按时间展示 `approval_requested`、`approval_decided` 和匹配 `approval_id=...` 的 `retry_execution` access audit。该区块用于解释一条 approval 从申请、决策到 retry execution 的轨迹；当前仍不新增数据库表、单独 timeline endpoint、详情页操作按钮、真实 IAM、登录、session 或 CSRF。
