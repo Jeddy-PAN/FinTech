@@ -7,10 +7,14 @@ from pathlib import Path
 
 
 OPERATION_APPROVAL_APPROVED = "approved"
+OPERATION_APPROVAL_CANCELLED = "cancelled"
+OPERATION_APPROVAL_EXPIRED = "expired"
 OPERATION_APPROVAL_PENDING = "pending"
 OPERATION_APPROVAL_REJECTED = "rejected"
 OPERATION_APPROVAL_STATUSES = {
     OPERATION_APPROVAL_APPROVED,
+    OPERATION_APPROVAL_CANCELLED,
+    OPERATION_APPROVAL_EXPIRED,
     OPERATION_APPROVAL_PENDING,
     OPERATION_APPROVAL_REJECTED,
 }
@@ -165,6 +169,66 @@ class SQLiteOperationApprovalStore:
         self.save_record(rejected)
         return rejected
 
+    def cancel_pending(
+        self,
+        approval_id: str,
+        *,
+        cancelled_by: str,
+        cancellation_reason: str,
+        decided_at: datetime,
+    ) -> OperationApprovalRecord:
+        existing = self.get_record(approval_id)
+        if existing.status != OPERATION_APPROVAL_PENDING:
+            raise OperationApprovalError(
+                f"Cannot cancel {existing.status} operation approval record"
+            )
+        cancelled = OperationApprovalRecord(
+            approval_id=existing.approval_id,
+            operation_type=existing.operation_type,
+            operation_id=existing.operation_id,
+            target=existing.target,
+            requested_by=existing.requested_by,
+            request_reason=existing.request_reason,
+            approved_by=cancelled_by,
+            approval_reason=cancellation_reason,
+            status=OPERATION_APPROVAL_CANCELLED,
+            decision_reason="cancelled",
+            requested_at=existing.requested_at,
+            decided_at=decided_at,
+        )
+        self.save_record(cancelled)
+        return cancelled
+
+    def expire_pending(
+        self,
+        approval_id: str,
+        *,
+        expired_by: str,
+        expiration_reason: str,
+        decided_at: datetime,
+    ) -> OperationApprovalRecord:
+        existing = self.get_record(approval_id)
+        if existing.status != OPERATION_APPROVAL_PENDING:
+            raise OperationApprovalError(
+                f"Cannot expire {existing.status} operation approval record"
+            )
+        expired = OperationApprovalRecord(
+            approval_id=existing.approval_id,
+            operation_type=existing.operation_type,
+            operation_id=existing.operation_id,
+            target=existing.target,
+            requested_by=existing.requested_by,
+            request_reason=existing.request_reason,
+            approved_by=expired_by,
+            approval_reason=expiration_reason,
+            status=OPERATION_APPROVAL_EXPIRED,
+            decision_reason="expired",
+            requested_at=existing.requested_at,
+            decided_at=decided_at,
+        )
+        self.save_record(expired)
+        return expired
+
     def get_record(self, approval_id: str) -> OperationApprovalRecord:
         normalized_approval_id = _require_text(approval_id, "approval_id")
         row = self._connection.execute(
@@ -238,7 +302,7 @@ class SQLiteOperationApprovalStore:
                     request_reason TEXT NOT NULL,
                     approved_by TEXT,
                     approval_reason TEXT,
-                    status TEXT NOT NULL CHECK (status IN ('pending', 'approved', 'rejected')),
+                    status TEXT NOT NULL CHECK (status IN ('pending', 'approved', 'rejected', 'cancelled', 'expired')),
                     decision_reason TEXT NOT NULL,
                     requested_at TEXT NOT NULL,
                     decided_at TEXT
@@ -265,6 +329,8 @@ class SQLiteOperationApprovalStore:
         schema_sql = row["sql"] or ""
         if (
             "'pending'" in schema_sql
+            and "'cancelled'" in schema_sql
+            and "'expired'" in schema_sql
             and "approved_by TEXT NOT NULL" not in schema_sql
             and "approval_reason TEXT NOT NULL" not in schema_sql
             and "decided_at TEXT NOT NULL" not in schema_sql
@@ -284,7 +350,7 @@ class SQLiteOperationApprovalStore:
                     request_reason TEXT NOT NULL,
                     approved_by TEXT,
                     approval_reason TEXT,
-                    status TEXT NOT NULL CHECK (status IN ('pending', 'approved', 'rejected')),
+                    status TEXT NOT NULL CHECK (status IN ('pending', 'approved', 'rejected', 'cancelled', 'expired')),
                     decision_reason TEXT NOT NULL,
                     requested_at TEXT NOT NULL,
                     decided_at TEXT

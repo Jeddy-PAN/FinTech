@@ -45,6 +45,8 @@ from platform_api_investigation_cases import (  # noqa: E402
 )
 from platform_operation_approval import (  # noqa: E402
     OPERATION_APPROVAL_APPROVED,
+    OPERATION_APPROVAL_CANCELLED,
+    OPERATION_APPROVAL_EXPIRED,
     OPERATION_APPROVAL_PENDING,
     OPERATION_APPROVAL_REJECTED,
     OPERATION_APPROVAL_SORT_FIELDS,
@@ -873,6 +875,76 @@ def create_app(
             target=_operation_approval_target(approval_id),
             outcome="granted",
             reason="rejected",
+        )
+        return {"record": _operation_approval_record_response(record)}
+
+    @app.patch("/platform/operation-approvals/{approval_id}/cancel")
+    def cancel_operation_approval(
+        approval_id: str,
+        request: DecideOperationApprovalRequest,
+        x_actor_id: str | None = Header(default=None),
+    ) -> dict:
+        store = _operation_approval_store(app)
+        try:
+            record = store.cancel_pending(
+                approval_id,
+                cancelled_by=request.decided_by,
+                cancellation_reason=request.decision_reason,
+                decided_at=_aware_timestamp(request.decided_at),
+            )
+        except OperationApprovalError as error:
+            _record_operation_approval_access_denial(
+                app,
+                approval_id=approval_id,
+                actor=x_actor_id,
+                permission=UPDATE_PLATFORM_OPERATION_APPROVALS,
+                error=error,
+            )
+            raise _http_exception_from_operation_approval_error(error) from error
+        finally:
+            store.close()
+        _record_api_access(
+            app,
+            actor=_api_actor(x_actor_id),
+            permission=UPDATE_PLATFORM_OPERATION_APPROVALS,
+            target=_operation_approval_target(approval_id),
+            outcome="granted",
+            reason="cancelled",
+        )
+        return {"record": _operation_approval_record_response(record)}
+
+    @app.patch("/platform/operation-approvals/{approval_id}/expire")
+    def expire_operation_approval(
+        approval_id: str,
+        request: DecideOperationApprovalRequest,
+        x_actor_id: str | None = Header(default=None),
+    ) -> dict:
+        store = _operation_approval_store(app)
+        try:
+            record = store.expire_pending(
+                approval_id,
+                expired_by=request.decided_by,
+                expiration_reason=request.decision_reason,
+                decided_at=_aware_timestamp(request.decided_at),
+            )
+        except OperationApprovalError as error:
+            _record_operation_approval_access_denial(
+                app,
+                approval_id=approval_id,
+                actor=x_actor_id,
+                permission=UPDATE_PLATFORM_OPERATION_APPROVALS,
+                error=error,
+            )
+            raise _http_exception_from_operation_approval_error(error) from error
+        finally:
+            store.close()
+        _record_api_access(
+            app,
+            actor=_api_actor(x_actor_id),
+            permission=UPDATE_PLATFORM_OPERATION_APPROVALS,
+            target=_operation_approval_target(approval_id),
+            outcome="granted",
+            reason="expired",
         )
         return {"record": _operation_approval_record_response(record)}
 
@@ -1836,6 +1908,11 @@ def _render_platform_console_html(
         ),
         ("Approval records", str(len(operation_approval_report.records))),
         ("Pending approvals", str(operation_approval_report.summary.pending_count)),
+        (
+            "Cancelled approvals",
+            str(operation_approval_report.summary.cancelled_count),
+        ),
+        ("Expired approvals", str(operation_approval_report.summary.expired_count)),
     ]
 
     return f"""<!doctype html>
@@ -2432,6 +2509,8 @@ def _approval_summary_rows(summary) -> list[tuple[object, ...]]:
         ("pending_count", summary.pending_count),
         ("approved_count", summary.approved_count),
         ("rejected_count", summary.rejected_count),
+        ("cancelled_count", summary.cancelled_count),
+        ("expired_count", summary.expired_count),
         ("retry_operation_count", summary.retry_operation_count),
         ("self_approval_rejected_count", summary.self_approval_rejected_count),
     ]

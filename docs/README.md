@@ -36,6 +36,7 @@
 16. [35-stage-22-operation-approval-console-view.md](35-stage-22-operation-approval-console-view.md)：pending operation approval console 只读视图。
 17. [36-stage-23-operation-approval-pagination-sorting.md](36-stage-23-operation-approval-pagination-sorting.md)：operation approval 列表分页和排序。
 18. [37-stage-24-operation-approval-detail-view.md](37-stage-24-operation-approval-detail-view.md)：operation approval 只读详情视图。
+19. [38-stage-25-operation-approval-lifecycle.md](38-stage-25-operation-approval-lifecycle.md)：operation approval 取消和过期生命周期。
 
 ### 路径 C：只看阶段计划和历史
 
@@ -64,6 +65,7 @@
 | [35-stage-22-operation-approval-console-view.md](35-stage-22-operation-approval-console-view.md) | operation approval console view |
 | [36-stage-23-operation-approval-pagination-sorting.md](36-stage-23-operation-approval-pagination-sorting.md) | operation approval pagination and sorting |
 | [37-stage-24-operation-approval-detail-view.md](37-stage-24-operation-approval-detail-view.md) | operation approval detail view |
+| [38-stage-25-operation-approval-lifecycle.md](38-stage-25-operation-approval-lifecycle.md) | operation approval lifecycle |
 
 ## 当前平台能力地图
 
@@ -159,11 +161,11 @@ OperationApprovalRecord
 -> limit / offset / sort_by / sort_order
 -> GET /platform/operation-approvals/{approval_id}
 -> GET /platform/operation-approvals/{approval_id}/view
--> PATCH approve / reject
+-> PATCH approve / reject / cancel / expire
 -> access audit granted / denied
 ```
 
-这个流程回答：pending approval 如何通过 API 被创建、分页查看、排序查看、详情查看和流转到 approved / rejected，并留下访问审计。
+这个流程回答：pending approval 如何通过 API 被创建、分页查看、排序查看、详情查看和流转到 approved / rejected / cancelled / expired，并留下访问审计。
 
 ### Console 报表视图
 
@@ -175,6 +177,7 @@ OperationApprovalReport
 -> recent operations / approval rows
 -> pending approval rows with async status
 -> approval detail links
+-> cancelled / expired approval counts
 ```
 
 这个流程回答：运营人员如何在同一个页面里观察 async run、对账摘要、retry 审计、审批记录和待审批 approval，并能点进只读详情页查看上下文。
@@ -202,7 +205,7 @@ platform / wallet balance snapshot
 
 ## 下一步候选方向
 
-1. 为 pending approval 增加过期或取消状态。
-2. 在保持 maker-checker 边界的前提下，设计 console approve / reject 的表单和权限约束。
+1. 在保持 maker-checker 边界的前提下，设计 console approve / reject 的表单和权限约束。
+2. 给 approval detail view 增加更明确的 lifecycle timeline。
 3. 为 operation approval 查询增加更明确的总数统计或 cursor pagination。
 4. 把 detail view 中的 async run 和 platform result 链接到更完整的只读详情页。

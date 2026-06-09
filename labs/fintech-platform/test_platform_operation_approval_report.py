@@ -6,6 +6,8 @@ from uuid import uuid4
 
 from platform_operation_approval import (
     OPERATION_APPROVAL_APPROVED,
+    OPERATION_APPROVAL_CANCELLED,
+    OPERATION_APPROVAL_EXPIRED,
     OPERATION_APPROVAL_PENDING,
     OPERATION_APPROVAL_REJECTED,
     RETRY_PLATFORM_ASYNC_RUN_OPERATION,
@@ -36,14 +38,30 @@ def test_operation_approval_report_summarizes_approval_records() -> None:
                 requested_by="ops_user_001",
                 approved_by="ops_user_001",
             ),
+            _approval_record(
+                "approval_cancelled_001",
+                status=OPERATION_APPROVAL_CANCELLED,
+                approved_by="ops_user_001",
+                approval_reason="Requester withdrew retry request",
+                decision_reason="cancelled",
+            ),
+            _approval_record(
+                "approval_expired_001",
+                status=OPERATION_APPROVAL_EXPIRED,
+                approved_by="system_scheduler",
+                approval_reason="Approval request exceeded review window",
+                decision_reason="expired",
+            ),
         )
     )
 
-    assert report.summary.total_record_count == 4
+    assert report.summary.total_record_count == 6
     assert report.summary.pending_count == 1
     assert report.summary.approved_count == 2
     assert report.summary.rejected_count == 1
-    assert report.summary.retry_operation_count == 4
+    assert report.summary.cancelled_count == 1
+    assert report.summary.expired_count == 1
+    assert report.summary.retry_operation_count == 6
     assert report.summary.self_approval_rejected_count == 1
 
 

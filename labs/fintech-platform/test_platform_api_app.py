@@ -23,6 +23,8 @@ from platform_api_app import (
 from platform_async_service import PlatformAsyncWorker, SQLitePlatformAsyncRunStore
 from platform_operation_approval import (
     OPERATION_APPROVAL_APPROVED,
+    OPERATION_APPROVAL_CANCELLED,
+    OPERATION_APPROVAL_EXPIRED,
     OPERATION_APPROVAL_PENDING,
     OPERATION_APPROVAL_REJECTED,
     OperationApprovalRecord,
@@ -1575,6 +1577,121 @@ def test_platform_api_rejects_pending_and_denies_invalid_transition() -> None:
         assert rejected.json()["record"]["status"] == OPERATION_APPROVAL_REJECTED
         assert duplicate.status_code == 409
         assert "Cannot approve rejected" in duplicate.json()["detail"]["message"]
+
+        events = [
+            event
+            for event in _access_events(access_audit_database_path)
+            if event.permission == UPDATE_PLATFORM_OPERATION_APPROVALS
+        ]
+        assert [event.outcome for event in events] == ["granted", "denied"]
+    finally:
+        client.close()
+        _remove_database(database_path)
+        _remove_database(access_audit_database_path)
+        _remove_database(async_database_path)
+        _remove_database(operation_approval_database_path)
+
+
+def test_platform_api_cancels_pending_operation_approval() -> None:
+    (
+        client,
+        database_path,
+        access_audit_database_path,
+        async_database_path,
+        operation_approval_database_path,
+    ) = _client_with_async_and_operation_approval()
+    try:
+        _save_pending_approval(operation_approval_database_path)
+
+        cancelled = client.patch(
+            "/platform/operation-approvals/approval_pending_001/cancel",
+            json={
+                "decided_by": "ops_user_001",
+                "decision_reason": "Requester withdrew retry request",
+                "decided_at": "2026-06-08T09:30:00Z",
+            },
+            headers={"x-actor-id": "ops_user_001"},
+        )
+        duplicate = client.patch(
+            "/platform/operation-approvals/approval_pending_001/approve",
+            json={
+                "decided_by": "ops_manager_001",
+                "decision_reason": "Late approval",
+                "decided_at": "2026-06-08T09:35:00Z",
+            },
+            headers={"x-actor-id": "ops_manager_001"},
+        )
+        listed = client.get(
+            "/platform/operation-approvals?status=cancelled",
+            headers={"x-actor-id": "approval_viewer_001"},
+        )
+
+        assert cancelled.status_code == 200
+        body = cancelled.json()["record"]
+        assert body["approval_id"] == "approval_pending_001"
+        assert body["status"] == OPERATION_APPROVAL_CANCELLED
+        assert body["approved_by"] == "ops_user_001"
+        assert body["approval_reason"] == "Requester withdrew retry request"
+        assert body["decision_reason"] == "cancelled"
+        assert body["decided_at"] == "2026-06-08T09:30:00+00:00"
+        assert duplicate.status_code == 409
+        assert "Cannot approve cancelled" in duplicate.json()["detail"]["message"]
+        assert listed.status_code == 200
+        assert listed.json()["records"][0]["status"] == OPERATION_APPROVAL_CANCELLED
+
+        events = [
+            event
+            for event in _access_events(access_audit_database_path)
+            if event.permission == UPDATE_PLATFORM_OPERATION_APPROVALS
+        ]
+        assert [event.outcome for event in events] == ["granted", "denied"]
+    finally:
+        client.close()
+        _remove_database(database_path)
+        _remove_database(access_audit_database_path)
+        _remove_database(async_database_path)
+        _remove_database(operation_approval_database_path)
+
+
+def test_platform_api_expires_pending_operation_approval() -> None:
+    (
+        client,
+        database_path,
+        access_audit_database_path,
+        async_database_path,
+        operation_approval_database_path,
+    ) = _client_with_async_and_operation_approval()
+    try:
+        _save_pending_approval(operation_approval_database_path)
+
+        expired = client.patch(
+            "/platform/operation-approvals/approval_pending_001/expire",
+            json={
+                "decided_by": "system_scheduler",
+                "decision_reason": "Approval request exceeded review window",
+                "decided_at": "2026-06-08T10:00:00Z",
+            },
+            headers={"x-actor-id": "system_scheduler"},
+        )
+        duplicate = client.patch(
+            "/platform/operation-approvals/approval_pending_001/reject",
+            json={
+                "decided_by": "ops_manager_001",
+                "decision_reason": "Late rejection",
+                "decided_at": "2026-06-08T10:05:00Z",
+            },
+            headers={"x-actor-id": "ops_manager_001"},
+        )
+
+        assert expired.status_code == 200
+        body = expired.json()["record"]
+        assert body["approval_id"] == "approval_pending_001"
+        assert body["status"] == OPERATION_APPROVAL_EXPIRED
+        assert body["approved_by"] == "system_scheduler"
+        assert body["approval_reason"] == "Approval request exceeded review window"
+        assert body["decision_reason"] == "expired"
+        assert duplicate.status_code == 409
+        assert "Cannot reject expired" in duplicate.json()["detail"]["message"]
 
         events = [
             event

@@ -333,6 +333,50 @@ def main() -> None:
             },
             headers={"x-actor-id": "ops_manager_001"},
         ).json()
+        cancelled_approval_body = client.post(
+            "/platform/operation-approvals",
+            json={
+                "approval_id": "approval_demo_cancelled_001",
+                "operation_type": "retry_platform_async_run",
+                "operation_id": "run_demo_cancelled_001",
+                "target": "fintech_platform_api_async_payment_runs/run_demo_cancelled_001",
+                "requested_by": "ops_user_002",
+                "request_reason": "Demo approval that will be cancelled",
+                "requested_at": "2026-05-18T12:55:00Z",
+            },
+            headers={"x-actor-id": "ops_user_002"},
+        ).json()
+        cancelled_approval_body = client.patch(
+            "/platform/operation-approvals/approval_demo_cancelled_001/cancel",
+            json={
+                "decided_by": "ops_user_002",
+                "decision_reason": "Requester withdrew demo approval",
+                "decided_at": "2026-05-18T12:56:00Z",
+            },
+            headers={"x-actor-id": "ops_user_002"},
+        ).json()
+        expired_approval_body = client.post(
+            "/platform/operation-approvals",
+            json={
+                "approval_id": "approval_demo_expired_001",
+                "operation_type": "retry_platform_async_run",
+                "operation_id": "run_demo_expired_001",
+                "target": "fintech_platform_api_async_payment_runs/run_demo_expired_001",
+                "requested_by": "ops_user_003",
+                "request_reason": "Demo approval that will expire",
+                "requested_at": "2026-05-18T12:57:00Z",
+            },
+            headers={"x-actor-id": "ops_user_003"},
+        ).json()
+        expired_approval_body = client.patch(
+            "/platform/operation-approvals/approval_demo_expired_001/expire",
+            json={
+                "decided_by": "system_scheduler",
+                "decision_reason": "Demo approval exceeded review window",
+                "decided_at": "2026-05-18T13:00:00Z",
+            },
+            headers={"x-actor-id": "system_scheduler"},
+        ).json()
 
     print("\nAsync payment run via FastAPI")
     print(f"- Create HTTP style: {accepted_body['http_status']}")
@@ -418,6 +462,14 @@ def main() -> None:
             f"requested_by={approved_retry_body['record']['requested_by']} "
             f"approved_by={approved_retry_body['record']['approved_by']} "
             f"async_status={approved_retry_body['run']['status']}"
+        )
+        print(
+            f"- cancelled={cancelled_approval_body['record']['status']} "
+            f"by={cancelled_approval_body['record']['approved_by']}"
+        )
+        print(
+            f"- expired={expired_approval_body['record']['status']} "
+            f"by={expired_approval_body['record']['approved_by']}"
         )
 
         print("\nOperation approval records")

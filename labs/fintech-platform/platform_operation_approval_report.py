@@ -8,6 +8,8 @@ from pathlib import Path
 
 from platform_operation_approval import (
     OPERATION_APPROVAL_APPROVED,
+    OPERATION_APPROVAL_CANCELLED,
+    OPERATION_APPROVAL_EXPIRED,
     OPERATION_APPROVAL_PENDING,
     OPERATION_APPROVAL_REJECTED,
     RETRY_PLATFORM_ASYNC_RUN_OPERATION,
@@ -21,6 +23,8 @@ class OperationApprovalReportSummary:
     pending_count: int
     approved_count: int
     rejected_count: int
+    cancelled_count: int
+    expired_count: int
     retry_operation_count: int
     self_approval_rejected_count: int
 
@@ -56,6 +60,14 @@ def build_operation_approval_report(
             ),
             rejected_count=sum(
                 1 for record in ordered_records if record.status == OPERATION_APPROVAL_REJECTED
+            ),
+            cancelled_count=sum(
+                1
+                for record in ordered_records
+                if record.status == OPERATION_APPROVAL_CANCELLED
+            ),
+            expired_count=sum(
+                1 for record in ordered_records if record.status == OPERATION_APPROVAL_EXPIRED
             ),
             retry_operation_count=sum(
                 1
@@ -182,6 +194,8 @@ def _summary_values(summary: OperationApprovalReportSummary) -> tuple[tuple[str,
         ("pending_count", summary.pending_count),
         ("approved_count", summary.approved_count),
         ("rejected_count", summary.rejected_count),
+        ("cancelled_count", summary.cancelled_count),
+        ("expired_count", summary.expired_count),
         ("retry_operation_count", summary.retry_operation_count),
         ("self_approval_rejected_count", summary.self_approval_rejected_count),
     )

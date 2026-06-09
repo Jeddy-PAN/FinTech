@@ -9,6 +9,8 @@ import pytest
 
 from platform_operation_approval import (
     OPERATION_APPROVAL_APPROVED,
+    OPERATION_APPROVAL_CANCELLED,
+    OPERATION_APPROVAL_EXPIRED,
     OPERATION_APPROVAL_PENDING,
     OPERATION_APPROVAL_REJECTED,
     OperationApprovalError,
@@ -207,6 +209,72 @@ def test_operation_approval_store_rejects_pending_record() -> None:
         _remove_database(database_path)
 
 
+def test_operation_approval_store_cancels_pending_record() -> None:
+    database_path = _database_path()
+    store = SQLiteOperationApprovalStore(database_path)
+    pending = _approval_record(
+        approval_id="approval_pending",
+        status=OPERATION_APPROVAL_PENDING,
+        approved_by=None,
+        approval_reason=None,
+        decision_reason="pending approval",
+        decided_at=None,
+    )
+
+    try:
+        store.save_record(pending)
+
+        cancelled = store.cancel_pending(
+            "approval_pending",
+            cancelled_by="ops_user_001",
+            cancellation_reason="Requester withdrew retry request",
+            decided_at=_now(),
+        )
+
+        assert cancelled.status == OPERATION_APPROVAL_CANCELLED
+        assert cancelled.approved_by == "ops_user_001"
+        assert cancelled.approval_reason == "Requester withdrew retry request"
+        assert cancelled.decision_reason == "cancelled"
+        assert cancelled.decided_at == _now()
+        assert store.query_records(status=OPERATION_APPROVAL_CANCELLED) == (cancelled,)
+    finally:
+        store.close()
+        _remove_database(database_path)
+
+
+def test_operation_approval_store_expires_pending_record() -> None:
+    database_path = _database_path()
+    store = SQLiteOperationApprovalStore(database_path)
+    pending = _approval_record(
+        approval_id="approval_pending",
+        status=OPERATION_APPROVAL_PENDING,
+        approved_by=None,
+        approval_reason=None,
+        decision_reason="pending approval",
+        decided_at=None,
+    )
+
+    try:
+        store.save_record(pending)
+
+        expired = store.expire_pending(
+            "approval_pending",
+            expired_by="system_scheduler",
+            expiration_reason="Approval request exceeded review window",
+            decided_at=_now(),
+        )
+
+        assert expired.status == OPERATION_APPROVAL_EXPIRED
+        assert expired.approved_by == "system_scheduler"
+        assert expired.approval_reason == "Approval request exceeded review window"
+        assert expired.decision_reason == "expired"
+        assert expired.decided_at == _now()
+        assert store.query_records(status=OPERATION_APPROVAL_EXPIRED) == (expired,)
+    finally:
+        store.close()
+        _remove_database(database_path)
+
+
 def test_operation_approval_store_rejects_approved_self_approval() -> None:
     database_path = _database_path()
     store = SQLiteOperationApprovalStore(database_path)
@@ -254,6 +322,46 @@ def test_operation_approval_store_rejects_approving_non_pending_record() -> None
                 "approval_approved",
                 approved_by="ops_manager_001",
                 approval_reason="Duplicate approval",
+                decided_at=_now(),
+            )
+    finally:
+        store.close()
+        _remove_database(database_path)
+
+
+def test_operation_approval_store_rejects_terminal_lifecycle_transitions() -> None:
+    database_path = _database_path()
+    store = SQLiteOperationApprovalStore(database_path)
+    pending = _approval_record(
+        approval_id="approval_pending",
+        status=OPERATION_APPROVAL_PENDING,
+        approved_by=None,
+        approval_reason=None,
+        decision_reason="pending approval",
+        decided_at=None,
+    )
+
+    try:
+        store.save_record(pending)
+        store.cancel_pending(
+            "approval_pending",
+            cancelled_by="ops_user_001",
+            cancellation_reason="Requester withdrew retry request",
+            decided_at=_now(),
+        )
+
+        with pytest.raises(OperationApprovalError, match="Cannot approve cancelled"):
+            store.approve_pending(
+                "approval_pending",
+                approved_by="ops_manager_001",
+                approval_reason="Late approval",
+                decided_at=_now(),
+            )
+        with pytest.raises(OperationApprovalError, match="Cannot expire cancelled"):
+            store.expire_pending(
+                "approval_pending",
+                expired_by="system_scheduler",
+                expiration_reason="Late expiry",
                 decided_at=_now(),
             )
     finally:
