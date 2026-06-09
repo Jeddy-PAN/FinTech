@@ -1088,10 +1088,199 @@ def test_platform_console_renders_operations_and_approval_report_views() -> None
             f"/platform/operation-approvals/{pending_approval_id}/view"
             in body
         )
+        assert (
+            f'action="/platform/operation-approvals/{pending_approval_id}/approve-form"'
+            in body
+        )
+        assert (
+            f'action="/platform/operation-approvals/{pending_approval_id}/reject-form"'
+            in body
+        )
+        assert "approve_operation_approval" in body
+        assert "reject_operation_approval" in body
         assert "run_retry_pending_console" in body
         assert "failed" in body
         assert "Retry after transient worker failure" in body
         assert "ops_manager_001" in body
+    finally:
+        client.close()
+        _remove_database(database_path)
+        _remove_database(access_audit_database_path)
+        _remove_database(async_database_path)
+        _remove_database(operation_approval_database_path)
+
+
+def test_platform_console_approval_approve_form_executes_retry() -> None:
+    (
+        client,
+        database_path,
+        access_audit_database_path,
+        async_database_path,
+        operation_approval_database_path,
+    ) = _client_with_async_and_operation_approval()
+    try:
+        client.post(
+            "/platform/async-payment-runs",
+            json=_payload(run_id="run_retry_http", order_id="order_retry_http"),
+        )
+        _fail_async_run(
+            database_path=database_path,
+            async_database_path=async_database_path,
+        )
+        retry = client.post(
+            "/platform/async-payment-runs/run_retry_http/retry",
+            json=_retry_payload(),
+        )
+        approval_id = retry.json()["record"]["approval_id"]
+
+        approved = client.post(
+            f"/platform/operation-approvals/{approval_id}/approve-form",
+            data={
+                "decided_by": "ops_manager_001",
+                "decision_reason": "Approved from console",
+                "decided_at": "2026-06-08T10:00:00+00:00",
+                "confirmation": "approve_operation_approval",
+            },
+            follow_redirects=False,
+        )
+        console = client.get(approved.headers["location"])
+
+        assert approved.status_code == 303
+        assert approved.headers["location"] == "/platform/view?approval_status=approved"
+        assert "Operation approval approved." in console.text
+
+        saved = _approval_records(operation_approval_database_path)
+        assert saved[0].status == OPERATION_APPROVAL_APPROVED
+        assert saved[0].approved_by == "ops_manager_001"
+        assert saved[0].approval_reason == "Approved from console"
+
+        async_store = SQLitePlatformAsyncRunStore(async_database_path)
+        try:
+            run = async_store.get_run("run_retry_http")
+        finally:
+            async_store.close()
+        assert run.status == "accepted"
+
+        update_events = [
+            event
+            for event in _access_events(access_audit_database_path)
+            if event.permission == UPDATE_PLATFORM_OPERATION_APPROVALS
+        ]
+        assert len(update_events) == 1
+        assert update_events[0].actor == "ops_manager_001"
+        assert update_events[0].outcome == "granted"
+
+        retry_events = [
+            event
+            for event in _access_events(access_audit_database_path)
+            if event.permission == RETRY_PLATFORM_ASYNC_PAYMENT_RUN
+        ]
+        assert len(retry_events) == 1
+        assert retry_events[0].actor == "ops_manager_001"
+        assert retry_events[0].outcome == "granted"
+    finally:
+        client.close()
+        _remove_database(database_path)
+        _remove_database(access_audit_database_path)
+        _remove_database(async_database_path)
+        _remove_database(operation_approval_database_path)
+
+
+def test_platform_console_approval_reject_form_does_not_execute_retry() -> None:
+    (
+        client,
+        database_path,
+        access_audit_database_path,
+        async_database_path,
+        operation_approval_database_path,
+    ) = _client_with_async_and_operation_approval()
+    try:
+        client.post(
+            "/platform/async-payment-runs",
+            json=_payload(run_id="run_retry_http", order_id="order_retry_http"),
+        )
+        _fail_async_run(
+            database_path=database_path,
+            async_database_path=async_database_path,
+        )
+        retry = client.post(
+            "/platform/async-payment-runs/run_retry_http/retry",
+            json=_retry_payload(),
+        )
+        approval_id = retry.json()["record"]["approval_id"]
+
+        rejected = client.post(
+            f"/platform/operation-approvals/{approval_id}/reject-form",
+            data={
+                "decided_by": "ops_manager_001",
+                "decision_reason": "Rejected from console",
+                "decided_at": "2026-06-08T10:00:00+00:00",
+                "confirmation": "reject_operation_approval",
+            },
+            follow_redirects=False,
+        )
+        console = client.get(rejected.headers["location"])
+
+        assert rejected.status_code == 303
+        assert rejected.headers["location"] == "/platform/view?approval_status=rejected"
+        assert "Operation approval rejected." in console.text
+
+        saved = _approval_records(operation_approval_database_path)
+        assert saved[0].status == OPERATION_APPROVAL_REJECTED
+        assert saved[0].approved_by == "ops_manager_001"
+        assert saved[0].approval_reason == "Rejected from console"
+
+        async_store = SQLitePlatformAsyncRunStore(async_database_path)
+        try:
+            run = async_store.get_run("run_retry_http")
+        finally:
+            async_store.close()
+        assert run.status == "failed"
+
+        retry_events = [
+            event
+            for event in _access_events(access_audit_database_path)
+            if event.permission == RETRY_PLATFORM_ASYNC_PAYMENT_RUN
+        ]
+        assert retry_events == []
+    finally:
+        client.close()
+        _remove_database(database_path)
+        _remove_database(access_audit_database_path)
+        _remove_database(async_database_path)
+        _remove_database(operation_approval_database_path)
+
+
+def test_platform_console_approval_form_reports_confirmation_error() -> None:
+    (
+        client,
+        database_path,
+        access_audit_database_path,
+        async_database_path,
+        operation_approval_database_path,
+    ) = _client_with_async_and_operation_approval()
+    try:
+        _save_pending_approval(operation_approval_database_path)
+
+        response = client.post(
+            "/platform/operation-approvals/approval_pending_001/approve-form",
+            data={
+                "decided_by": "ops_manager_001",
+                "decision_reason": "Approved from console",
+                "decided_at": "2026-06-08T10:00:00+00:00",
+                "confirmation": "wrong_confirmation",
+            },
+            follow_redirects=False,
+        )
+        console = client.get(response.headers["location"])
+
+        assert response.status_code == 303
+        assert response.headers["location"].startswith("/platform/view?approval_error=")
+        assert "Approval update failed:" in console.text
+        assert "confirmation must be approve_operation_approval" in console.text
+
+        saved = _approval_records(operation_approval_database_path)
+        assert saved[0].status == OPERATION_APPROVAL_PENDING
     finally:
         client.close()
         _remove_database(database_path)

@@ -116,6 +116,8 @@ PLATFORM_API_INVESTIGATION_CASES_TARGET = (
 PLATFORM_OPERATION_APPROVALS_TARGET = "fintech_platform_operation_approvals"
 PLATFORM_CONSOLE_TARGET = "fintech_platform_api_console"
 RETRY_FAILED_ASYNC_RUN_CONFIRMATION = "retry_failed_async_run"
+APPROVE_OPERATION_APPROVAL_CONFIRMATION = "approve_operation_approval"
+REJECT_OPERATION_APPROVAL_CONFIRMATION = "reject_operation_approval"
 ANONYMOUS_API_CLIENT = "anonymous_api_client"
 
 
@@ -199,6 +201,8 @@ def create_app(
     @app.get("/platform", response_class=HTMLResponse)
     @app.get("/platform/view", response_class=HTMLResponse)
     def platform_console(
+        approval_error: str | None = None,
+        approval_status: str | None = None,
         retry_error: str | None = None,
         retry_status: str | None = None,
         x_actor_id: str | None = Header(default=None),
@@ -206,6 +210,8 @@ def create_app(
         actor = _api_actor(x_actor_id)
         html_body = _render_platform_console_html(
             app,
+            approval_error=approval_error,
+            approval_status=approval_status,
             retry_error=retry_error,
             retry_status=retry_status,
         )
@@ -788,56 +794,19 @@ def create_app(
         request: DecideOperationApprovalRequest,
         x_actor_id: str | None = Header(default=None),
     ) -> dict:
-        store = _operation_approval_store(app)
-        retried_run: PlatformAsyncRun | None = None
         try:
-            existing = store.get_record(approval_id)
-            if existing.status != OPERATION_APPROVAL_PENDING:
-                raise OperationApprovalError(
-                    f"Cannot approve {existing.status} operation approval record"
-                )
-            if existing.operation_type == RETRY_PLATFORM_ASYNC_PAYMENT_RUN:
-                retried_run = _validate_retry_approval_can_execute(app, existing)
-            record = store.approve_pending(
-                approval_id,
-                approved_by=request.decided_by,
-                approval_reason=request.decision_reason,
-                decided_at=_aware_timestamp(request.decided_at),
-            )
-            if existing.operation_type == RETRY_PLATFORM_ASYNC_PAYMENT_RUN:
-                retried_run = _execute_approved_retry(app, record)
-        except OperationApprovalError as error:
-            _record_operation_approval_access_denial(
+            record, retried_run = _approve_operation_approval(
                 app,
                 approval_id=approval_id,
+                decided_by=request.decided_by,
+                decision_reason=request.decision_reason,
+                decided_at=_aware_timestamp(request.decided_at),
                 actor=x_actor_id,
-                permission=UPDATE_PLATFORM_OPERATION_APPROVALS,
-                error=error,
             )
+        except OperationApprovalError as error:
             raise _http_exception_from_operation_approval_error(error) from error
         except PlatformAsyncRunStoreError as error:
-            _record_api_access(
-                app,
-                actor=_api_actor(x_actor_id),
-                permission=UPDATE_PLATFORM_OPERATION_APPROVALS,
-                target=_operation_approval_target(approval_id),
-                outcome="denied",
-                reason=(
-                    f"{_status_for_async_run_store_error(error)} "
-                    f"{type(error).__name__}: {error}"
-                ),
-            )
             raise _http_exception_from_async_run_store_error(error) from error
-        finally:
-            store.close()
-        _record_api_access(
-            app,
-            actor=_api_actor(x_actor_id),
-            permission=UPDATE_PLATFORM_OPERATION_APPROVALS,
-            target=_operation_approval_target(approval_id),
-            outcome="granted",
-            reason="approved",
-        )
         response = {"record": _operation_approval_record_response(record)}
         if retried_run is not None:
             response["run"] = _async_run_response(app, retried_run)
@@ -849,34 +818,82 @@ def create_app(
         request: DecideOperationApprovalRequest,
         x_actor_id: str | None = Header(default=None),
     ) -> dict:
-        store = _operation_approval_store(app)
         try:
-            record = store.reject_pending(
-                approval_id,
-                rejected_by=request.decided_by,
-                rejection_reason=request.decision_reason,
-                decided_at=_aware_timestamp(request.decided_at),
-            )
-        except OperationApprovalError as error:
-            _record_operation_approval_access_denial(
+            record = _reject_operation_approval(
                 app,
                 approval_id=approval_id,
+                decided_by=request.decided_by,
+                decision_reason=request.decision_reason,
+                decided_at=_aware_timestamp(request.decided_at),
                 actor=x_actor_id,
-                permission=UPDATE_PLATFORM_OPERATION_APPROVALS,
-                error=error,
             )
+        except OperationApprovalError as error:
             raise _http_exception_from_operation_approval_error(error) from error
-        finally:
-            store.close()
-        _record_api_access(
-            app,
-            actor=_api_actor(x_actor_id),
-            permission=UPDATE_PLATFORM_OPERATION_APPROVALS,
-            target=_operation_approval_target(approval_id),
-            outcome="granted",
-            reason="rejected",
-        )
         return {"record": _operation_approval_record_response(record)}
+
+    @app.post("/platform/operation-approvals/{approval_id}/approve-form")
+    async def approve_operation_approval_form(
+        approval_id: str,
+        request: Request,
+    ) -> RedirectResponse:
+        form = _parse_form_body(await request.body())
+        try:
+            _validate_form_confirmation(
+                form,
+                expected=APPROVE_OPERATION_APPROVAL_CONFIRMATION,
+            )
+            _approve_operation_approval(
+                app,
+                approval_id=approval_id,
+                decided_by=_required_form_text(form, "decided_by"),
+                decision_reason=_required_form_text(form, "decision_reason"),
+                decided_at=_aware_timestamp(
+                    datetime.fromisoformat(_required_form_text(form, "decided_at"))
+                ),
+                actor=_required_form_text(form, "decided_by"),
+            )
+        except (OperationApprovalError, PlatformAsyncRunStoreError, ValueError) as error:
+            message = quote(str(error), safe="")
+            return RedirectResponse(
+                url=f"/platform/view?approval_error={message}",
+                status_code=status.HTTP_303_SEE_OTHER,
+            )
+        return RedirectResponse(
+            url="/platform/view?approval_status=approved",
+            status_code=status.HTTP_303_SEE_OTHER,
+        )
+
+    @app.post("/platform/operation-approvals/{approval_id}/reject-form")
+    async def reject_operation_approval_form(
+        approval_id: str,
+        request: Request,
+    ) -> RedirectResponse:
+        form = _parse_form_body(await request.body())
+        try:
+            _validate_form_confirmation(
+                form,
+                expected=REJECT_OPERATION_APPROVAL_CONFIRMATION,
+            )
+            _reject_operation_approval(
+                app,
+                approval_id=approval_id,
+                decided_by=_required_form_text(form, "decided_by"),
+                decision_reason=_required_form_text(form, "decision_reason"),
+                decided_at=_aware_timestamp(
+                    datetime.fromisoformat(_required_form_text(form, "decided_at"))
+                ),
+                actor=_required_form_text(form, "decided_by"),
+            )
+        except (OperationApprovalError, PlatformAsyncRunStoreError, ValueError) as error:
+            message = quote(str(error), safe="")
+            return RedirectResponse(
+                url=f"/platform/view?approval_error={message}",
+                status_code=status.HTTP_303_SEE_OTHER,
+            )
+        return RedirectResponse(
+            url="/platform/view?approval_status=rejected",
+            status_code=status.HTTP_303_SEE_OTHER,
+        )
 
     @app.patch("/platform/operation-approvals/{approval_id}/cancel")
     def cancel_operation_approval(
@@ -1427,6 +1444,107 @@ def _request_retry_async_run_approval(
     return record
 
 
+def _approve_operation_approval(
+    app: FastAPI,
+    *,
+    approval_id: str,
+    decided_by: str,
+    decision_reason: str,
+    decided_at: datetime,
+    actor: str | None,
+) -> tuple[OperationApprovalRecord, PlatformAsyncRun | None]:
+    store = _operation_approval_store(app)
+    retried_run: PlatformAsyncRun | None = None
+    try:
+        existing = store.get_record(approval_id)
+        if existing.status != OPERATION_APPROVAL_PENDING:
+            raise OperationApprovalError(
+                f"Cannot approve {existing.status} operation approval record"
+            )
+        if existing.operation_type == RETRY_PLATFORM_ASYNC_PAYMENT_RUN:
+            retried_run = _validate_retry_approval_can_execute(app, existing)
+        record = store.approve_pending(
+            approval_id,
+            approved_by=decided_by,
+            approval_reason=decision_reason,
+            decided_at=decided_at,
+        )
+        if existing.operation_type == RETRY_PLATFORM_ASYNC_PAYMENT_RUN:
+            retried_run = _execute_approved_retry(app, record)
+    except OperationApprovalError as error:
+        _record_operation_approval_access_denial(
+            app,
+            approval_id=approval_id,
+            actor=actor,
+            permission=UPDATE_PLATFORM_OPERATION_APPROVALS,
+            error=error,
+        )
+        raise
+    except PlatformAsyncRunStoreError as error:
+        _record_api_access(
+            app,
+            actor=_api_actor(actor),
+            permission=UPDATE_PLATFORM_OPERATION_APPROVALS,
+            target=_operation_approval_target(approval_id),
+            outcome="denied",
+            reason=(
+                f"{_status_for_async_run_store_error(error)} "
+                f"{type(error).__name__}: {error}"
+            ),
+        )
+        raise
+    finally:
+        store.close()
+    _record_api_access(
+        app,
+        actor=_api_actor(actor),
+        permission=UPDATE_PLATFORM_OPERATION_APPROVALS,
+        target=_operation_approval_target(approval_id),
+        outcome="granted",
+        reason="approved",
+    )
+    return record, retried_run
+
+
+def _reject_operation_approval(
+    app: FastAPI,
+    *,
+    approval_id: str,
+    decided_by: str,
+    decision_reason: str,
+    decided_at: datetime,
+    actor: str | None,
+) -> OperationApprovalRecord:
+    store = _operation_approval_store(app)
+    try:
+        record = store.reject_pending(
+            approval_id,
+            rejected_by=decided_by,
+            rejection_reason=decision_reason,
+            decided_at=decided_at,
+        )
+    except OperationApprovalError as error:
+        _record_operation_approval_access_denial(
+            app,
+            approval_id=approval_id,
+            actor=actor,
+            permission=UPDATE_PLATFORM_OPERATION_APPROVALS,
+            error=error,
+        )
+        raise
+    finally:
+        store.close()
+    _record_api_access(
+        app,
+        actor=_api_actor(actor),
+        permission=UPDATE_PLATFORM_OPERATION_APPROVALS,
+        target=_operation_approval_target(approval_id),
+        outcome="granted",
+        reason="rejected",
+    )
+    return record
+
+
 def _validate_retry_approval_can_execute(
     app: FastAPI,
     record: OperationApprovalRecord,
@@ -1480,6 +1598,24 @@ def _form_value(form: dict[str, list[str]], field_name: str) -> str | None:
     if not values:
         return None
     return values[0]
+
+
+def _parse_form_body(body: bytes) -> dict[str, list[str]]:
+    return parse_qs(body.decode("utf-8"), keep_blank_values=True)
+
+
+def _required_form_text(form: dict[str, list[str]], field_name: str) -> str:
+    return _required_request_text(_form_value(form, field_name), field_name)
+
+
+def _validate_form_confirmation(
+    form: dict[str, list[str]],
+    *,
+    expected: str,
+) -> None:
+    confirmation = _required_form_text(form, "confirmation")
+    if confirmation != expected:
+        raise PlatformAsyncRunStoreError(f"confirmation must be {expected}")
 
 
 def _required_request_text(value: str | None, field_name: str) -> str:
@@ -1855,6 +1991,8 @@ def _render_operation_approval_detail_html(
 def _render_platform_console_html(
     app: FastAPI,
     *,
+    approval_error: str | None = None,
+    approval_status: str | None = None,
     retry_error: str | None = None,
     retry_status: str | None = None,
 ) -> str:
@@ -2015,12 +2153,12 @@ def _render_platform_console_html(
       border: 1px solid #fecaca;
       color: #991b1b;
     }}
-    .retry-form {{
+    .operation-form {{
       display: grid;
       gap: 8px;
       min-width: 260px;
     }}
-    .retry-form input {{
+    .operation-form input {{
       border: 1px solid #d1d5db;
       border-radius: 4px;
       box-sizing: border-box;
@@ -2029,7 +2167,7 @@ def _render_platform_console_html(
       padding: 8px;
       width: 100%;
     }}
-    .retry-form button {{
+    .operation-form button {{
       background: #1f2937;
       border: 0;
       border-radius: 4px;
@@ -2049,10 +2187,14 @@ def _render_platform_console_html(
 <body>
   <h1>FinTech Platform Console</h1>
   <div class="meta">
-    Minimal read-only view for the stage 11 learning platform.
+    Minimal operations console for the learning platform.
     API docs remain available at <code>/docs</code>.
   </div>
   {_retry_feedback_html(retry_status=retry_status, retry_error=retry_error)}
+  {_approval_feedback_html(
+        approval_status=approval_status,
+        approval_error=approval_error,
+    )}
 
   <div class="summary">
     {''.join(_metric_html(label, value) for label, value in summary_rows)}
@@ -2174,6 +2316,7 @@ def _render_platform_console_html(
             "requested_by",
             "request_reason",
             "requested_at",
+            "action",
         ],
         _pending_operation_approval_rows(
             operation_approval_report.records,
@@ -2315,6 +2458,32 @@ def _retry_feedback_html(
     return ""
 
 
+def _approval_feedback_html(
+    *,
+    approval_status: str | None,
+    approval_error: str | None,
+) -> str:
+    if approval_error:
+        return (
+            '<div class="notice notice-error">'
+            f"Approval update failed: {html.escape(approval_error)}"
+            "</div>"
+        )
+    if approval_status == "approved":
+        return (
+            '<div class="notice notice-success">'
+            "Operation approval approved."
+            "</div>"
+        )
+    if approval_status == "rejected":
+        return (
+            '<div class="notice notice-success">'
+            "Operation approval rejected."
+            "</div>"
+        )
+    return ""
+
+
 def _table(
     headers: list[str],
     rows: list[tuple[object, ...]],
@@ -2391,7 +2560,7 @@ def _retry_form_html(run_id: str) -> str:
     action = f"/platform/async-payment-runs/{escaped_run_id}/retry-form"
     confirmation = html.escape(RETRY_FAILED_ASYNC_RUN_CONFIRMATION, quote=True)
     return f"""
-      <form class="retry-form" method="post" action="{action}">
+      <form class="operation-form" method="post" action="{action}">
         <input name="actor" type="text" placeholder="actor" required>
         <input name="reason" type="text" placeholder="reason" required>
         <input name="confirmation" type="text" value="{confirmation}" required>
@@ -2578,9 +2747,51 @@ def _pending_operation_approval_rows(
             html.escape(record.requested_by),
             html.escape(record.request_reason),
             html.escape(record.requested_at.isoformat()),
+            _operation_approval_decision_forms_html(record.approval_id),
         )
         for record in _sorted_approval_records(pending_records, limit=5)
     ]
+
+
+def _operation_approval_decision_forms_html(approval_id: str) -> str:
+    return (
+        _operation_approval_decision_form_html(
+            approval_id,
+            action_name="approve",
+            confirmation=APPROVE_OPERATION_APPROVAL_CONFIRMATION,
+            button_label="Approve",
+        )
+        + _operation_approval_decision_form_html(
+            approval_id,
+            action_name="reject",
+            confirmation=REJECT_OPERATION_APPROVAL_CONFIRMATION,
+            button_label="Reject",
+        )
+    )
+
+
+def _operation_approval_decision_form_html(
+    approval_id: str,
+    *,
+    action_name: str,
+    confirmation: str,
+    button_label: str,
+) -> str:
+    href_approval_id = quote(approval_id, safe="")
+    escaped_confirmation = html.escape(confirmation, quote=True)
+    default_decided_at = html.escape(
+        datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+        quote=True,
+    )
+    return f"""
+      <form class="operation-form" method="post" action="/platform/operation-approvals/{href_approval_id}/{action_name}-form">
+        <input name="decided_by" type="text" placeholder="decided_by" required>
+        <input name="decision_reason" type="text" placeholder="decision_reason" required>
+        <input name="decided_at" type="text" value="{default_decided_at}" required>
+        <input name="confirmation" type="text" value="{escaped_confirmation}" required>
+        <button type="submit">{html.escape(button_label)}</button>
+      </form>
+    """
 
 
 def _operation_approval_detail_link(approval_id: str) -> str:
