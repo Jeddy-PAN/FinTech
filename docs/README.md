@@ -1,6 +1,6 @@
 # docs 文档入口
 
-这个目录保存 FinTech 学习笔记、阶段计划和阶段总结。当前文档已经比较多，阅读时不建议从文件名 01 一路顺读到 36，而应按目标选择路径。
+这个目录保存 FinTech 学习笔记、阶段计划和阶段总结。当前文档已经比较多，阅读时不建议从文件名 01 一路顺读到 37，而应按目标选择路径。
 
 ## 推荐阅读路径
 
@@ -35,6 +35,7 @@
 15. [34-stage-21-retry-approval-before-execution.md](34-stage-21-retry-approval-before-execution.md)：retry 先审批后执行。
 16. [35-stage-22-operation-approval-console-view.md](35-stage-22-operation-approval-console-view.md)：pending operation approval console 只读视图。
 17. [36-stage-23-operation-approval-pagination-sorting.md](36-stage-23-operation-approval-pagination-sorting.md)：operation approval 列表分页和排序。
+18. [37-stage-24-operation-approval-detail-view.md](37-stage-24-operation-approval-detail-view.md)：operation approval 只读详情视图。
 
 ### 路径 C：只看阶段计划和历史
 
@@ -62,6 +63,7 @@
 | [34-stage-21-retry-approval-before-execution.md](34-stage-21-retry-approval-before-execution.md) | retry approval before execution |
 | [35-stage-22-operation-approval-console-view.md](35-stage-22-operation-approval-console-view.md) | operation approval console view |
 | [36-stage-23-operation-approval-pagination-sorting.md](36-stage-23-operation-approval-pagination-sorting.md) | operation approval pagination and sorting |
+| [37-stage-24-operation-approval-detail-view.md](37-stage-24-operation-approval-detail-view.md) | operation approval detail view |
 
 ## 当前平台能力地图
 
@@ -156,11 +158,12 @@ OperationApprovalRecord
 -> GET /platform/operation-approvals
 -> limit / offset / sort_by / sort_order
 -> GET /platform/operation-approvals/{approval_id}
+-> GET /platform/operation-approvals/{approval_id}/view
 -> PATCH approve / reject
 -> access audit granted / denied
 ```
 
-这个流程回答：pending approval 如何通过 API 被创建、分页查看、排序查看和流转到 approved / rejected，并留下访问审计。
+这个流程回答：pending approval 如何通过 API 被创建、分页查看、排序查看、详情查看和流转到 approved / rejected，并留下访问审计。
 
 ### Console 报表视图
 
@@ -171,9 +174,10 @@ OperationApprovalReport
 -> read-only report summaries
 -> recent operations / approval rows
 -> pending approval rows with async status
+-> approval detail links
 ```
 
-这个流程回答：运营人员如何在同一个页面里观察 async run、对账摘要、retry 审计、审批记录和待审批 approval，而不必先下载离线报表。
+这个流程回答：运营人员如何在同一个页面里观察 async run、对账摘要、retry 审计、审批记录和待审批 approval，并能点进只读详情页查看上下文。
 
 ### Ledger Reconciliation 流程
 
@@ -198,7 +202,7 @@ platform / wallet balance snapshot
 
 ## 下一步候选方向
 
-1. 增加 approval 与 async run 的只读详情视图。
-2. 为 pending approval 增加过期或取消状态。
-3. 在保持 maker-checker 边界的前提下，设计 console approve / reject 的表单和权限约束。
-4. 为 operation approval 查询增加更明确的总数统计或 cursor pagination。
+1. 为 pending approval 增加过期或取消状态。
+2. 在保持 maker-checker 边界的前提下，设计 console approve / reject 的表单和权限约束。
+3. 为 operation approval 查询增加更明确的总数统计或 cursor pagination。
+4. 把 detail view 中的 async run 和 platform result 链接到更完整的只读详情页。

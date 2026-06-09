@@ -748,6 +748,38 @@ def create_app(
         )
         return {"record": _operation_approval_record_response(record)}
 
+    @app.get(
+        "/platform/operation-approvals/{approval_id}/view",
+        response_class=HTMLResponse,
+    )
+    def view_operation_approval(
+        approval_id: str,
+        x_actor_id: str | None = Header(default=None),
+    ) -> HTMLResponse:
+        store = _operation_approval_store(app)
+        try:
+            record = store.get_record(approval_id)
+        except OperationApprovalError as error:
+            _record_operation_approval_access_denial(
+                app,
+                approval_id=approval_id,
+                actor=x_actor_id,
+                permission=VIEW_PLATFORM_OPERATION_APPROVALS,
+                error=error,
+            )
+            raise _http_exception_from_operation_approval_error(error) from error
+        finally:
+            store.close()
+        _record_api_access(
+            app,
+            actor=_api_actor(x_actor_id),
+            permission=VIEW_PLATFORM_OPERATION_APPROVALS,
+            target=_operation_approval_target(approval_id),
+            outcome="granted",
+            reason="view detail",
+        )
+        return HTMLResponse(_render_operation_approval_detail_html(app, record))
+
     @app.patch("/platform/operation-approvals/{approval_id}/approve")
     def approve_operation_approval(
         approval_id: str,
@@ -1486,6 +1518,17 @@ def _platform_result_or_none(app: FastAPI, run_id: str) -> dict | None:
         store.close()
 
 
+def _async_run_or_none(app: FastAPI, run_id: str) -> PlatformAsyncRun | None:
+    store = _async_run_store(app)
+    try:
+        try:
+            return store.get_run(run_id)
+        except PlatformAsyncRunStoreError:
+            return None
+    finally:
+        store.close()
+
+
 def _worker_result_response(result: PlatformAsyncWorkerResult) -> dict:
     return {
         "processed": result.processed,
@@ -1569,6 +1612,172 @@ def _operation_approval_record_response(record: OperationApprovalRecord) -> dict
             None if record.decided_at is None else record.decided_at.isoformat()
         ),
     }
+
+
+def _operation_approval_detail_rows(
+    record: OperationApprovalRecord,
+) -> list[tuple[object, ...]]:
+    decided_at = "" if record.decided_at is None else record.decided_at.isoformat()
+    return [
+        ("approval_id", record.approval_id),
+        ("operation_type", record.operation_type),
+        ("operation_id", record.operation_id),
+        ("target", record.target),
+        ("requested_by", record.requested_by),
+        ("request_reason", record.request_reason),
+        ("approved_by", record.approved_by or ""),
+        ("approval_reason", record.approval_reason or ""),
+        ("status", record.status),
+        ("decision_reason", record.decision_reason),
+        ("requested_at", record.requested_at.isoformat()),
+        ("decided_at", decided_at),
+    ]
+
+
+def _operation_approval_async_run_detail_rows(
+    run: PlatformAsyncRun | None,
+) -> list[tuple[object, ...]]:
+    if run is None:
+        return []
+    return [
+        ("run_id", run.run_id),
+        ("status", run.status),
+        ("attempt_count", run.attempt_count),
+        ("max_attempts", run.max_attempts),
+        ("last_error", run.last_error or ""),
+        ("created_at", run.created_at.isoformat()),
+        ("updated_at", run.updated_at.isoformat()),
+        ("started_at", "" if run.started_at is None else run.started_at.isoformat()),
+        (
+            "completed_at",
+            "" if run.completed_at is None else run.completed_at.isoformat(),
+        ),
+    ]
+
+
+def _operation_approval_platform_result_rows(
+    platform_result: dict | None,
+) -> list[tuple[object, ...]]:
+    if platform_result is None:
+        return []
+    fields = [
+        "run_id",
+        "customer_id",
+        "status",
+        "payment_order_id",
+        "payment_order_status",
+        "risk_status",
+        "ledger_transaction_id",
+        "audit_event_count",
+        "created_at",
+    ]
+    return [(field, platform_result.get(field) or "") for field in fields]
+
+
+def _render_operation_approval_detail_html(
+    app: FastAPI,
+    record: OperationApprovalRecord,
+) -> str:
+    async_run = _async_run_or_none(app, record.operation_id)
+    platform_result = None
+    if async_run is not None and async_run.status == "completed":
+        platform_result = _platform_result_or_none(app, async_run.run_id)
+
+    return f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Operation Approval Detail</title>
+  <style>
+    body {{
+      color: #1f2937;
+      font-family: Arial, sans-serif;
+      line-height: 1.5;
+      margin: 0;
+      max-width: 1080px;
+      padding: 16px;
+    }}
+    @media (min-width: 768px) {{
+      body {{
+        padding: 24px;
+      }}
+    }}
+    h1, h2 {{
+      margin: 0 0 12px;
+    }}
+    h2 {{
+      margin-top: 28px;
+    }}
+    .meta {{
+      color: #6b7280;
+      font-size: 14px;
+      margin-bottom: 18px;
+    }}
+    .section {{
+      margin-top: 24px;
+      overflow-x: auto;
+    }}
+    table {{
+      border-collapse: collapse;
+      margin-top: 8px;
+      min-width: 680px;
+      width: 100%;
+    }}
+    th, td {{
+      border: 1px solid #d1d5db;
+      padding: 8px 10px;
+      text-align: left;
+      vertical-align: top;
+    }}
+    th {{
+      background: #f3f4f6;
+    }}
+    .muted {{
+      color: #6b7280;
+      font-size: 14px;
+    }}
+    code {{
+      background: #f3f4f6;
+      border-radius: 4px;
+      padding: 2px 4px;
+    }}
+  </style>
+</head>
+<body>
+  <h1>Operation Approval Detail</h1>
+  <div class="meta">
+    Read-only approval context. Back to <a href="/platform/view">FinTech Platform Console</a>.
+  </div>
+
+  <div class="section">
+    <h2>Approval Record</h2>
+    {_table(
+        ["field", "value"],
+        _operation_approval_detail_rows(record),
+        empty_message="No approval record is available.",
+    )}
+  </div>
+
+  <div class="section">
+    <h2>Associated Async Run</h2>
+    {_table(
+        ["field", "value"],
+        _operation_approval_async_run_detail_rows(async_run),
+        empty_message="No associated async run was found.",
+    )}
+  </div>
+
+  <div class="section">
+    <h2>Platform Result Summary</h2>
+    {_table(
+        ["field", "value"],
+        _operation_approval_platform_result_rows(platform_result),
+        empty_message="No completed platform result is available.",
+    )}
+  </div>
+</body>
+</html>"""
 
 
 def _render_platform_console_html(
@@ -1879,7 +2088,7 @@ def _render_platform_console_html(
 
   <div class="section">
     <h2>Pending Operation Approvals</h2>
-    {_table(
+    {_html_table(
         [
             "approval_id",
             "operation_type",
@@ -1899,7 +2108,7 @@ def _render_platform_console_html(
 
   <div class="section">
     <h2>Approval Records</h2>
-    {_table(
+    {_html_table(
         [
             "approval_id",
             "operation_id",
@@ -2041,6 +2250,25 @@ def _table(
     row_html = []
     for row in rows:
         cells = "".join(f"<td>{html.escape(str(value))}</td>" for value in row)
+        row_html.append(f"<tr>{cells}</tr>")
+    return (
+        f"<table><thead><tr>{header_html}</tr></thead>"
+        f"<tbody>{''.join(row_html)}</tbody></table>"
+    )
+
+
+def _html_table(
+    headers: list[str],
+    rows: list[tuple[str, ...]],
+    *,
+    empty_message: str,
+) -> str:
+    if not rows:
+        return f'<div class="muted">{html.escape(empty_message)}</div>'
+    header_html = "".join(f"<th>{html.escape(header)}</th>" for header in headers)
+    row_html = []
+    for row in rows:
+        cells = "".join(f"<td>{value}</td>" for value in row)
         row_html.append(f"<tr>{cells}</tr>")
     return (
         f"<table><thead><tr>{header_html}</tr></thead>"
@@ -2239,16 +2467,16 @@ def _ledger_reconciliation_finding_rows(findings) -> list[tuple[object, ...]]:
 
 def _approval_record_rows(
     records: tuple[OperationApprovalRecord, ...],
-) -> list[tuple[object, ...]]:
+) -> list[tuple[str, ...]]:
     return [
         (
-            record.approval_id,
-            record.operation_id,
-            record.requested_by,
-            record.request_reason,
-            record.approved_by,
-            record.status,
-            record.decision_reason,
+            _operation_approval_detail_link(record.approval_id),
+            html.escape(record.operation_id),
+            html.escape(record.requested_by),
+            html.escape(record.request_reason),
+            html.escape(record.approved_by or ""),
+            html.escape(record.status),
+            html.escape(record.decision_reason),
         )
         for record in _sorted_approval_records(records, limit=5)
     ]
@@ -2257,23 +2485,32 @@ def _approval_record_rows(
 def _pending_operation_approval_rows(
     records: tuple[OperationApprovalRecord, ...],
     async_runs: tuple[PlatformAsyncRun, ...],
-) -> list[tuple[object, ...]]:
+) -> list[tuple[str, ...]]:
     async_status_by_run_id = {run.run_id: run.status for run in async_runs}
     pending_records = tuple(
         record for record in records if record.status == OPERATION_APPROVAL_PENDING
     )
     return [
         (
-            record.approval_id,
-            record.operation_type,
-            record.operation_id,
-            async_status_by_run_id.get(record.operation_id, ""),
-            record.requested_by,
-            record.request_reason,
-            record.requested_at.isoformat(),
+            _operation_approval_detail_link(record.approval_id),
+            html.escape(record.operation_type),
+            html.escape(record.operation_id),
+            html.escape(async_status_by_run_id.get(record.operation_id, "")),
+            html.escape(record.requested_by),
+            html.escape(record.request_reason),
+            html.escape(record.requested_at.isoformat()),
         )
         for record in _sorted_approval_records(pending_records, limit=5)
     ]
+
+
+def _operation_approval_detail_link(approval_id: str) -> str:
+    escaped_approval_id = html.escape(approval_id)
+    href_approval_id = quote(approval_id, safe="")
+    return (
+        f'<a href="/platform/operation-approvals/{href_approval_id}/view">'
+        f"{escaped_approval_id}</a>"
+    )
 
 
 def _sorted_approval_records(

@@ -1082,6 +1082,10 @@ def test_platform_console_renders_operations_and_approval_report_views() -> None
         assert "approved_count" in body
         assert "self_approval_rejected_count" in body
         assert pending_approval_id in body
+        assert (
+            f"/platform/operation-approvals/{pending_approval_id}/view"
+            in body
+        )
         assert "run_retry_pending_console" in body
         assert "failed" in body
         assert "Retry after transient worker failure" in body
@@ -1305,6 +1309,72 @@ def test_platform_api_paginates_and_sorts_operation_approval_records() -> None:
             if event.permission == VIEW_PLATFORM_OPERATION_APPROVALS
         ]
         assert [event.outcome for event in events] == ["granted", "denied"]
+    finally:
+        client.close()
+        _remove_database(database_path)
+        _remove_database(access_audit_database_path)
+        _remove_database(async_database_path)
+        _remove_database(operation_approval_database_path)
+
+
+def test_platform_operation_approval_detail_view_shows_async_and_platform_context() -> None:
+    (
+        client,
+        database_path,
+        access_audit_database_path,
+        async_database_path,
+        operation_approval_database_path,
+    ) = _client_with_async_and_operation_approval()
+    try:
+        created = client.post(
+            "/platform/async-payment-runs",
+            json=_payload(
+                run_id="run_detail_completed",
+                order_id="order_detail_completed",
+            ),
+        )
+        processed = client.post("/platform/async-worker/process-next")
+        approval = client.post(
+            "/platform/operation-approvals",
+            json={
+                **_pending_approval_payload(),
+                "approval_id": "approval_detail_completed",
+                "operation_id": "run_detail_completed",
+                "target": (
+                    "fintech_platform_api_async_payment_runs/"
+                    "run_detail_completed"
+                ),
+                "request_reason": "Review completed retry context",
+            },
+            headers={"x-actor-id": "approval_requester_001"},
+        )
+        detail = client.get(
+            "/platform/operation-approvals/approval_detail_completed/view",
+            headers={"x-actor-id": "approval_viewer_001"},
+        )
+
+        assert created.status_code == 202
+        assert processed.status_code == 200
+        assert approval.status_code == 201
+        assert detail.status_code == 200
+        body = detail.text
+        assert "Operation Approval Detail" in body
+        assert "approval_detail_completed" in body
+        assert "Review completed retry context" in body
+        assert "Associated Async Run" in body
+        assert "run_detail_completed" in body
+        assert "completed" in body
+        assert "Platform Result Summary" in body
+        assert "order_detail_completed" in body
+
+        events = [
+            event
+            for event in _access_events(access_audit_database_path)
+            if event.permission == VIEW_PLATFORM_OPERATION_APPROVALS
+        ]
+        assert events[-1].actor == "approval_viewer_001"
+        assert events[-1].outcome == "granted"
+        assert events[-1].reason == "view detail"
     finally:
         client.close()
         _remove_database(database_path)
