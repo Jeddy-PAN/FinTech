@@ -233,6 +233,7 @@ investigation_case
 31. 已完成阶段 27 第一版：operation approval 详情页新增只读 lifecycle timeline。
 32. 已完成阶段 28 第一版：async run 和 platform result 支持只读详情页，并从 console / approval detail 链接进入。
 33. 已完成阶段 29 第一版：operation approval 查询返回 `total_count`、`has_next_page` 和 `next_offset`。
+34. 已完成阶段 30 第一版：console 支持 pending operation approval cancel / expire 表单。
 
 ## 运行示例
 
@@ -273,7 +274,7 @@ demo 还会输出 `Risk review completion`，用于观察 `risk_review_required 
 
 demo 现在也会输出 `Exported platform operations reports`，用于观察 `PlatformAsyncRun`、`PlatformRunSnapshot`、`ledger_transaction.posted` audit event 和 `retry_platform_async_run` access audit 如何组成一份运营对账报告。
 
-demo 现在也会输出 `Exported operation approval reports`，用于观察 `OperationApprovalRecord` 如何汇总为 approval records CSV、approval summary CSV 和 HTML 报告。运行 API 服务后，`FinTech Platform Console` 也会显示 `Operations Report Summary`、`Operation Approval Summary`、`Operations Run Rows`、`Pending Operation Approvals` 和 `Approval Records` 区块；approval 表格默认按 `requested_at desc` 展示最新记录，`approval_id` 会链接到只读详情页，pending approval 行支持 approve / reject 表单。
+demo 现在也会输出 `Exported operation approval reports`，用于观察 `OperationApprovalRecord` 如何汇总为 approval records CSV、approval summary CSV 和 HTML 报告。运行 API 服务后，`FinTech Platform Console` 也会显示 `Operations Report Summary`、`Operation Approval Summary`、`Operations Run Rows`、`Pending Operation Approvals` 和 `Approval Records` 区块；approval 表格默认按 `requested_at desc` 展示最新记录，`approval_id` 会链接到只读详情页，pending approval 行支持 approve / reject / cancel / expire 表单。
 
 demo 现在也会输出 `Pending operation approval flow`，用于观察 retry approval request 如何先创建 `pending` approval，再通过 approve endpoint 流转为 `approved`，并在审批通过后把 failed async run 放回 `accepted`；同时展示独立样例 approval 如何流转为 `cancelled` 和 `expired`。
 
@@ -299,7 +300,7 @@ labs/fintech-platform/.test-data/demo_platform_api_investigation_cases.db
 
 ## 当前状态
 
-这个目录已经包含第一版综合平台设计、最小 orchestration、demo、综合报表导出、SQLite 持久化、历史运行报表、risk review 后续处理、教学版一致性检查、平台报表访问控制与访问审计、平台访问异常检测、平台访问异常调查工单、异步任务、运营控制台、retry 审批边界、运行报告与对账视角、operation approval record、operation approval report、console report views、ledger reconciliation report、operation approval state flow、operation approval HTTP endpoints、create operation approval HTTP endpoint、retry approval before execution、operation approval console view、operation approval pagination and sorting、operation approval detail view、operation approval lifecycle、console approval actions、approval lifecycle timeline、async run detail view、platform result detail view、operation approval pagination metadata，以及测试。阶段 8 以来的目标仍然是把已有实验组合成一个清晰的学习平台，而不是立即扩成生产级系统。
+这个目录已经包含第一版综合平台设计、最小 orchestration、demo、综合报表导出、SQLite 持久化、历史运行报表、risk review 后续处理、教学版一致性检查、平台报表访问控制与访问审计、平台访问异常检测、平台访问异常调查工单、异步任务、运营控制台、retry 审批边界、运行报告与对账视角、operation approval record、operation approval report、console report views、ledger reconciliation report、operation approval state flow、operation approval HTTP endpoints、create operation approval HTTP endpoint、retry approval before execution、operation approval console view、operation approval pagination and sorting、operation approval detail view、operation approval lifecycle、console approval actions、approval lifecycle timeline、async run detail view、platform result detail view、operation approval pagination metadata、console cancel / expire approval actions，以及测试。阶段 8 以来的目标仍然是把已有实验组合成一个清晰的学习平台，而不是立即扩成生产级系统。
 
 阶段 9 已经开始在这个目录上做 API 服务化的第一步：
 
@@ -616,3 +617,13 @@ test_platform_api_app.py
 ```
 
 阶段 29 让 `SQLiteOperationApprovalStore` 新增 `count_records()`，并让 `GET /platform/operation-approvals` 的 `pagination` 响应新增 `total_count`、`has_next_page` 和 `next_offset`。这些字段复用当前 `status`、`operation_type`、`operation_id` 筛选条件，用于说明当前页是否只是筛选结果的一部分。当前仍不改成 cursor pagination，不新增 console 分页控件，也不改变已有 `limit` / `offset` / `sort_by` / `sort_order` 语义。
+
+阶段 30 第一版已完成：
+
+```text
+docs/43-stage-30-console-cancel-expire-actions.md
+platform_api_app.py
+test_platform_api_app.py
+```
+
+阶段 30 把阶段 25 已有的 cancel / expire 生命周期动作接入 `FinTech Platform Console` 的 `Pending Operation Approvals` 表格。FastAPI 新增 `POST /platform/operation-approvals/{approval_id}/cancel-form` 和 `/expire-form` 浏览器表单适配层，并让 JSON cancel / expire endpoint 与 form endpoint 复用 `_cancel_operation_approval()` / `_expire_operation_approval()` helper。pending approval 现在可在 console 中流转到 approved / rejected / cancelled / expired；cancel / expire 只改变 approval 终态，不执行 retry。当前仍不做真实 IAM、登录、CSRF、批量操作、自动过期任务、通知、SLA、认领或锁定。

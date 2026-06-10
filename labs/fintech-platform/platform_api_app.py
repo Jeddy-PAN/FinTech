@@ -118,6 +118,8 @@ PLATFORM_CONSOLE_TARGET = "fintech_platform_api_console"
 RETRY_FAILED_ASYNC_RUN_CONFIRMATION = "retry_failed_async_run"
 APPROVE_OPERATION_APPROVAL_CONFIRMATION = "approve_operation_approval"
 REJECT_OPERATION_APPROVAL_CONFIRMATION = "reject_operation_approval"
+CANCEL_OPERATION_APPROVAL_CONFIRMATION = "cancel_operation_approval"
+EXPIRE_OPERATION_APPROVAL_CONFIRMATION = "expire_operation_approval"
 ANONYMOUS_API_CLIENT = "anonymous_api_client"
 
 
@@ -1005,39 +1007,87 @@ def create_app(
             status_code=status.HTTP_303_SEE_OTHER,
         )
 
+    @app.post("/platform/operation-approvals/{approval_id}/cancel-form")
+    async def cancel_operation_approval_form(
+        approval_id: str,
+        request: Request,
+    ) -> RedirectResponse:
+        form = _parse_form_body(await request.body())
+        try:
+            _validate_form_confirmation(
+                form,
+                expected=CANCEL_OPERATION_APPROVAL_CONFIRMATION,
+            )
+            _cancel_operation_approval(
+                app,
+                approval_id=approval_id,
+                decided_by=_required_form_text(form, "decided_by"),
+                decision_reason=_required_form_text(form, "decision_reason"),
+                decided_at=_aware_timestamp(
+                    datetime.fromisoformat(_required_form_text(form, "decided_at"))
+                ),
+                actor=_required_form_text(form, "decided_by"),
+            )
+        except (OperationApprovalError, PlatformAsyncRunStoreError, ValueError) as error:
+            message = quote(str(error), safe="")
+            return RedirectResponse(
+                url=f"/platform/view?approval_error={message}",
+                status_code=status.HTTP_303_SEE_OTHER,
+            )
+        return RedirectResponse(
+            url="/platform/view?approval_status=cancelled",
+            status_code=status.HTTP_303_SEE_OTHER,
+        )
+
+    @app.post("/platform/operation-approvals/{approval_id}/expire-form")
+    async def expire_operation_approval_form(
+        approval_id: str,
+        request: Request,
+    ) -> RedirectResponse:
+        form = _parse_form_body(await request.body())
+        try:
+            _validate_form_confirmation(
+                form,
+                expected=EXPIRE_OPERATION_APPROVAL_CONFIRMATION,
+            )
+            _expire_operation_approval(
+                app,
+                approval_id=approval_id,
+                decided_by=_required_form_text(form, "decided_by"),
+                decision_reason=_required_form_text(form, "decision_reason"),
+                decided_at=_aware_timestamp(
+                    datetime.fromisoformat(_required_form_text(form, "decided_at"))
+                ),
+                actor=_required_form_text(form, "decided_by"),
+            )
+        except (OperationApprovalError, PlatformAsyncRunStoreError, ValueError) as error:
+            message = quote(str(error), safe="")
+            return RedirectResponse(
+                url=f"/platform/view?approval_error={message}",
+                status_code=status.HTTP_303_SEE_OTHER,
+            )
+        return RedirectResponse(
+            url="/platform/view?approval_status=expired",
+            status_code=status.HTTP_303_SEE_OTHER,
+        )
+
     @app.patch("/platform/operation-approvals/{approval_id}/cancel")
     def cancel_operation_approval(
         approval_id: str,
         request: DecideOperationApprovalRequest,
         x_actor_id: str | None = Header(default=None),
     ) -> dict:
-        store = _operation_approval_store(app)
         try:
-            record = store.cancel_pending(
-                approval_id,
-                cancelled_by=request.decided_by,
-                cancellation_reason=request.decision_reason,
-                decided_at=_aware_timestamp(request.decided_at),
-            )
-        except OperationApprovalError as error:
-            _record_operation_approval_access_denial(
+            record = _cancel_operation_approval(
                 app,
                 approval_id=approval_id,
+                decided_by=request.decided_by,
+                decision_reason=request.decision_reason,
+                decided_at=_aware_timestamp(request.decided_at),
                 actor=x_actor_id,
-                permission=UPDATE_PLATFORM_OPERATION_APPROVALS,
-                error=error,
             )
+        except OperationApprovalError as error:
             raise _http_exception_from_operation_approval_error(error) from error
-        finally:
-            store.close()
-        _record_api_access(
-            app,
-            actor=_api_actor(x_actor_id),
-            permission=UPDATE_PLATFORM_OPERATION_APPROVALS,
-            target=_operation_approval_target(approval_id),
-            outcome="granted",
-            reason="cancelled",
-        )
         return {"record": _operation_approval_record_response(record)}
 
     @app.patch("/platform/operation-approvals/{approval_id}/expire")
@@ -1046,33 +1096,17 @@ def create_app(
         request: DecideOperationApprovalRequest,
         x_actor_id: str | None = Header(default=None),
     ) -> dict:
-        store = _operation_approval_store(app)
         try:
-            record = store.expire_pending(
-                approval_id,
-                expired_by=request.decided_by,
-                expiration_reason=request.decision_reason,
-                decided_at=_aware_timestamp(request.decided_at),
-            )
-        except OperationApprovalError as error:
-            _record_operation_approval_access_denial(
+            record = _expire_operation_approval(
                 app,
                 approval_id=approval_id,
+                decided_by=request.decided_by,
+                decision_reason=request.decision_reason,
+                decided_at=_aware_timestamp(request.decided_at),
                 actor=x_actor_id,
-                permission=UPDATE_PLATFORM_OPERATION_APPROVALS,
-                error=error,
             )
+        except OperationApprovalError as error:
             raise _http_exception_from_operation_approval_error(error) from error
-        finally:
-            store.close()
-        _record_api_access(
-            app,
-            actor=_api_actor(x_actor_id),
-            permission=UPDATE_PLATFORM_OPERATION_APPROVALS,
-            target=_operation_approval_target(approval_id),
-            outcome="granted",
-            reason="expired",
-        )
         return {"record": _operation_approval_record_response(record)}
 
     @app.get("/platform/api-access-investigation-cases")
@@ -1459,7 +1493,12 @@ def _status_for_operation_approval_error(error: OperationApprovalError) -> int:
         return status.HTTP_404_NOT_FOUND
     if message.startswith("Operation approval record already exists:"):
         return status.HTTP_409_CONFLICT
-    if message.startswith("Cannot approve ") or message.startswith("Cannot reject "):
+    if (
+        message.startswith("Cannot approve ")
+        or message.startswith("Cannot reject ")
+        or message.startswith("Cannot cancel ")
+        or message.startswith("Cannot expire ")
+    ):
         return status.HTTP_409_CONFLICT
     return status.HTTP_400_BAD_REQUEST
 
@@ -1651,6 +1690,84 @@ def _reject_operation_approval(
         target=_operation_approval_target(approval_id),
         outcome="granted",
         reason="rejected",
+    )
+    return record
+
+
+def _cancel_operation_approval(
+    app: FastAPI,
+    *,
+    approval_id: str,
+    decided_by: str,
+    decision_reason: str,
+    decided_at: datetime,
+    actor: str | None,
+) -> OperationApprovalRecord:
+    store = _operation_approval_store(app)
+    try:
+        record = store.cancel_pending(
+            approval_id,
+            cancelled_by=decided_by,
+            cancellation_reason=decision_reason,
+            decided_at=decided_at,
+        )
+    except OperationApprovalError as error:
+        _record_operation_approval_access_denial(
+            app,
+            approval_id=approval_id,
+            actor=actor,
+            permission=UPDATE_PLATFORM_OPERATION_APPROVALS,
+            error=error,
+        )
+        raise
+    finally:
+        store.close()
+    _record_api_access(
+        app,
+        actor=_api_actor(actor),
+        permission=UPDATE_PLATFORM_OPERATION_APPROVALS,
+        target=_operation_approval_target(approval_id),
+        outcome="granted",
+        reason="cancelled",
+    )
+    return record
+
+
+def _expire_operation_approval(
+    app: FastAPI,
+    *,
+    approval_id: str,
+    decided_by: str,
+    decision_reason: str,
+    decided_at: datetime,
+    actor: str | None,
+) -> OperationApprovalRecord:
+    store = _operation_approval_store(app)
+    try:
+        record = store.expire_pending(
+            approval_id,
+            expired_by=decided_by,
+            expiration_reason=decision_reason,
+            decided_at=decided_at,
+        )
+    except OperationApprovalError as error:
+        _record_operation_approval_access_denial(
+            app,
+            approval_id=approval_id,
+            actor=actor,
+            permission=UPDATE_PLATFORM_OPERATION_APPROVALS,
+            error=error,
+        )
+        raise
+    finally:
+        store.close()
+    _record_api_access(
+        app,
+        actor=_api_actor(actor),
+        permission=UPDATE_PLATFORM_OPERATION_APPROVALS,
+        target=_operation_approval_target(approval_id),
+        outcome="granted",
+        reason="expired",
     )
     return record
 
@@ -2892,6 +3009,18 @@ def _approval_feedback_html(
             "Operation approval rejected."
             "</div>"
         )
+    if approval_status == "cancelled":
+        return (
+            '<div class="notice notice-success">'
+            "Operation approval cancelled."
+            "</div>"
+        )
+    if approval_status == "expired":
+        return (
+            '<div class="notice notice-success">'
+            "Operation approval expired."
+            "</div>"
+        )
     return ""
 
 
@@ -3221,6 +3350,18 @@ def _operation_approval_decision_forms_html(approval_id: str) -> str:
             action_name="reject",
             confirmation=REJECT_OPERATION_APPROVAL_CONFIRMATION,
             button_label="Reject",
+        )
+        + _operation_approval_decision_form_html(
+            approval_id,
+            action_name="cancel",
+            confirmation=CANCEL_OPERATION_APPROVAL_CONFIRMATION,
+            button_label="Cancel",
+        )
+        + _operation_approval_decision_form_html(
+            approval_id,
+            action_name="expire",
+            confirmation=EXPIRE_OPERATION_APPROVAL_CONFIRMATION,
+            button_label="Expire",
         )
     )
 
