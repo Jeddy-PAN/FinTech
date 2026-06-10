@@ -322,6 +322,96 @@ def test_platform_api_worker_processes_async_run_to_platform_result() -> None:
         _remove_database(async_database_path)
 
 
+def test_platform_async_run_detail_view_links_to_platform_result() -> None:
+    client, database_path, access_audit_database_path, async_database_path = (
+        _client_with_async()
+    )
+    try:
+        accepted = client.post(
+            "/platform/async-payment-runs",
+            json=_payload(run_id="run_async_detail", order_id="order_async_detail"),
+        )
+        processed = client.post(
+            "/platform/async-worker/process-next",
+            headers={"x-actor-id": "async_worker_001"},
+        )
+        detail = client.get(
+            "/platform/async-payment-runs/run_async_detail/view",
+            headers={"x-actor-id": "async_detail_viewer_001"},
+        )
+
+        assert accepted.status_code == 202
+        assert processed.status_code == 200
+        assert detail.status_code == 200
+        assert detail.headers["content-type"].startswith("text/html")
+        body = detail.text
+        assert "Async Run Detail" in body
+        assert "Request Payload" in body
+        assert "Platform Result Summary" in body
+        assert "run_async_detail" in body
+        assert "order_async_detail" in body
+        assert "/platform/payment-runs/run_async_detail/view" in body
+
+        events = [
+            event
+            for event in _access_events(access_audit_database_path)
+            if event.permission == VIEW_PLATFORM_ASYNC_PAYMENT_RUN
+        ]
+        assert events[-1].actor == "async_detail_viewer_001"
+        assert events[-1].outcome == "granted"
+        assert events[-1].reason == "view detail"
+    finally:
+        client.close()
+        _remove_database(database_path)
+        _remove_database(access_audit_database_path)
+        _remove_database(async_database_path)
+
+
+def test_platform_payment_run_detail_view_shows_audit_timeline() -> None:
+    client, database_path, access_audit_database_path, async_database_path = (
+        _client_with_async()
+    )
+    try:
+        accepted = client.post(
+            "/platform/async-payment-runs",
+            json=_payload(run_id="run_payment_detail", order_id="order_payment_detail"),
+        )
+        processed = client.post("/platform/async-worker/process-next")
+        detail = client.get(
+            "/platform/payment-runs/run_payment_detail/view",
+            headers={"x-actor-id": "payment_detail_viewer_001"},
+        )
+
+        assert accepted.status_code == 202
+        assert processed.status_code == 200
+        assert detail.status_code == 200
+        assert detail.headers["content-type"].startswith("text/html")
+        body = detail.text
+        assert "Payment Run Detail" in body
+        assert "Platform Result" in body
+        assert "Associated Async Run" in body
+        assert "Customer Audit Timeline" in body
+        assert "run_payment_detail" in body
+        assert "order_payment_detail" in body
+        assert "/platform/async-payment-runs/run_payment_detail/view" in body
+        assert "payment_order.succeeded" in body
+        assert "ledger_transaction.posted" in body
+
+        events = [
+            event
+            for event in _access_events(access_audit_database_path)
+            if event.permission == VIEW_PLATFORM_PAYMENT_RUN
+        ]
+        assert events[-1].actor == "payment_detail_viewer_001"
+        assert events[-1].outcome == "granted"
+        assert events[-1].reason == "view detail"
+    finally:
+        client.close()
+        _remove_database(database_path)
+        _remove_database(access_audit_database_path)
+        _remove_database(async_database_path)
+
+
 def test_platform_api_retries_failed_async_run_and_worker_processes_it() -> None:
     (
         client,
@@ -807,6 +897,8 @@ def test_platform_api_console_page_renders_platform_summary() -> None:
         assert "Investigation cases" in body
         assert "run_http_001" in body
         assert "run_async_http_001" in body
+        assert "/platform/payment-runs/run_http_001/view" in body
+        assert "/platform/async-payment-runs/run_async_http_001/view" in body
         assert "order_async_http_001" in body
         assert "completed" in body
         assert "No failed async runs have been recorded yet." in body
@@ -1076,6 +1168,8 @@ def test_platform_console_renders_operations_and_approval_report_views() -> None
         assert "retry_granted_count" in body
         assert "warning_finding_count" in body
         assert "run_retry_http" in body
+        assert "/platform/async-payment-runs/run_retry_http/view" in body
+        assert "/platform/payment-runs/run_console_completed/view" in body
         assert "Operation Approval Summary" in body
         assert "Pending Operation Approvals" in body
         assert "Approval Records" in body
@@ -1557,9 +1651,11 @@ def test_platform_operation_approval_detail_view_shows_async_and_platform_contex
         assert "ops_user_001" in body
         assert "Associated Async Run" in body
         assert "run_detail_completed" in body
+        assert "/platform/async-payment-runs/run_detail_completed/view" in body
         assert "completed" in body
         assert "Platform Result Summary" in body
         assert "order_detail_completed" in body
+        assert "/platform/payment-runs/run_detail_completed/view" in body
 
         events = [
             event

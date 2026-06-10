@@ -320,6 +320,57 @@ def create_app(
         )
         return response
 
+    @app.get(
+        "/platform/payment-runs/{run_id}/view",
+        response_class=HTMLResponse,
+    )
+    def view_payment_run(
+        run_id: str,
+        x_actor_id: str | None = Header(default=None),
+        service: PlatformApiService = Depends(get_service),
+    ) -> HTMLResponse:
+        actor = _api_actor(x_actor_id)
+        target = _payment_run_target(run_id)
+        try:
+            response = service.get_payment_run(run_id)
+        except SQLitePlatformStoreError as error:
+            _record_api_access(
+                app,
+                actor=actor,
+                permission=VIEW_PLATFORM_PAYMENT_RUN,
+                target=target,
+                outcome="denied",
+                reason=f"404 {type(error).__name__}: {error}",
+            )
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=service_error_response(error),
+            ) from error
+        except PlatformApiServiceError as error:
+            _record_api_access(
+                app,
+                actor=actor,
+                permission=VIEW_PLATFORM_PAYMENT_RUN,
+                target=target,
+                outcome="denied",
+                reason=f"400 {type(error).__name__}: {error}",
+            )
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=service_error_response(error),
+            ) from error
+        finally:
+            service.store.close()
+        _record_api_access(
+            app,
+            actor=actor,
+            permission=VIEW_PLATFORM_PAYMENT_RUN,
+            target=target,
+            outcome="granted",
+            reason="view detail",
+        )
+        return HTMLResponse(_render_payment_run_detail_html(app, response))
+
     @app.get("/platform/payment-runs")
     def list_payment_runs(
         status_filter: str | None = Query(default=None, alias="status"),
@@ -464,6 +515,47 @@ def create_app(
             outcome="granted",
         )
         return _async_run_response(app, run)
+
+    @app.get(
+        "/platform/async-payment-runs/{run_id}/view",
+        response_class=HTMLResponse,
+    )
+    def view_async_payment_run(
+        run_id: str,
+        x_actor_id: str | None = Header(default=None),
+        async_store: SQLitePlatformAsyncRunStore = Depends(get_async_store),
+    ) -> HTMLResponse:
+        actor = _api_actor(x_actor_id)
+        target = _async_payment_run_target(run_id)
+        try:
+            run = async_store.get_run(run_id)
+        except PlatformAsyncRunStoreError as error:
+            _record_api_access(
+                app,
+                actor=actor,
+                permission=VIEW_PLATFORM_ASYNC_PAYMENT_RUN,
+                target=target,
+                outcome="denied",
+                reason=f"404 {type(error).__name__}: {error}",
+            )
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={
+                    "error": type(error).__name__,
+                    "message": str(error),
+                },
+            ) from error
+        finally:
+            async_store.close()
+        _record_api_access(
+            app,
+            actor=actor,
+            permission=VIEW_PLATFORM_ASYNC_PAYMENT_RUN,
+            target=target,
+            outcome="granted",
+            reason="view detail",
+        )
+        return HTMLResponse(_render_async_run_detail_html(app, run))
 
     @app.post(
         "/platform/async-payment-runs/{run_id}/retry",
@@ -1842,30 +1934,49 @@ def _operation_approval_detail_rows(
     ]
 
 
-def _operation_approval_async_run_detail_rows(
+def _operation_approval_async_run_detail_rows_html(
     run: PlatformAsyncRun | None,
-) -> list[tuple[object, ...]]:
+) -> list[tuple[str, ...]]:
     if run is None:
         return []
     return [
-        ("run_id", run.run_id),
-        ("status", run.status),
-        ("attempt_count", run.attempt_count),
-        ("max_attempts", run.max_attempts),
-        ("last_error", run.last_error or ""),
-        ("created_at", run.created_at.isoformat()),
-        ("updated_at", run.updated_at.isoformat()),
-        ("started_at", "" if run.started_at is None else run.started_at.isoformat()),
+        ("run_id", _async_run_detail_link(run.run_id)),
+        ("status", html.escape(run.status)),
+        ("attempt_count", html.escape(str(run.attempt_count))),
+        ("max_attempts", html.escape(str(run.max_attempts))),
+        ("last_error", html.escape(run.last_error or "")),
+        ("created_at", html.escape(run.created_at.isoformat())),
+        ("updated_at", html.escape(run.updated_at.isoformat())),
+        (
+            "started_at",
+            "" if run.started_at is None else html.escape(run.started_at.isoformat()),
+        ),
         (
             "completed_at",
-            "" if run.completed_at is None else run.completed_at.isoformat(),
+            ""
+            if run.completed_at is None
+            else html.escape(run.completed_at.isoformat()),
         ),
     ]
 
 
-def _operation_approval_platform_result_rows(
+def _async_run_detail_rows_html(run: PlatformAsyncRun) -> list[tuple[str, ...]]:
+    return _operation_approval_async_run_detail_rows_html(run)
+
+
+def _request_payload_rows_html(run: PlatformAsyncRun) -> list[tuple[str, ...]]:
+    return [
+        (html.escape(str(field)), html.escape(str(value)))
+        for field, value in sorted(run.request_payload.items())
+    ]
+
+
+def _platform_result_detail_rows_html(
     platform_result: dict | None,
-) -> list[tuple[object, ...]]:
+    *,
+    link_run_id: bool,
+    summary_only: bool,
+) -> list[tuple[str, ...]]:
     if platform_result is None:
         return []
     fields = [
@@ -1879,7 +1990,47 @@ def _operation_approval_platform_result_rows(
         "audit_event_count",
         "created_at",
     ]
-    return [(field, platform_result.get(field) or "") for field in fields]
+    if not summary_only:
+        fields = [
+            "run_id",
+            "customer_id",
+            "status",
+            "kyc_status",
+            "payment_order_id",
+            "payment_order_status",
+            "risk_status",
+            "risk_review_case_id",
+            "ledger_transaction_id",
+            "platform_bank_balance",
+            "user_wallet_balance",
+            "audit_event_count",
+            "created_at",
+        ]
+    rows: list[tuple[str, ...]] = []
+    for field in fields:
+        value = platform_result.get(field) or ""
+        if field == "run_id" and link_run_id and value:
+            rows.append((field, _payment_run_detail_link(str(value))))
+        else:
+            rows.append((field, html.escape(str(value))))
+    return rows
+
+
+def _platform_result_audit_event_rows(
+    platform_result: dict,
+) -> list[tuple[object, ...]]:
+    return [
+        (
+            event["occurred_at"],
+            event["source_system"],
+            event["event_type"],
+            event["aggregate_type"],
+            event["aggregate_id"],
+            event["actor"],
+            event["reason"],
+        )
+        for event in platform_result.get("audit_events", [])
+    ]
 
 
 def _operation_approval_lifecycle_timeline_rows(
@@ -2043,23 +2194,202 @@ def _render_operation_approval_detail_html(
 
   <div class="section">
     <h2>Associated Async Run</h2>
-    {_table(
+    {_html_table(
         ["field", "value"],
-        _operation_approval_async_run_detail_rows(async_run),
+        _operation_approval_async_run_detail_rows_html(async_run),
         empty_message="No associated async run was found.",
     )}
   </div>
 
   <div class="section">
     <h2>Platform Result Summary</h2>
-    {_table(
+    {_html_table(
         ["field", "value"],
-        _operation_approval_platform_result_rows(platform_result),
+        _platform_result_detail_rows_html(
+            platform_result,
+            link_run_id=True,
+            summary_only=True,
+        ),
         empty_message="No completed platform result is available.",
     )}
   </div>
 </body>
 </html>"""
+
+
+def _render_async_run_detail_html(
+    app: FastAPI,
+    run: PlatformAsyncRun,
+) -> str:
+    platform_result = _async_platform_result_or_none(app, run)
+    return f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Async Run Detail</title>
+  <style>
+    {_detail_page_css()}
+  </style>
+</head>
+<body>
+  <h1>Async Run Detail</h1>
+  <div class="meta">
+    Read-only async run context. Back to <a href="/platform/view">FinTech Platform Console</a>.
+  </div>
+
+  <div class="section">
+    <h2>Async Run</h2>
+    {_html_table(
+        ["field", "value"],
+        _async_run_detail_rows_html(run),
+        empty_message="No async run is available.",
+    )}
+  </div>
+
+  <div class="section">
+    <h2>Request Payload</h2>
+    {_html_table(
+        ["field", "value"],
+        _request_payload_rows_html(run),
+        empty_message="No request payload is available.",
+    )}
+  </div>
+
+  <div class="section">
+    <h2>Platform Result Summary</h2>
+    {_html_table(
+        ["field", "value"],
+        _platform_result_detail_rows_html(
+            platform_result,
+            link_run_id=True,
+            summary_only=True,
+        ),
+        empty_message="No completed platform result is available.",
+    )}
+  </div>
+</body>
+</html>"""
+
+
+def _render_payment_run_detail_html(
+    app: FastAPI,
+    platform_result: dict,
+) -> str:
+    async_run = _async_run_or_none(app, platform_result["run_id"])
+    return f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Payment Run Detail</title>
+  <style>
+    {_detail_page_css()}
+  </style>
+</head>
+<body>
+  <h1>Payment Run Detail</h1>
+  <div class="meta">
+    Read-only platform result context. Back to <a href="/platform/view">FinTech Platform Console</a>.
+  </div>
+
+  <div class="section">
+    <h2>Platform Result</h2>
+    {_html_table(
+        ["field", "value"],
+        _platform_result_detail_rows_html(
+            platform_result,
+            link_run_id=False,
+            summary_only=False,
+        ),
+        empty_message="No platform result is available.",
+    )}
+  </div>
+
+  <div class="section">
+    <h2>Associated Async Run</h2>
+    {_html_table(
+        ["field", "value"],
+        _operation_approval_async_run_detail_rows_html(async_run),
+        empty_message="No associated async run was found.",
+    )}
+  </div>
+
+  <div class="section">
+    <h2>Customer Audit Timeline</h2>
+    {_table(
+        [
+            "occurred_at",
+            "source_system",
+            "event_type",
+            "aggregate_type",
+            "aggregate_id",
+            "actor",
+            "reason",
+        ],
+        _platform_result_audit_event_rows(platform_result),
+        empty_message="No customer audit events are available.",
+    )}
+  </div>
+</body>
+</html>"""
+
+
+def _detail_page_css() -> str:
+    return """
+    body {
+      color: #1f2937;
+      font-family: Arial, sans-serif;
+      line-height: 1.5;
+      margin: 0;
+      max-width: 1080px;
+      padding: 16px;
+    }
+    @media (min-width: 768px) {
+      body {
+        padding: 24px;
+      }
+    }
+    h1, h2 {
+      margin: 0 0 12px;
+    }
+    h2 {
+      margin-top: 28px;
+    }
+    .meta {
+      color: #6b7280;
+      font-size: 14px;
+      margin-bottom: 18px;
+    }
+    .section {
+      margin-top: 24px;
+      overflow-x: auto;
+    }
+    table {
+      border-collapse: collapse;
+      margin-top: 8px;
+      min-width: 680px;
+      width: 100%;
+    }
+    th, td {
+      border: 1px solid #d1d5db;
+      padding: 8px 10px;
+      text-align: left;
+      vertical-align: top;
+    }
+    th {
+      background: #f3f4f6;
+    }
+    .muted {
+      color: #6b7280;
+      font-size: 14px;
+    }
+    code {
+      background: #f3f4f6;
+      border-radius: 4px;
+      padding: 2px 4px;
+    }
+    """
 
 
 def _render_platform_console_html(
@@ -2276,7 +2606,7 @@ def _render_platform_console_html(
 
   <div class="section">
     <h2>Recent Payment Runs</h2>
-    {_table(
+    {_html_table(
         [
             "run_id",
             "customer_id",
@@ -2286,25 +2616,14 @@ def _render_platform_console_html(
             "audit_event_count",
             "created_at",
         ],
-        [
-            (
-                run["run_id"],
-                run["customer_id"],
-                run["status"],
-                run["payment_order_status"] or "",
-                run["risk_status"] or "",
-                run["audit_event_count"],
-                run["created_at"],
-            )
-            for run in _latest_rows(runs, key="created_at")
-        ],
+        _payment_console_rows(_latest_rows(runs, key="created_at")),
         empty_message="No payment runs have been recorded yet.",
     )}
   </div>
 
   <div class="section">
     <h2>Recent Async Runs</h2>
-    {_table(
+    {_html_table(
         [
             "run_id",
             "status",
@@ -2615,7 +2934,7 @@ def _failed_async_runs_table(
     row_html = []
     for run in runs:
         cells = [
-            html.escape(run.run_id),
+            _async_run_detail_link(run.run_id),
             html.escape(str(run.attempt_count)),
             html.escape(str(run.max_attempts)),
             html.escape(run.last_error or ""),
@@ -2645,6 +2964,21 @@ def _retry_form_html(run_id: str) -> str:
 
 def _latest_rows(rows: tuple[dict, ...], *, key: str, limit: int = 5) -> tuple[dict, ...]:
     return tuple(sorted(rows, key=lambda row: row[key], reverse=True)[:limit])
+
+
+def _payment_console_rows(rows: tuple[dict, ...]) -> list[tuple[str, ...]]:
+    return [
+        (
+            _payment_run_detail_link(run["run_id"]),
+            html.escape(run["customer_id"]),
+            html.escape(run["status"]),
+            html.escape(run["payment_order_status"] or ""),
+            html.escape(run["risk_status"] or ""),
+            html.escape(str(run["audit_event_count"])),
+            html.escape(run["created_at"]),
+        )
+        for run in rows
+    ]
 
 
 def _platform_snapshots(
@@ -2699,19 +3033,19 @@ def _failed_async_runs(
 def _async_console_rows(
     app: FastAPI,
     runs: tuple[PlatformAsyncRun, ...],
-) -> list[tuple[object, ...]]:
-    rows: list[tuple[object, ...]] = []
+) -> list[tuple[str, ...]]:
+    rows: list[tuple[str, ...]] = []
     for run in runs:
         platform_result = _async_platform_result_or_none(app, run)
         rows.append(
             (
-                run.run_id,
-                run.status,
-                run.attempt_count,
-                _platform_result_field(platform_result, "status"),
-                _platform_result_field(platform_result, "payment_order_id"),
-                run.last_error or "",
-                run.updated_at.isoformat(),
+                _async_run_detail_link(run.run_id),
+                html.escape(run.status),
+                html.escape(str(run.attempt_count)),
+                html.escape(_platform_result_field(platform_result, "status")),
+                html.escape(_platform_result_field(platform_result, "payment_order_id")),
+                html.escape(run.last_error or ""),
+                html.escape(run.updated_at.isoformat()),
             )
         )
     return rows
@@ -2874,6 +3208,21 @@ def _operation_approval_detail_link(approval_id: str) -> str:
     return (
         f'<a href="/platform/operation-approvals/{href_approval_id}/view">'
         f"{escaped_approval_id}</a>"
+    )
+
+
+def _payment_run_detail_link(run_id: str) -> str:
+    escaped_run_id = html.escape(run_id)
+    href_run_id = quote(run_id, safe="")
+    return f'<a href="/platform/payment-runs/{href_run_id}/view">{escaped_run_id}</a>'
+
+
+def _async_run_detail_link(run_id: str) -> str:
+    escaped_run_id = html.escape(run_id)
+    href_run_id = quote(run_id, safe="")
+    return (
+        f'<a href="/platform/async-payment-runs/{href_run_id}/view">'
+        f"{escaped_run_id}</a>"
     )
 
 

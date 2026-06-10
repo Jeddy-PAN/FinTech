@@ -1,6 +1,6 @@
 # docs 文档入口
 
-这个目录保存 FinTech 学习笔记、阶段计划和阶段总结。当前文档已经比较多，阅读时不建议从文件名 01 一路顺读到 37，而应按目标选择路径。
+这个目录保存 FinTech 学习笔记、阶段计划和阶段总结。当前文档已经比较多，阅读时不建议从文件名 01 一路顺读到 41，而应按目标选择路径。
 
 ## 推荐阅读路径
 
@@ -39,6 +39,7 @@
 19. [38-stage-25-operation-approval-lifecycle.md](38-stage-25-operation-approval-lifecycle.md)：operation approval 取消和过期生命周期。
 20. [39-stage-26-console-approval-actions.md](39-stage-26-console-approval-actions.md)：console approve / reject approval 表单。
 21. [40-stage-27-approval-lifecycle-timeline.md](40-stage-27-approval-lifecycle-timeline.md)：approval detail lifecycle timeline。
+22. [41-stage-28-async-platform-detail-views.md](41-stage-28-async-platform-detail-views.md)：async run 与 platform result 只读详情页。
 
 ### 路径 C：只看阶段计划和历史
 
@@ -70,6 +71,7 @@
 | [38-stage-25-operation-approval-lifecycle.md](38-stage-25-operation-approval-lifecycle.md) | operation approval lifecycle |
 | [39-stage-26-console-approval-actions.md](39-stage-26-console-approval-actions.md) | console approval actions |
 | [40-stage-27-approval-lifecycle-timeline.md](40-stage-27-approval-lifecycle-timeline.md) | approval lifecycle timeline |
+| [41-stage-28-async-platform-detail-views.md](41-stage-28-async-platform-detail-views.md) | async run and platform result detail views |
 
 ## 当前平台能力地图
 
@@ -100,9 +102,11 @@ POST /platform/async-payment-runs
 -> PlatformApiService
 -> SQLitePlatformStore: final platform result
 -> SQLitePlatformAsyncRunStore: completed / failed
+-> GET /platform/async-payment-runs/{run_id}/view
+-> GET /platform/payment-runs/{run_id}/view
 ```
 
-这个流程回答：接口返回 `202 Accepted` 后，后台任务如何独立推进，任务状态和业务状态为什么要分开。
+这个流程回答：接口返回 `202 Accepted` 后，后台任务如何独立推进，任务状态和业务状态为什么要分开，以及运营人员如何继续点进 async run 和最终 platform result 详情页查看上下文。
 
 ### 失败重试和审批流程
 
@@ -166,12 +170,13 @@ OperationApprovalRecord
 -> GET /platform/operation-approvals/{approval_id}
 -> GET /platform/operation-approvals/{approval_id}/view
 -> Lifecycle Timeline: approval_requested / approval_decided / retry_execution
+-> linked async run detail / platform result detail
 -> PATCH approve / reject / cancel / expire
 -> POST approve-form / reject-form
 -> access audit granted / denied
 ```
 
-这个流程回答：pending approval 如何通过 API 被创建、分页查看、排序查看、详情查看、在详情页按时间解释申请、决策和 retry execution，再通过 JSON 或 console form 流转到 approved / rejected，以及通过 API 流转到 cancelled / expired，并留下访问审计。
+这个流程回答：pending approval 如何通过 API 被创建、分页查看、排序查看、详情查看、在详情页按时间解释申请、决策和 retry execution，并继续跳转到关联 async run 和 platform result 详情页；再通过 JSON 或 console form 流转到 approved / rejected，以及通过 API 流转到 cancelled / expired，并留下访问审计。
 
 ### Console 报表视图
 
@@ -184,11 +189,13 @@ OperationApprovalReport
 -> pending approval rows with async status
 -> approval detail links
 -> lifecycle timeline in approval detail view
+-> async run detail links
+-> platform result detail links
 -> cancelled / expired approval counts
 -> approve / reject forms for pending approvals
 ```
 
-这个流程回答：运营人员如何在同一个页面里观察 async run、对账摘要、retry 审计、审批记录和待审批 approval，能点进只读详情页查看 approval lifecycle timeline，并能对 pending approval 执行 approve / reject。
+这个流程回答：运营人员如何在同一个页面里观察 async run、对账摘要、retry 审计、审批记录和待审批 approval，能点进只读详情页查看 approval lifecycle timeline、async run request payload、platform result 和 customer audit timeline，并能对 pending approval 执行 approve / reject。
 
 ### Ledger Reconciliation 流程
 
@@ -213,7 +220,7 @@ platform / wallet balance snapshot
 
 ## 下一步候选方向
 
-1. 把 detail view 中的 async run 和 platform result 链接到更完整的只读详情页。
-2. 为 operation approval 查询增加更明确的总数统计或 cursor pagination。
-3. 如果继续增强 console，再考虑 cancel / expire 表单，但要先明确权限和误操作边界。
-4. 为 operations console 增加更完整的筛选入口，而不是只显示最新 5 条。
+1. 为 operation approval 查询增加更明确的总数统计或 cursor pagination。
+2. 如果继续增强 console，再考虑 cancel / expire 表单，但要先明确权限和误操作边界。
+3. 为 operations console 增加更完整的筛选入口，而不是只显示最新 5 条。
+4. 给 platform result detail 增加更细的 reconciliation context，但仍保持只读。

@@ -231,6 +231,7 @@ investigation_case
 29. 已完成阶段 25 第一版：operation approval 支持 cancelled / expired 生命周期状态。
 30. 已完成阶段 26 第一版：console 支持 pending operation approval approve / reject 表单。
 31. 已完成阶段 27 第一版：operation approval 详情页新增只读 lifecycle timeline。
+32. 已完成阶段 28 第一版：async run 和 platform result 支持只读详情页，并从 console / approval detail 链接进入。
 
 ## 运行示例
 
@@ -297,7 +298,7 @@ labs/fintech-platform/.test-data/demo_platform_api_investigation_cases.db
 
 ## 当前状态
 
-这个目录已经包含第一版综合平台设计、最小 orchestration、demo、综合报表导出、SQLite 持久化、历史运行报表、risk review 后续处理、教学版一致性检查、平台报表访问控制与访问审计、平台访问异常检测、平台访问异常调查工单、异步任务、运营控制台、retry 审批边界、运行报告与对账视角、operation approval record、operation approval report、console report views、ledger reconciliation report、operation approval state flow、operation approval HTTP endpoints、create operation approval HTTP endpoint、retry approval before execution、operation approval console view、operation approval pagination and sorting、operation approval detail view、operation approval lifecycle、console approval actions、approval lifecycle timeline，以及测试。阶段 8 以来的目标仍然是把已有实验组合成一个清晰的学习平台，而不是立即扩成生产级系统。
+这个目录已经包含第一版综合平台设计、最小 orchestration、demo、综合报表导出、SQLite 持久化、历史运行报表、risk review 后续处理、教学版一致性检查、平台报表访问控制与访问审计、平台访问异常检测、平台访问异常调查工单、异步任务、运营控制台、retry 审批边界、运行报告与对账视角、operation approval record、operation approval report、console report views、ledger reconciliation report、operation approval state flow、operation approval HTTP endpoints、create operation approval HTTP endpoint、retry approval before execution、operation approval console view、operation approval pagination and sorting、operation approval detail view、operation approval lifecycle、console approval actions、approval lifecycle timeline、async run detail view、platform result detail view，以及测试。阶段 8 以来的目标仍然是把已有实验组合成一个清晰的学习平台，而不是立即扩成生产级系统。
 
 阶段 9 已经开始在这个目录上做 API 服务化的第一步：
 
@@ -592,3 +593,13 @@ test_platform_api_app.py
 ```
 
 阶段 27 在 `GET /platform/operation-approvals/{approval_id}/view` 只读详情页新增 `Lifecycle Timeline` 区块，按时间展示 `approval_requested`、`approval_decided` 和匹配 `approval_id=...` 的 `retry_execution` access audit。该区块用于解释一条 approval 从申请、决策到 retry execution 的轨迹；当前仍不新增数据库表、单独 timeline endpoint、详情页操作按钮、真实 IAM、登录、session 或 CSRF。
+
+阶段 28 第一版已完成：
+
+```text
+docs/41-stage-28-async-platform-detail-views.md
+platform_api_app.py
+test_platform_api_app.py
+```
+
+阶段 28 新增 `GET /platform/async-payment-runs/{run_id}/view` 和 `GET /platform/payment-runs/{run_id}/view` 两个只读 HTML 详情页。async run detail 展示 async run 状态、request payload 和 platform result summary；payment run detail 展示 platform result、关联 async run 和 customer audit timeline。`FinTech Platform Console` 的 recent payment runs、recent async runs、failed async runs，以及 operation approval detail view 的关联 run 字段现在都可以继续链接到对应详情页。当前仍不新增数据库表、业务状态、操作按钮、真实 IAM、登录、session 或 CSRF。
