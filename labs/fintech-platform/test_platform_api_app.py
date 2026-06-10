@@ -1566,6 +1566,16 @@ def test_platform_api_paginates_and_sorts_operation_approval_records() -> None:
             },
             headers={"x-actor-id": "approval_viewer_001"},
         )
+        first_page = client.get(
+            "/platform/operation-approvals",
+            params={
+                "sort_by": "requested_at",
+                "sort_order": "desc",
+                "limit": "2",
+                "offset": "0",
+            },
+            headers={"x-actor-id": "approval_viewer_001"},
+        )
         invalid_sort = client.get(
             "/platform/operation-approvals",
             params={"sort_by": "created_at"},
@@ -1573,6 +1583,7 @@ def test_platform_api_paginates_and_sorts_operation_approval_records() -> None:
         )
 
         assert listed.status_code == 200
+        assert first_page.status_code == 200
         body = listed.json()
         assert [record["approval_id"] for record in body["records"]] == [
             "approval_middle",
@@ -1582,6 +1593,24 @@ def test_platform_api_paginates_and_sorts_operation_approval_records() -> None:
             "limit": 2,
             "offset": 1,
             "returned_count": 2,
+            "total_count": 3,
+            "has_next_page": False,
+            "next_offset": None,
+            "sort_by": "requested_at",
+            "sort_order": "desc",
+        }
+        first_page_body = first_page.json()
+        assert [record["approval_id"] for record in first_page_body["records"]] == [
+            "approval_newest",
+            "approval_middle",
+        ]
+        assert first_page_body["pagination"] == {
+            "limit": 2,
+            "offset": 0,
+            "returned_count": 2,
+            "total_count": 3,
+            "has_next_page": True,
+            "next_offset": 2,
             "sort_by": "requested_at",
             "sort_order": "desc",
         }
@@ -1593,7 +1622,11 @@ def test_platform_api_paginates_and_sorts_operation_approval_records() -> None:
             for event in _access_events(access_audit_database_path)
             if event.permission == VIEW_PLATFORM_OPERATION_APPROVALS
         ]
-        assert [event.outcome for event in events] == ["granted", "denied"]
+        assert [event.outcome for event in events] == [
+            "granted",
+            "granted",
+            "denied",
+        ]
     finally:
         client.close()
         _remove_database(database_path)

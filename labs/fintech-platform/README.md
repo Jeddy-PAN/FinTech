@@ -232,6 +232,7 @@ investigation_case
 30. 已完成阶段 26 第一版：console 支持 pending operation approval approve / reject 表单。
 31. 已完成阶段 27 第一版：operation approval 详情页新增只读 lifecycle timeline。
 32. 已完成阶段 28 第一版：async run 和 platform result 支持只读详情页，并从 console / approval detail 链接进入。
+33. 已完成阶段 29 第一版：operation approval 查询返回 `total_count`、`has_next_page` 和 `next_offset`。
 
 ## 运行示例
 
@@ -298,7 +299,7 @@ labs/fintech-platform/.test-data/demo_platform_api_investigation_cases.db
 
 ## 当前状态
 
-这个目录已经包含第一版综合平台设计、最小 orchestration、demo、综合报表导出、SQLite 持久化、历史运行报表、risk review 后续处理、教学版一致性检查、平台报表访问控制与访问审计、平台访问异常检测、平台访问异常调查工单、异步任务、运营控制台、retry 审批边界、运行报告与对账视角、operation approval record、operation approval report、console report views、ledger reconciliation report、operation approval state flow、operation approval HTTP endpoints、create operation approval HTTP endpoint、retry approval before execution、operation approval console view、operation approval pagination and sorting、operation approval detail view、operation approval lifecycle、console approval actions、approval lifecycle timeline、async run detail view、platform result detail view，以及测试。阶段 8 以来的目标仍然是把已有实验组合成一个清晰的学习平台，而不是立即扩成生产级系统。
+这个目录已经包含第一版综合平台设计、最小 orchestration、demo、综合报表导出、SQLite 持久化、历史运行报表、risk review 后续处理、教学版一致性检查、平台报表访问控制与访问审计、平台访问异常检测、平台访问异常调查工单、异步任务、运营控制台、retry 审批边界、运行报告与对账视角、operation approval record、operation approval report、console report views、ledger reconciliation report、operation approval state flow、operation approval HTTP endpoints、create operation approval HTTP endpoint、retry approval before execution、operation approval console view、operation approval pagination and sorting、operation approval detail view、operation approval lifecycle、console approval actions、approval lifecycle timeline、async run detail view、platform result detail view、operation approval pagination metadata，以及测试。阶段 8 以来的目标仍然是把已有实验组合成一个清晰的学习平台，而不是立即扩成生产级系统。
 
 阶段 9 已经开始在这个目录上做 API 服务化的第一步：
 
@@ -603,3 +604,15 @@ test_platform_api_app.py
 ```
 
 阶段 28 新增 `GET /platform/async-payment-runs/{run_id}/view` 和 `GET /platform/payment-runs/{run_id}/view` 两个只读 HTML 详情页。async run detail 展示 async run 状态、request payload 和 platform result summary；payment run detail 展示 platform result、关联 async run 和 customer audit timeline。`FinTech Platform Console` 的 recent payment runs、recent async runs、failed async runs，以及 operation approval detail view 的关联 run 字段现在都可以继续链接到对应详情页。当前仍不新增数据库表、业务状态、操作按钮、真实 IAM、登录、session 或 CSRF。
+
+阶段 29 第一版已完成：
+
+```text
+docs/42-stage-29-operation-approval-pagination-metadata.md
+platform_operation_approval.py
+platform_api_app.py
+test_platform_operation_approval.py
+test_platform_api_app.py
+```
+
+阶段 29 让 `SQLiteOperationApprovalStore` 新增 `count_records()`，并让 `GET /platform/operation-approvals` 的 `pagination` 响应新增 `total_count`、`has_next_page` 和 `next_offset`。这些字段复用当前 `status`、`operation_type`、`operation_id` 筛选条件，用于说明当前页是否只是筛选结果的一部分。当前仍不改成 cursor pagination，不新增 console 分页控件，也不改变已有 `limit` / `offset` / `sort_by` / `sort_order` 语义。

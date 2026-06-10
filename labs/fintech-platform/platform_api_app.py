@@ -787,6 +787,11 @@ def create_app(
                 limit=limit,
                 offset=offset,
             )
+            total_count = store.count_records(
+                status=status_filter,
+                operation_type=operation_type,
+                operation_id=operation_id,
+            )
         except OperationApprovalError as error:
             _record_operation_approval_access_denial(
                 app,
@@ -815,6 +820,19 @@ def create_app(
                 "limit": limit,
                 "offset": offset,
                 "returned_count": len(records),
+                "total_count": total_count,
+                "has_next_page": _has_next_page(
+                    limit=limit,
+                    offset=offset,
+                    returned_count=len(records),
+                    total_count=total_count,
+                ),
+                "next_offset": _next_offset(
+                    limit=limit,
+                    offset=offset,
+                    returned_count=len(records),
+                    total_count=total_count,
+                ),
                 "sort_by": sort_by,
                 "sort_order": sort_order,
             },
@@ -2964,6 +2982,35 @@ def _retry_form_html(run_id: str) -> str:
 
 def _latest_rows(rows: tuple[dict, ...], *, key: str, limit: int = 5) -> tuple[dict, ...]:
     return tuple(sorted(rows, key=lambda row: row[key], reverse=True)[:limit])
+
+
+def _has_next_page(
+    *,
+    limit: int | None,
+    offset: int,
+    returned_count: int,
+    total_count: int,
+) -> bool:
+    if limit is None:
+        return False
+    return offset + returned_count < total_count
+
+
+def _next_offset(
+    *,
+    limit: int | None,
+    offset: int,
+    returned_count: int,
+    total_count: int,
+) -> int | None:
+    if not _has_next_page(
+        limit=limit,
+        offset=offset,
+        returned_count=returned_count,
+        total_count=total_count,
+    ):
+        return None
+    return offset + returned_count
 
 
 def _payment_console_rows(rows: tuple[dict, ...]) -> list[tuple[str, ...]]:

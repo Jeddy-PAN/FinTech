@@ -256,20 +256,11 @@ class SQLiteOperationApprovalStore:
         limit: int | None = None,
         offset: int = 0,
     ) -> tuple[OperationApprovalRecord, ...]:
-        conditions: list[str] = []
-        parameters: list[object] = []
-        if status is not None:
-            _validate_status(status)
-            conditions.append("status = ?")
-            parameters.append(status)
-        if operation_type is not None:
-            conditions.append("operation_type = ?")
-            parameters.append(_require_text(operation_type, "operation_type"))
-        if operation_id is not None:
-            conditions.append("operation_id = ?")
-            parameters.append(_require_text(operation_id, "operation_id"))
-
-        where_sql = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+        where_sql, parameters = _query_filter_sql(
+            status=status,
+            operation_type=operation_type,
+            operation_id=operation_id,
+        )
         order_by_sql = _order_by_sql(sort_by=sort_by, sort_order=sort_order)
         pagination_sql = _pagination_sql(limit=limit, offset=offset)
         if limit is not None:
@@ -287,6 +278,28 @@ class SQLiteOperationApprovalStore:
             tuple(parameters),
         ).fetchall()
         return tuple(_record_from_row(row) for row in rows)
+
+    def count_records(
+        self,
+        *,
+        status: str | None = None,
+        operation_type: str | None = None,
+        operation_id: str | None = None,
+    ) -> int:
+        where_sql, parameters = _query_filter_sql(
+            status=status,
+            operation_type=operation_type,
+            operation_id=operation_id,
+        )
+        row = self._connection.execute(
+            f"""
+            SELECT COUNT(*) AS record_count
+            FROM operation_approvals
+            {where_sql}
+            """,
+            tuple(parameters),
+        ).fetchone()
+        return int(row["record_count"])
 
     def _create_schema(self) -> None:
         self._migrate_schema_if_needed()
@@ -433,6 +446,28 @@ def _order_by_sql(*, sort_by: str, sort_order: str) -> str:
     if normalized_sort_by == "approval_id":
         return f"ORDER BY approval_id {direction}"
     return f"ORDER BY {normalized_sort_by} {direction}, approval_id {direction}"
+
+
+def _query_filter_sql(
+    *,
+    status: str | None,
+    operation_type: str | None,
+    operation_id: str | None,
+) -> tuple[str, list[object]]:
+    conditions: list[str] = []
+    parameters: list[object] = []
+    if status is not None:
+        _validate_status(status)
+        conditions.append("status = ?")
+        parameters.append(status)
+    if operation_type is not None:
+        conditions.append("operation_type = ?")
+        parameters.append(_require_text(operation_type, "operation_type"))
+    if operation_id is not None:
+        conditions.append("operation_id = ?")
+        parameters.append(_require_text(operation_id, "operation_id"))
+    where_sql = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+    return where_sql, parameters
 
 
 def _pagination_sql(*, limit: int | None, offset: int) -> str:

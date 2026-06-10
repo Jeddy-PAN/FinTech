@@ -127,6 +127,9 @@ def test_operation_approval_store_sorts_and_paginates_records() -> None:
             "approval_middle",
             "approval_oldest",
         ]
+        assert store.count_records() == 3
+        assert store.count_records(status=OPERATION_APPROVAL_APPROVED) == 3
+        assert store.count_records(operation_id="run_middle") == 1
     finally:
         store.close()
         _remove_database(database_path)

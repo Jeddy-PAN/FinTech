@@ -1,6 +1,6 @@
 # docs 文档入口
 
-这个目录保存 FinTech 学习笔记、阶段计划和阶段总结。当前文档已经比较多，阅读时不建议从文件名 01 一路顺读到 41，而应按目标选择路径。
+这个目录保存 FinTech 学习笔记、阶段计划和阶段总结。当前文档已经比较多，阅读时不建议从文件名 01 一路顺读到 42，而应按目标选择路径。
 
 ## 推荐阅读路径
 
@@ -40,6 +40,7 @@
 20. [39-stage-26-console-approval-actions.md](39-stage-26-console-approval-actions.md)：console approve / reject approval 表单。
 21. [40-stage-27-approval-lifecycle-timeline.md](40-stage-27-approval-lifecycle-timeline.md)：approval detail lifecycle timeline。
 22. [41-stage-28-async-platform-detail-views.md](41-stage-28-async-platform-detail-views.md)：async run 与 platform result 只读详情页。
+23. [42-stage-29-operation-approval-pagination-metadata.md](42-stage-29-operation-approval-pagination-metadata.md)：operation approval pagination metadata。
 
 ### 路径 C：只看阶段计划和历史
 
@@ -72,6 +73,7 @@
 | [39-stage-26-console-approval-actions.md](39-stage-26-console-approval-actions.md) | console approval actions |
 | [40-stage-27-approval-lifecycle-timeline.md](40-stage-27-approval-lifecycle-timeline.md) | approval lifecycle timeline |
 | [41-stage-28-async-platform-detail-views.md](41-stage-28-async-platform-detail-views.md) | async run and platform result detail views |
+| [42-stage-29-operation-approval-pagination-metadata.md](42-stage-29-operation-approval-pagination-metadata.md) | operation approval pagination metadata |
 
 ## 当前平台能力地图
 
@@ -167,6 +169,7 @@ OperationApprovalRecord
 -> POST /platform/operation-approvals
 -> GET /platform/operation-approvals
 -> limit / offset / sort_by / sort_order
+-> pagination metadata: total_count / has_next_page / next_offset
 -> GET /platform/operation-approvals/{approval_id}
 -> GET /platform/operation-approvals/{approval_id}/view
 -> Lifecycle Timeline: approval_requested / approval_decided / retry_execution
@@ -176,7 +179,7 @@ OperationApprovalRecord
 -> access audit granted / denied
 ```
 
-这个流程回答：pending approval 如何通过 API 被创建、分页查看、排序查看、详情查看、在详情页按时间解释申请、决策和 retry execution，并继续跳转到关联 async run 和 platform result 详情页；再通过 JSON 或 console form 流转到 approved / rejected，以及通过 API 流转到 cancelled / expired，并留下访问审计。
+这个流程回答：pending approval 如何通过 API 被创建、分页查看、排序查看，并通过 `total_count`、`has_next_page` 和 `next_offset` 判断是否还需要继续翻页；之后可进入详情查看、在详情页按时间解释申请、决策和 retry execution，并继续跳转到关联 async run 和 platform result 详情页；再通过 JSON 或 console form 流转到 approved / rejected，以及通过 API 流转到 cancelled / expired，并留下访问审计。
 
 ### Console 报表视图
 
@@ -220,7 +223,7 @@ platform / wallet balance snapshot
 
 ## 下一步候选方向
 
-1. 为 operation approval 查询增加更明确的总数统计或 cursor pagination。
-2. 如果继续增强 console，再考虑 cancel / expire 表单，但要先明确权限和误操作边界。
-3. 为 operations console 增加更完整的筛选入口，而不是只显示最新 5 条。
-4. 给 platform result detail 增加更细的 reconciliation context，但仍保持只读。
+1. 如果继续增强 console，再考虑 cancel / expire 表单，但要先明确权限和误操作边界。
+2. 为 operations console 增加更完整的筛选入口，而不是只显示最新 5 条。
+3. 给 platform result detail 增加更细的 reconciliation context，但仍保持只读。
+4. 如果列表数据继续增长，再讨论 cursor pagination。
