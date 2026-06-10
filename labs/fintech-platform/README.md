@@ -235,6 +235,7 @@ investigation_case
 33. 已完成阶段 29 第一版：operation approval 查询返回 `total_count`、`has_next_page` 和 `next_offset`。
 34. 已完成阶段 30 第一版：console 支持 pending operation approval cancel / expire 表单。
 35. 已完成阶段 31 第一版：console 支持 payment / async / approval status 筛选入口。
+36. 已完成阶段 32 第一版：payment run 详情页支持 ledger reconciliation context。
 
 ## 运行示例
 
@@ -279,7 +280,7 @@ demo 现在也会输出 `Exported operation approval reports`，用于观察 `Op
 
 demo 现在也会输出 `Pending operation approval flow`，用于观察 retry approval request 如何先创建 `pending` approval，再通过 approve endpoint 流转为 `approved`，并在审批通过后把 failed async run 放回 `accepted`；同时展示独立样例 approval 如何流转为 `cancelled` 和 `expired`。
 
-demo 现在也会输出 `Exported platform ledger reconciliation reports`，用于观察 completed run 的 payment order amount、ledger amount、platform bank balance 和 user wallet balance 是否一致。运行 API 服务后，`FinTech Platform Console` 也会显示 `Ledger Reconciliation Findings` 只读区块。
+demo 现在也会输出 `Exported platform ledger reconciliation reports`，用于观察 completed run 的 payment order amount、ledger amount、platform bank balance 和 user wallet balance 是否一致。运行 API 服务后，`FinTech Platform Console` 也会显示 `Ledger Reconciliation Findings` 只读区块；单个 payment run 详情页也会显示该 run 的 ledger reconciliation context。
 
 demo 还会写入并重新读取：
 
@@ -301,7 +302,7 @@ labs/fintech-platform/.test-data/demo_platform_api_investigation_cases.db
 
 ## 当前状态
 
-这个目录已经包含第一版综合平台设计、最小 orchestration、demo、综合报表导出、SQLite 持久化、历史运行报表、risk review 后续处理、教学版一致性检查、平台报表访问控制与访问审计、平台访问异常检测、平台访问异常调查工单、异步任务、运营控制台、retry 审批边界、运行报告与对账视角、operation approval record、operation approval report、console report views、ledger reconciliation report、operation approval state flow、operation approval HTTP endpoints、create operation approval HTTP endpoint、retry approval before execution、operation approval console view、operation approval pagination and sorting、operation approval detail view、operation approval lifecycle、console approval actions、approval lifecycle timeline、async run detail view、platform result detail view、operation approval pagination metadata、console cancel / expire approval actions、console filter controls，以及测试。阶段 8 以来的目标仍然是把已有实验组合成一个清晰的学习平台，而不是立即扩成生产级系统。
+这个目录已经包含第一版综合平台设计、最小 orchestration、demo、综合报表导出、SQLite 持久化、历史运行报表、risk review 后续处理、教学版一致性检查、平台报表访问控制与访问审计、平台访问异常检测、平台访问异常调查工单、异步任务、运营控制台、retry 审批边界、运行报告与对账视角、operation approval record、operation approval report、console report views、ledger reconciliation report、operation approval state flow、operation approval HTTP endpoints、create operation approval HTTP endpoint、retry approval before execution、operation approval console view、operation approval pagination and sorting、operation approval detail view、operation approval lifecycle、console approval actions、approval lifecycle timeline、async run detail view、platform result detail view、operation approval pagination metadata、console cancel / expire approval actions、console filter controls、payment detail reconciliation context，以及测试。阶段 8 以来的目标仍然是把已有实验组合成一个清晰的学习平台，而不是立即扩成生产级系统。
 
 阶段 9 已经开始在这个目录上做 API 服务化的第一步：
 
@@ -638,3 +639,13 @@ test_platform_api_app.py
 ```
 
 阶段 31 在 `GET /platform/view` 新增 `payment_status`、`async_status` 和 `operation_approval_status` 三个查询参数，并在页面顶部新增原生 HTML GET 筛选表单。筛选会影响 Recent Payment Runs、Recent Async Runs、Failed Async Runs、Operations Report Summary、Operations Run Rows、Ledger Reconciliation Findings、Operation Approval Summary、Pending Operation Approvals 和 Approval Records。未知筛选值会在页面顶部提示并被忽略。当前仍不做复杂搜索、日期范围、actor 筛选、多选筛选、cursor pagination、真实 IAM、登录、session 或 CSRF。
+
+阶段 32 第一版已完成：
+
+```text
+docs/45-stage-32-payment-detail-reconciliation-context.md
+platform_api_app.py
+test_platform_api_app.py
+```
+
+阶段 32 在 `GET /platform/payment-runs/{run_id}/view` 新增 `Ledger Reconciliation Context` 只读区块。该区块复用 `evaluate_platform_ledger_reconciliation()`，展示当前 run 的 `check_id`、`status`、`severity` 和 `message`，让单个 payment run 详情页能直接解释 payment order amount、ledger posted amount、余额快照和 audit evidence 是否互相吻合。当前仍不新增数据库表、新 reconciliation 规则、单独 endpoint、下载按钮、底层 ledger 分录查询、真实银行流水或清算文件对账。

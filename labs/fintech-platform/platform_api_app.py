@@ -1976,6 +1976,18 @@ def _platform_result_or_none(app: FastAPI, run_id: str) -> dict | None:
         store.close()
 
 
+def _platform_snapshot_or_none(app: FastAPI, run_id: str) -> PlatformRunSnapshot | None:
+    app.state.database_path.parent.mkdir(parents=True, exist_ok=True)
+    store = SQLitePlatformStore(app.state.database_path)
+    try:
+        try:
+            return store.get_run(run_id)
+        except SQLitePlatformStoreError:
+            return None
+    finally:
+        store.close()
+
+
 def _async_run_or_none(app: FastAPI, run_id: str) -> PlatformAsyncRun | None:
     store = _async_run_store(app)
     try:
@@ -2188,6 +2200,24 @@ def _platform_result_audit_event_rows(
             event["reason"],
         )
         for event in platform_result.get("audit_events", [])
+    ]
+
+
+def _payment_run_reconciliation_rows(
+    app: FastAPI,
+    run_id: str,
+) -> list[tuple[object, ...]]:
+    snapshot = _platform_snapshot_or_none(app, run_id)
+    if snapshot is None:
+        return []
+    return [
+        (
+            finding.check_id,
+            finding.status,
+            finding.severity,
+            finding.message,
+        )
+        for finding in evaluate_platform_ledger_reconciliation((snapshot,))
     ]
 
 
@@ -2470,6 +2500,15 @@ def _render_payment_run_detail_html(
         ["field", "value"],
         _operation_approval_async_run_detail_rows_html(async_run),
         empty_message="No associated async run was found.",
+    )}
+  </div>
+
+  <div class="section">
+    <h2>Ledger Reconciliation Context</h2>
+    {_table(
+        ["check_id", "status", "severity", "message"],
+        _payment_run_reconciliation_rows(app, platform_result["run_id"]),
+        empty_message="No ledger reconciliation context is available.",
     )}
   </div>
 

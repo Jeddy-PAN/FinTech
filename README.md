@@ -7,7 +7,7 @@
 - 学习对象：有编程背景，金融领域零基础。
 - 学习目标：理解金融业务、FinTech 工程系统、数据分析、风控和合规基础。
 - 学习方式：先学概念，再写最小实验，再把知识沉淀成文档。
-- 当前阶段：阶段 31 第一版已完成，console 支持 payment / async / approval status 筛选入口。
+- 当前阶段：阶段 32 第一版已完成，payment run 详情页支持 ledger reconciliation context。
 
 ## 环境和语言约定
 
@@ -36,7 +36,7 @@ PYTHONIOENCODING=utf-8
 │   ├── README.md              # 文档入口、阅读路径和平台能力地图
 │   ├── 00-authoritative-sources.md
 │   ├── 01-16-*.md             # 基础概念和早期实验笔记
-│   └── 17-44-*.md             # 阶段计划、总结和平台演进记录
+│   └── 17-45-*.md             # 阶段计划、总结和平台演进记录
 └── labs/                      # 后续代码实验
     ├── ledger-basics/         # 第一个实验：双分录账本
     ├── payment-orders/        # 第二个实验：支付订单系统
@@ -55,7 +55,7 @@ PYTHONIOENCODING=utf-8
 建议按目标选择路径：
 
 1. 从零开始学 FinTech：先读 [docs/00-authoritative-sources.md](docs/00-authoritative-sources.md)、[docs/01-fintech-overview.md](docs/01-fintech-overview.md)、[docs/02-developer-to-finance.md](docs/02-developer-to-finance.md)，再按 `docs/03` 到 `docs/16` 逐步进入账本、支付、风控、KYC/AML 和合规审计。
-2. 直接理解综合平台：先读 [labs/fintech-platform/README.md](labs/fintech-platform/README.md)，再读 [docs/44-stage-31-console-filter-controls.md](docs/44-stage-31-console-filter-controls.md) 了解当前最新 console filter controls。
+2. 直接理解综合平台：先读 [labs/fintech-platform/README.md](labs/fintech-platform/README.md)，再读 [docs/45-stage-32-payment-detail-reconciliation-context.md](docs/45-stage-32-payment-detail-reconciliation-context.md) 了解当前最新 payment detail reconciliation context。
 3. 运行工程作品：执行 `& 'C:\App\Anaconda\python.exe' .\labs\fintech-platform\demo.py`，观察端到端支付、async run、retry、access audit、investigation case、operations report、approval report、ledger reconciliation report、operation approval HTTP flow 和 console report views。
 4. 继续协作前：先看 [LEARNING_PROGRESS.md](LEARNING_PROGRESS.md) 的“当前状态”和“最新记录”，确认当前阶段和下一步候选方向。
 

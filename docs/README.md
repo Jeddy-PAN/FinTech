@@ -1,6 +1,6 @@
 # docs 文档入口
 
-这个目录保存 FinTech 学习笔记、阶段计划和阶段总结。当前文档已经比较多，阅读时不建议从文件名 01 一路顺读到 44，而应按目标选择路径。
+这个目录保存 FinTech 学习笔记、阶段计划和阶段总结。当前文档已经比较多，阅读时不建议从文件名 01 一路顺读到 45，而应按目标选择路径。
 
 ## 推荐阅读路径
 
@@ -43,6 +43,7 @@
 23. [42-stage-29-operation-approval-pagination-metadata.md](42-stage-29-operation-approval-pagination-metadata.md)：operation approval pagination metadata。
 24. [43-stage-30-console-cancel-expire-actions.md](43-stage-30-console-cancel-expire-actions.md)：console cancel / expire approval 表单。
 25. [44-stage-31-console-filter-controls.md](44-stage-31-console-filter-controls.md)：console payment / async / approval status 筛选入口。
+26. [45-stage-32-payment-detail-reconciliation-context.md](45-stage-32-payment-detail-reconciliation-context.md)：payment run detail reconciliation context。
 
 ### 路径 C：只看阶段计划和历史
 
@@ -78,6 +79,7 @@
 | [42-stage-29-operation-approval-pagination-metadata.md](42-stage-29-operation-approval-pagination-metadata.md) | operation approval pagination metadata |
 | [43-stage-30-console-cancel-expire-actions.md](43-stage-30-console-cancel-expire-actions.md) | console cancel / expire approval actions |
 | [44-stage-31-console-filter-controls.md](44-stage-31-console-filter-controls.md) | console filter controls |
+| [45-stage-32-payment-detail-reconciliation-context.md](45-stage-32-payment-detail-reconciliation-context.md) | payment detail reconciliation context |
 
 ## 当前平台能力地图
 
@@ -110,9 +112,10 @@ POST /platform/async-payment-runs
 -> SQLitePlatformAsyncRunStore: completed / failed
 -> GET /platform/async-payment-runs/{run_id}/view
 -> GET /platform/payment-runs/{run_id}/view
+-> Payment Run Detail: ledger reconciliation context
 ```
 
-这个流程回答：接口返回 `202 Accepted` 后，后台任务如何独立推进，任务状态和业务状态为什么要分开，以及运营人员如何继续点进 async run 和最终 platform result 详情页查看上下文。
+这个流程回答：接口返回 `202 Accepted` 后，后台任务如何独立推进，任务状态和业务状态为什么要分开，以及运营人员如何继续点进 async run 和最终 platform result 详情页查看业务、审计和账本对账上下文。
 
 ### 失败重试和审批流程
 
@@ -228,7 +231,7 @@ platform / wallet balance snapshot
 
 ## 下一步候选方向
 
-1. 给 platform result detail 增加更细的 reconciliation context，但仍保持只读。
-2. 为 operation approval console 动作增加更明确的风险提示或只读详情页返回入口。
-3. 给 console 增加日期范围或 actor 筛选。
-4. 如果列表数据继续增长，再讨论 cursor pagination。
+1. 为 operation approval console 动作增加更明确的风险提示或只读详情页返回入口。
+2. 给 console 增加日期范围或 actor 筛选。
+3. 如果列表数据继续增长，再讨论 cursor pagination。
+4. 给 payment run detail 增加更细的 audit event payload 摘要，但仍保持只读。

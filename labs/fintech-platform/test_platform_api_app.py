@@ -390,10 +390,15 @@ def test_platform_payment_run_detail_view_shows_audit_timeline() -> None:
         assert "Payment Run Detail" in body
         assert "Platform Result" in body
         assert "Associated Async Run" in body
+        assert "Ledger Reconciliation Context" in body
         assert "Customer Audit Timeline" in body
         assert "run_payment_detail" in body
         assert "order_payment_detail" in body
         assert "/platform/async-payment-runs/run_payment_detail/view" in body
+        assert "completed_ledger_amount_matches_payment_order" in body
+        assert "completed_balances_match_ledger_amount" in body
+        assert "Payment amount matches ledger amount" in body
+        assert "Platform bank and user wallet balances match ledger amount" in body
         assert "payment_order.succeeded" in body
         assert "ledger_transaction.posted" in body
 
