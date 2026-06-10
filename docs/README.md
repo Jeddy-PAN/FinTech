@@ -1,6 +1,6 @@
 # docs 文档入口
 
-这个目录保存 FinTech 学习笔记、阶段计划和阶段总结。当前文档已经比较多，阅读时不建议从文件名 01 一路顺读到 45，而应按目标选择路径。
+这个目录保存 FinTech 学习笔记、阶段计划和阶段总结。当前文档已经比较多，阅读时不建议从文件名 01 一路顺读到 46，而应按目标选择路径。
 
 ## 推荐阅读路径
 
@@ -44,6 +44,7 @@
 24. [43-stage-30-console-cancel-expire-actions.md](43-stage-30-console-cancel-expire-actions.md)：console cancel / expire approval 表单。
 25. [44-stage-31-console-filter-controls.md](44-stage-31-console-filter-controls.md)：console payment / async / approval status 筛选入口。
 26. [45-stage-32-payment-detail-reconciliation-context.md](45-stage-32-payment-detail-reconciliation-context.md)：payment run detail reconciliation context。
+27. [46-stage-33-remaining-roadmap.md](46-stage-33-remaining-roadmap.md)：剩余章节路线图与平台差距总结。
 
 ### 路径 C：只看阶段计划和历史
 
@@ -80,6 +81,7 @@
 | [43-stage-30-console-cancel-expire-actions.md](43-stage-30-console-cancel-expire-actions.md) | console cancel / expire approval actions |
 | [44-stage-31-console-filter-controls.md](44-stage-31-console-filter-controls.md) | console filter controls |
 | [45-stage-32-payment-detail-reconciliation-context.md](45-stage-32-payment-detail-reconciliation-context.md) | payment detail reconciliation context |
+| [46-stage-33-remaining-roadmap.md](46-stage-33-remaining-roadmap.md) | remaining roadmap and platform gap summary |
 
 ## 当前平台能力地图
 
@@ -231,7 +233,11 @@ platform / wallet balance snapshot
 
 ## 下一步候选方向
 
-1. 为 operation approval console 动作增加更明确的风险提示或只读详情页返回入口。
-2. 给 console 增加日期范围或 actor 筛选。
-3. 如果列表数据继续增长，再讨论 cursor pagination。
-4. 给 payment run detail 增加更细的 audit event payload 摘要，但仍保持只读。
+阶段 33 估算从当前教学版平台到更完整平台还剩约 `6 个建设章节 + 1 个最终验收章节`。
+
+建议下一步进入阶段 34：运营 Console 和工作流补强。
+
+1. 给 console 增加 `actor` 和日期范围筛选。
+2. 给 pending approval 操作区域增加更明确的风险提示。
+3. 给 detail views 增加返回 console 的链接。
+4. 暂不新增数据库表，不引入前端框架，不处理真实登录。

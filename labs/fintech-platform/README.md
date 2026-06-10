@@ -236,6 +236,7 @@ investigation_case
 34. 已完成阶段 30 第一版：console 支持 pending operation approval cancel / expire 表单。
 35. 已完成阶段 31 第一版：console 支持 payment / async / approval status 筛选入口。
 36. 已完成阶段 32 第一版：payment run 详情页支持 ledger reconciliation context。
+37. 已完成阶段 33 第一版：形成剩余章节路线图与平台差距总结，建议后续按 6 个建设章节加 1 个最终验收章节推进。
 
 ## 运行示例
 
@@ -302,7 +303,7 @@ labs/fintech-platform/.test-data/demo_platform_api_investigation_cases.db
 
 ## 当前状态
 
-这个目录已经包含第一版综合平台设计、最小 orchestration、demo、综合报表导出、SQLite 持久化、历史运行报表、risk review 后续处理、教学版一致性检查、平台报表访问控制与访问审计、平台访问异常检测、平台访问异常调查工单、异步任务、运营控制台、retry 审批边界、运行报告与对账视角、operation approval record、operation approval report、console report views、ledger reconciliation report、operation approval state flow、operation approval HTTP endpoints、create operation approval HTTP endpoint、retry approval before execution、operation approval console view、operation approval pagination and sorting、operation approval detail view、operation approval lifecycle、console approval actions、approval lifecycle timeline、async run detail view、platform result detail view、operation approval pagination metadata、console cancel / expire approval actions、console filter controls、payment detail reconciliation context，以及测试。阶段 8 以来的目标仍然是把已有实验组合成一个清晰的学习平台，而不是立即扩成生产级系统。
+这个目录已经包含第一版综合平台设计、最小 orchestration、demo、综合报表导出、SQLite 持久化、历史运行报表、risk review 后续处理、教学版一致性检查、平台报表访问控制与访问审计、平台访问异常检测、平台访问异常调查工单、异步任务、运营控制台、retry 审批边界、运行报告与对账视角、operation approval record、operation approval report、console report views、ledger reconciliation report、operation approval state flow、operation approval HTTP endpoints、create operation approval HTTP endpoint、retry approval before execution、operation approval console view、operation approval pagination and sorting、operation approval detail view、operation approval lifecycle、console approval actions、approval lifecycle timeline、async run detail view、platform result detail view、operation approval pagination metadata、console cancel / expire approval actions、console filter controls、payment detail reconciliation context、剩余章节路线图，以及测试。阶段 8 以来的目标仍然是把已有实验组合成一个清晰的学习平台，而不是立即扩成生产级系统。
 
 阶段 9 已经开始在这个目录上做 API 服务化的第一步：
 
@@ -649,3 +650,11 @@ test_platform_api_app.py
 ```
 
 阶段 32 在 `GET /platform/payment-runs/{run_id}/view` 新增 `Ledger Reconciliation Context` 只读区块。该区块复用 `evaluate_platform_ledger_reconciliation()`，展示当前 run 的 `check_id`、`status`、`severity` 和 `message`，让单个 payment run 详情页能直接解释 payment order amount、ledger posted amount、余额快照和 audit evidence 是否互相吻合。当前仍不新增数据库表、新 reconciliation 规则、单独 endpoint、下载按钮、底层 ledger 分录查询、真实银行流水或清算文件对账。
+
+阶段 33 第一版已完成：
+
+```text
+docs/46-stage-33-remaining-roadmap.md
+```
+
+阶段 33 不改业务代码，重新总结当前平台能力、和更完整教学版平台的差距，以及后续剩余章节。当前建议从阶段 34 开始按 `6 个建设章节 + 1 个最终验收章节` 推进：运营 Console 和工作流补强、身份权限和表单安全、一致性并发和恢复、外部支付清结算和真实对账模型、合规证据和留存治理、可运行交付和观测，最后做最终验收与学习作品集总结。
