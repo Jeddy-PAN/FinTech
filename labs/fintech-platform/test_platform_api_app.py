@@ -351,6 +351,7 @@ def test_platform_async_run_detail_view_links_to_platform_result() -> None:
         assert "run_async_detail" in body
         assert "order_async_detail" in body
         assert "/platform/payment-runs/run_async_detail/view" in body
+        assert "Back to Console" in body
 
         events = [
             event
@@ -401,6 +402,7 @@ def test_platform_payment_run_detail_view_shows_audit_timeline() -> None:
         assert "Platform bank and user wallet balances match ledger amount" in body
         assert "payment_order.succeeded" in body
         assert "ledger_transaction.posted" in body
+        assert "Back to Console" in body
 
         events = [
             event
@@ -1207,6 +1209,7 @@ def test_platform_console_renders_operations_and_approval_report_views() -> None
         assert "reject_operation_approval" in body
         assert "cancel_operation_approval" in body
         assert "expire_operation_approval" in body
+        assert "High-impact approval actions can change retry eligibility" in body
         assert "run_retry_pending_console" in body
         assert "failed" in body
         assert "Retry after transient worker failure" in body
@@ -1315,6 +1318,130 @@ def test_platform_console_filters_operation_tables() -> None:
         _remove_database(operation_approval_database_path)
 
 
+def test_platform_console_filters_by_actor_across_payment_async_and_approvals() -> None:
+    (
+        client,
+        database_path,
+        access_audit_database_path,
+        async_database_path,
+        operation_approval_database_path,
+    ) = _client_with_async_and_operation_approval()
+    try:
+        matching_payment = client.post(
+            "/platform/payment-runs",
+            json=_payload(
+                run_id="run_actor_payment_match",
+                order_id="order_actor_payment_match",
+                actor="ops_user_001",
+            ),
+        )
+        other_payment = client.post(
+            "/platform/payment-runs",
+            json=_payload(
+                run_id="run_actor_payment_other",
+                order_id="order_actor_payment_other",
+                actor="api_client_002",
+            ),
+        )
+        matching_async = client.post(
+            "/platform/async-payment-runs",
+            json=_payload(
+                run_id="run_actor_async_match",
+                order_id="order_actor_async_match",
+                actor="ops_user_001",
+            ),
+        )
+        other_async = client.post(
+            "/platform/async-payment-runs",
+            json=_payload(
+                run_id="run_actor_async_other",
+                order_id="order_actor_async_other",
+                actor="api_client_002",
+            ),
+        )
+        _save_pending_approval(
+            operation_approval_database_path,
+            approval_id="approval_actor_match",
+            operation_id="run_actor_async_match",
+            requested_by="ops_user_001",
+        )
+        _save_pending_approval(
+            operation_approval_database_path,
+            approval_id="approval_actor_other",
+            operation_id="run_actor_async_other",
+            requested_by="api_client_002",
+        )
+
+        console = client.get("/platform/view", params={"actor": "ops_user_001"})
+
+        assert matching_payment.status_code == 201
+        assert other_payment.status_code == 201
+        assert matching_async.status_code == 202
+        assert other_async.status_code == 202
+        assert console.status_code == 200
+        body = console.text
+        assert 'name="actor"' in body
+        assert 'value="ops_user_001"' in body
+        assert "run_actor_payment_match" in body
+        assert "run_actor_payment_other" not in body
+        assert "run_actor_async_match" in body
+        assert "run_actor_async_other" not in body
+        assert "approval_actor_match" in body
+        assert "approval_actor_other" not in body
+    finally:
+        client.close()
+        _remove_database(database_path)
+        _remove_database(access_audit_database_path)
+        _remove_database(async_database_path)
+        _remove_database(operation_approval_database_path)
+
+
+def test_platform_console_filters_approvals_by_created_date_range() -> None:
+    (
+        client,
+        database_path,
+        access_audit_database_path,
+        async_database_path,
+        operation_approval_database_path,
+    ) = _client_with_async_and_operation_approval()
+    try:
+        _save_pending_approval(
+            operation_approval_database_path,
+            approval_id="approval_date_match",
+            operation_id="run_date_match",
+            requested_at=datetime(2026, 6, 8, 9, 0, tzinfo=timezone.utc),
+        )
+        _save_pending_approval(
+            operation_approval_database_path,
+            approval_id="approval_date_other",
+            operation_id="run_date_other",
+            requested_at=datetime(2026, 6, 7, 9, 0, tzinfo=timezone.utc),
+        )
+
+        console = client.get(
+            "/platform/view",
+            params={
+                "operation_approval_status": "pending",
+                "created_from": "2026-06-08",
+                "created_to": "2026-06-08",
+            },
+        )
+
+        assert console.status_code == 200
+        body = console.text
+        assert 'name="created_from"' in body
+        assert 'name="created_to"' in body
+        assert 'value="2026-06-08"' in body
+        assert "approval_date_match" in body
+        assert "approval_date_other" not in body
+    finally:
+        client.close()
+        _remove_database(database_path)
+        _remove_database(access_audit_database_path)
+        _remove_database(async_database_path)
+        _remove_database(operation_approval_database_path)
+
+
 def test_platform_console_reports_invalid_filters_and_keeps_full_view() -> None:
     (
         client,
@@ -1339,6 +1466,8 @@ def test_platform_console_reports_invalid_filters_and_keeps_full_view() -> None:
                 "payment_status": "not_a_payment_status",
                 "async_status": "not_an_async_status",
                 "operation_approval_status": "not_an_approval_status",
+                "created_from": "bad-date",
+                "created_to": "2026-06-07",
             },
         )
 
@@ -1351,6 +1480,7 @@ def test_platform_console_reports_invalid_filters_and_keeps_full_view() -> None:
             "Unknown operation_approval_status filter: not_an_approval_status"
             in body
         )
+        assert "Invalid created_from filter: bad-date" in body
         assert "run_console_completed" in body
         assert '<option value="" selected>All</option>' in body
     finally:
@@ -2037,6 +2167,7 @@ def test_platform_operation_approval_detail_view_shows_async_and_platform_contex
         assert "Platform Result Summary" in body
         assert "order_detail_completed" in body
         assert "/platform/payment-runs/run_detail_completed/view" in body
+        assert "Back to Console" in body
 
         events = [
             event
@@ -2544,6 +2675,7 @@ def _payload(
     run_id: str = "run_http_001",
     order_id: str = "order_http_001",
     amount: str = "100.00",
+    actor: str = "api_client_001",
 ) -> dict:
     return {
         "run_id": run_id,
@@ -2561,7 +2693,7 @@ def _payload(
         "device_id": "device_known",
         "ip_country": "US",
         "beneficiary_id": "beneficiary_001",
-        "actor": "api_client_001",
+        "actor": actor,
     }
 
 
@@ -2655,6 +2787,7 @@ def _save_pending_approval(
     *,
     approval_id: str = "approval_pending_001",
     operation_id: str = "run_retry_http",
+    requested_by: str = "ops_user_001",
     requested_at: datetime | None = None,
 ) -> None:
     store = SQLiteOperationApprovalStore(database_path)
@@ -2665,7 +2798,7 @@ def _save_pending_approval(
                 operation_type=RETRY_PLATFORM_ASYNC_PAYMENT_RUN,
                 operation_id=operation_id,
                 target=f"fintech_platform_api_async_payment_runs/{operation_id}",
-                requested_by="ops_user_001",
+                requested_by=requested_by,
                 request_reason="Request retry approval",
                 approved_by=None,
                 approval_reason=None,

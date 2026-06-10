@@ -237,6 +237,7 @@ investigation_case
 35. 已完成阶段 31 第一版：console 支持 payment / async / approval status 筛选入口。
 36. 已完成阶段 32 第一版：payment run 详情页支持 ledger reconciliation context。
 37. 已完成阶段 33 第一版：形成剩余章节路线图与平台差距总结，建议后续按 6 个建设章节加 1 个最终验收章节推进。
+38. 已完成阶段 34 第一版：console 支持 actor 和日期范围筛选，pending approval 区块新增高影响操作风险提示，operation approval、async run 和 payment run 详情页新增返回 console 的入口。
 
 ## 运行示例
 
@@ -277,7 +278,7 @@ demo 还会输出 `Risk review completion`，用于观察 `risk_review_required 
 
 demo 现在也会输出 `Exported platform operations reports`，用于观察 `PlatformAsyncRun`、`PlatformRunSnapshot`、`ledger_transaction.posted` audit event 和 `retry_platform_async_run` access audit 如何组成一份运营对账报告。
 
-demo 现在也会输出 `Exported operation approval reports`，用于观察 `OperationApprovalRecord` 如何汇总为 approval records CSV、approval summary CSV 和 HTML 报告。运行 API 服务后，`FinTech Platform Console` 也会显示 `Operations Report Summary`、`Operation Approval Summary`、`Operations Run Rows`、`Pending Operation Approvals` 和 `Approval Records` 区块；approval 表格默认按 `requested_at desc` 展示最新记录，`approval_id` 会链接到只读详情页，pending approval 行支持 approve / reject / cancel / expire 表单。console 还支持按 payment status、async status 和 approval status 缩小展示范围。
+demo 现在也会输出 `Exported operation approval reports`，用于观察 `OperationApprovalRecord` 如何汇总为 approval records CSV、approval summary CSV 和 HTML 报告。运行 API 服务后，`FinTech Platform Console` 也会显示 `Operations Report Summary`、`Operation Approval Summary`、`Operations Run Rows`、`Pending Operation Approvals` 和 `Approval Records` 区块；approval 表格默认按 `requested_at desc` 展示最新记录，`approval_id` 会链接到只读详情页，pending approval 行支持 approve / reject / cancel / expire 表单。console 还支持按 payment status、async status、approval status、actor 和日期范围缩小展示范围，并在高影响 approval 操作区域显示风险提示。
 
 demo 现在也会输出 `Pending operation approval flow`，用于观察 retry approval request 如何先创建 `pending` approval，再通过 approve endpoint 流转为 `approved`，并在审批通过后把 failed async run 放回 `accepted`；同时展示独立样例 approval 如何流转为 `cancelled` 和 `expired`。
 
@@ -303,7 +304,7 @@ labs/fintech-platform/.test-data/demo_platform_api_investigation_cases.db
 
 ## 当前状态
 
-这个目录已经包含第一版综合平台设计、最小 orchestration、demo、综合报表导出、SQLite 持久化、历史运行报表、risk review 后续处理、教学版一致性检查、平台报表访问控制与访问审计、平台访问异常检测、平台访问异常调查工单、异步任务、运营控制台、retry 审批边界、运行报告与对账视角、operation approval record、operation approval report、console report views、ledger reconciliation report、operation approval state flow、operation approval HTTP endpoints、create operation approval HTTP endpoint、retry approval before execution、operation approval console view、operation approval pagination and sorting、operation approval detail view、operation approval lifecycle、console approval actions、approval lifecycle timeline、async run detail view、platform result detail view、operation approval pagination metadata、console cancel / expire approval actions、console filter controls、payment detail reconciliation context、剩余章节路线图，以及测试。阶段 8 以来的目标仍然是把已有实验组合成一个清晰的学习平台，而不是立即扩成生产级系统。
+这个目录已经包含第一版综合平台设计、最小 orchestration、demo、综合报表导出、SQLite 持久化、历史运行报表、risk review 后续处理、教学版一致性检查、平台报表访问控制与访问审计、平台访问异常检测、平台访问异常调查工单、异步任务、运营控制台、retry 审批边界、运行报告与对账视角、operation approval record、operation approval report、console report views、ledger reconciliation report、operation approval state flow、operation approval HTTP endpoints、create operation approval HTTP endpoint、retry approval before execution、operation approval console view、operation approval pagination and sorting、operation approval detail view、operation approval lifecycle、console approval actions、approval lifecycle timeline、async run detail view、platform result detail view、operation approval pagination metadata、console cancel / expire approval actions、console filter controls、payment detail reconciliation context、剩余章节路线图、console workflow controls，以及测试。阶段 8 以来的目标仍然是把已有实验组合成一个清晰的学习平台，而不是立即扩成生产级系统。
 
 阶段 9 已经开始在这个目录上做 API 服务化的第一步：
 
@@ -657,4 +658,14 @@ test_platform_api_app.py
 docs/46-stage-33-remaining-roadmap.md
 ```
 
-阶段 33 不改业务代码，重新总结当前平台能力、和更完整教学版平台的差距，以及后续剩余章节。当前建议从阶段 34 开始按 `6 个建设章节 + 1 个最终验收章节` 推进：运营 Console 和工作流补强、身份权限和表单安全、一致性并发和恢复、外部支付清结算和真实对账模型、合规证据和留存治理、可运行交付和观测，最后做最终验收与学习作品集总结。
+阶段 33 不改业务代码，重新总结当前平台能力、和更完整教学版平台的差距，以及后续剩余章节。阶段 33 当时建议从阶段 34 开始按 `6 个建设章节 + 1 个最终验收章节` 推进：运营 Console 和工作流补强、身份权限和表单安全、一致性并发和恢复、外部支付清结算和真实对账模型、合规证据和留存治理、可运行交付和观测，最后做最终验收与学习作品集总结。
+
+阶段 34 第一版已完成：
+
+```text
+docs/47-stage-34-console-workflow-controls.md
+platform_api_app.py
+test_platform_api_app.py
+```
+
+阶段 34 在现有 `GET /platform/view` 上新增 `actor`、`created_from` 和 `created_to` 筛选，并让筛选影响 payment runs、async runs、operations report、ledger reconciliation、operation approval summary、pending approvals 和 approval records。pending approval 区块新增高影响操作风险提示，operation approval、async run 和 payment run 详情页新增 `Back to Console` 返回入口。当前仍不做真实 IAM、登录、session、CSRF、批量操作或复杂工单工作流；下一步建议进入阶段 35：身份、权限和表单安全边界。

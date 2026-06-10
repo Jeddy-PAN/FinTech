@@ -222,7 +222,10 @@ def create_app(
     def platform_console(
         approval_error: str | None = None,
         approval_status: str | None = None,
+        actor_filter: str | None = Query(default=None, alias="actor"),
         async_status: str | None = None,
+        created_from: str | None = None,
+        created_to: str | None = None,
         operation_approval_status: str | None = None,
         payment_status: str | None = None,
         retry_error: str | None = None,
@@ -234,7 +237,10 @@ def create_app(
             app,
             approval_error=approval_error,
             approval_status=approval_status,
+            actor_filter=actor_filter,
             async_status_filter=async_status,
+            created_from_filter=created_from,
+            created_to_filter=created_to,
             operation_approval_status_filter=operation_approval_status,
             payment_status_filter=payment_status,
             retry_error=retry_error,
@@ -2326,6 +2332,23 @@ def _render_operation_approval_detail_html(
       font-size: 14px;
       margin-bottom: 18px;
     }}
+    .page-actions {{
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 18px;
+    }}
+    .page-actions a {{
+      align-items: center;
+      border: 1px solid #d1d5db;
+      border-radius: 4px;
+      box-sizing: border-box;
+      color: #1f2937;
+      display: inline-flex;
+      min-height: 44px;
+      padding: 8px 12px;
+      text-decoration: none;
+    }}
     .section {{
       margin-top: 24px;
       overflow-x: auto;
@@ -2360,6 +2383,9 @@ def _render_operation_approval_detail_html(
   <h1>Operation Approval Detail</h1>
   <div class="meta">
     Read-only approval context. Back to <a href="/platform/view">FinTech Platform Console</a>.
+  </div>
+  <div class="page-actions">
+    <a href="/platform/view">Back to Console</a>
   </div>
 
   <div class="section">
@@ -2425,6 +2451,9 @@ def _render_async_run_detail_html(
   <div class="meta">
     Read-only async run context. Back to <a href="/platform/view">FinTech Platform Console</a>.
   </div>
+  <div class="page-actions">
+    <a href="/platform/view">Back to Console</a>
+  </div>
 
   <div class="section">
     <h2>Async Run</h2>
@@ -2479,6 +2508,9 @@ def _render_payment_run_detail_html(
   <h1>Payment Run Detail</h1>
   <div class="meta">
     Read-only platform result context. Back to <a href="/platform/view">FinTech Platform Console</a>.
+  </div>
+  <div class="page-actions">
+    <a href="/platform/view">Back to Console</a>
   </div>
 
   <div class="section">
@@ -2558,6 +2590,23 @@ def _detail_page_css() -> str:
       font-size: 14px;
       margin-bottom: 18px;
     }
+    .page-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 18px;
+    }
+    .page-actions a {
+      align-items: center;
+      border: 1px solid #d1d5db;
+      border-radius: 4px;
+      box-sizing: border-box;
+      color: #1f2937;
+      display: inline-flex;
+      min-height: 44px;
+      padding: 8px 12px;
+      text-decoration: none;
+    }
     .section {
       margin-top: 24px;
       overflow-x: auto;
@@ -2594,16 +2643,22 @@ def _render_platform_console_html(
     *,
     approval_error: str | None = None,
     approval_status: str | None = None,
+    actor_filter: str | None = None,
     async_status_filter: str | None = None,
+    created_from_filter: str | None = None,
+    created_to_filter: str | None = None,
     operation_approval_status_filter: str | None = None,
     payment_status_filter: str | None = None,
     retry_error: str | None = None,
     retry_status: str | None = None,
 ) -> str:
-    filters, filter_errors = _normalize_console_filters(
+    filters, date_filters, filter_errors = _normalize_console_filters(
         payment_status=payment_status_filter,
         async_status=async_status_filter,
         operation_approval_status=operation_approval_status_filter,
+        actor=actor_filter,
+        created_from=created_from_filter,
+        created_to=created_to_filter,
     )
     app.state.database_path.parent.mkdir(parents=True, exist_ok=True)
     service = PlatformApiService(
@@ -2618,16 +2673,26 @@ def _render_platform_console_html(
     async_runs = _async_runs(app)
     operation_approval_records = _operation_approval_records(app)
     display_runs = _filter_payment_runs(
+        app,
         runs,
         status_filter=filters["payment_status"],
+        actor_filter=filters["actor"],
+        created_from=date_filters["created_from"],
+        created_to=date_filters["created_to"],
     )
     display_async_runs = _filter_async_runs(
         async_runs,
         status_filter=filters["async_status"],
+        actor_filter=filters["actor"],
+        created_from=date_filters["created_from"],
+        created_to=date_filters["created_to"],
     )
     display_operation_approval_records = _filter_operation_approval_records(
         operation_approval_records,
         status_filter=filters["operation_approval_status"],
+        actor_filter=filters["actor"],
+        created_from=date_filters["created_from"],
+        created_to=date_filters["created_to"],
     )
     display_platform_snapshots = _platform_snapshots(app, display_runs)
     operations_report = build_platform_operations_report(
@@ -2785,6 +2850,14 @@ def _render_platform_console_html(
       border: 1px solid #fecaca;
       color: #991b1b;
     }}
+    .risk-note {{
+      background: #fffbeb;
+      border: 1px solid #fde68a;
+      border-radius: 6px;
+      color: #78350f;
+      margin: 8px 0 12px;
+      padding: 10px 12px;
+    }}
     .operation-form {{
       display: grid;
       gap: 8px;
@@ -2833,6 +2906,7 @@ def _render_platform_console_html(
       font-size: 14px;
       margin-bottom: 6px;
     }}
+    .filter-field input,
     .filter-field select {{
       border: 1px solid #d1d5db;
       border-radius: 4px;
@@ -2989,6 +3063,9 @@ def _render_platform_console_html(
 
   <div class="section">
     <h2>Pending Operation Approvals</h2>
+    <div class="risk-note">
+      High-impact approval actions can change retry eligibility. Review the async status, request reason, and confirmation text before deciding.
+    </div>
     {_html_table(
         [
             "approval_id",
@@ -3125,13 +3202,19 @@ def _normalize_console_filters(
     payment_status: str | None,
     async_status: str | None,
     operation_approval_status: str | None,
-) -> tuple[dict[str, str | None], list[str]]:
+    actor: str | None,
+    created_from: str | None,
+    created_to: str | None,
+) -> tuple[dict[str, str | None], dict[str, date | None], list[str]]:
     filters = {
         "payment_status": _normalize_console_filter_value(payment_status),
         "async_status": _normalize_console_filter_value(async_status),
         "operation_approval_status": _normalize_console_filter_value(
             operation_approval_status
         ),
+        "actor": _normalize_console_filter_value(actor),
+        "created_from": _normalize_console_filter_value(created_from),
+        "created_to": _normalize_console_filter_value(created_to),
     }
     errors: list[str] = []
     if filters["payment_status"] not in {None, *CONSOLE_PAYMENT_STATUS_OPTIONS}:
@@ -3149,7 +3232,47 @@ def _normalize_console_filters(
             f"{filters['operation_approval_status']}"
         )
         filters["operation_approval_status"] = None
-    return filters, errors
+    date_filters = {
+        "created_from": _parse_console_filter_date(
+            filters["created_from"],
+            "created_from",
+            errors,
+        ),
+        "created_to": _parse_console_filter_date(
+            filters["created_to"],
+            "created_to",
+            errors,
+        ),
+    }
+    if filters["created_from"] is not None and date_filters["created_from"] is None:
+        filters["created_from"] = None
+    if filters["created_to"] is not None and date_filters["created_to"] is None:
+        filters["created_to"] = None
+    if (
+        date_filters["created_from"] is not None
+        and date_filters["created_to"] is not None
+        and date_filters["created_from"] > date_filters["created_to"]
+    ):
+        errors.append("created_from must be on or before created_to")
+        filters["created_from"] = None
+        filters["created_to"] = None
+        date_filters["created_from"] = None
+        date_filters["created_to"] = None
+    return filters, date_filters, errors
+
+
+def _parse_console_filter_date(
+    value: str | None,
+    field_name: str,
+    errors: list[str],
+) -> date | None:
+    if value is None:
+        return None
+    try:
+        return date.fromisoformat(value)
+    except ValueError:
+        errors.append(f"Invalid {field_name} filter: {value}")
+        return None
 
 
 def _normalize_console_filter_value(value: str | None) -> str | None:
@@ -3192,12 +3315,51 @@ def _console_filter_form_html(filters: dict[str, str | None]) -> str:
               options=CONSOLE_OPERATION_APPROVAL_STATUS_OPTIONS,
               selected=filters["operation_approval_status"],
           )}
+          {_console_filter_input_html(
+              name="actor",
+              label="Actor",
+              value=filters["actor"],
+              placeholder="actor id",
+          )}
+          {_console_filter_input_html(
+              name="created_from",
+              label="Created from",
+              value=filters["created_from"],
+              input_type="date",
+          )}
+          {_console_filter_input_html(
+              name="created_to",
+              label="Created to",
+              value=filters["created_to"],
+              input_type="date",
+          )}
         </div>
         <div class="filter-actions">
           <button type="submit">Apply Filters</button>
           <a href="/platform/view">Clear Filters</a>
         </div>
       </form>
+    """
+
+
+def _console_filter_input_html(
+    *,
+    name: str,
+    label: str,
+    value: str | None,
+    input_type: str = "text",
+    placeholder: str | None = None,
+) -> str:
+    escaped_name = html.escape(name, quote=True)
+    escaped_value = "" if value is None else html.escape(value, quote=True)
+    placeholder_attr = ""
+    if placeholder is not None:
+        placeholder_attr = f' placeholder="{html.escape(placeholder, quote=True)}"'
+    return f"""
+      <div class="filter-field">
+        <label for="{escaped_name}">{html.escape(label)}</label>
+        <input id="{escaped_name}" name="{escaped_name}" type="{html.escape(input_type, quote=True)}" value="{escaped_value}"{placeholder_attr}>
+      </div>
     """
 
 
@@ -3391,33 +3553,134 @@ def _latest_rows(rows: tuple[dict, ...], *, key: str, limit: int = 5) -> tuple[d
 
 
 def _filter_payment_runs(
+    app: FastAPI,
     runs: tuple[dict, ...],
     *,
     status_filter: str | None,
+    actor_filter: str | None,
+    created_from: date | None,
+    created_to: date | None,
 ) -> tuple[dict, ...]:
-    if status_filter is None:
-        return runs
-    return tuple(run for run in runs if run["status"] == status_filter)
+    return tuple(
+        run
+        for run in runs
+        if (status_filter is None or run["status"] == status_filter)
+        and _date_in_range(
+            _date_from_iso_text(run.get("created_at")),
+            created_from=created_from,
+            created_to=created_to,
+        )
+        and _payment_run_matches_actor(app, run, actor_filter)
+    )
 
 
 def _filter_async_runs(
     runs: tuple[PlatformAsyncRun, ...],
     *,
     status_filter: str | None,
+    actor_filter: str | None,
+    created_from: date | None,
+    created_to: date | None,
 ) -> tuple[PlatformAsyncRun, ...]:
-    if status_filter is None:
-        return runs
-    return tuple(run for run in runs if run.status == status_filter)
+    return tuple(
+        run
+        for run in runs
+        if (status_filter is None or run.status == status_filter)
+        and _date_in_range(
+            run.created_at.date(),
+            created_from=created_from,
+            created_to=created_to,
+        )
+        and _async_run_matches_actor(run, actor_filter)
+    )
 
 
 def _filter_operation_approval_records(
     records: tuple[OperationApprovalRecord, ...],
     *,
     status_filter: str | None,
+    actor_filter: str | None,
+    created_from: date | None,
+    created_to: date | None,
 ) -> tuple[OperationApprovalRecord, ...]:
-    if status_filter is None:
-        return records
-    return tuple(record for record in records if record.status == status_filter)
+    return tuple(
+        record
+        for record in records
+        if (status_filter is None or record.status == status_filter)
+        and _date_in_range(
+            record.requested_at.date(),
+            created_from=created_from,
+            created_to=created_to,
+        )
+        and _operation_approval_matches_actor(record, actor_filter)
+    )
+
+
+def _payment_run_matches_actor(
+    app: FastAPI,
+    run: dict,
+    actor_filter: str | None,
+) -> bool:
+    if actor_filter is None:
+        return True
+    snapshot = _platform_snapshot_or_none(app, run["run_id"])
+    if snapshot is None:
+        return False
+    return any(
+        _text_matches_actor(getattr(event, "actor", None), actor_filter)
+        for event in snapshot.audit_events
+    )
+
+
+def _async_run_matches_actor(
+    run: PlatformAsyncRun,
+    actor_filter: str | None,
+) -> bool:
+    return _text_matches_actor(run.request_payload.get("actor"), actor_filter)
+
+
+def _operation_approval_matches_actor(
+    record: OperationApprovalRecord,
+    actor_filter: str | None,
+) -> bool:
+    if actor_filter is None:
+        return True
+    return _text_matches_actor(
+        record.requested_by,
+        actor_filter,
+    ) or _text_matches_actor(record.approved_by, actor_filter)
+
+
+def _text_matches_actor(value: object, actor_filter: str | None) -> bool:
+    if actor_filter is None:
+        return True
+    if value is None:
+        return False
+    return actor_filter.lower() in str(value).lower()
+
+
+def _date_in_range(
+    value: date | None,
+    *,
+    created_from: date | None,
+    created_to: date | None,
+) -> bool:
+    if value is None:
+        return created_from is None and created_to is None
+    if created_from is not None and value < created_from:
+        return False
+    if created_to is not None and value > created_to:
+        return False
+    return True
+
+
+def _date_from_iso_text(value: object) -> date | None:
+    if not isinstance(value, str) or not value:
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00")).date()
+    except ValueError:
+        return None
 
 
 def _filter_operations_run_rows(

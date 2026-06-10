@@ -45,6 +45,7 @@
 25. [44-stage-31-console-filter-controls.md](44-stage-31-console-filter-controls.md)：console payment / async / approval status 筛选入口。
 26. [45-stage-32-payment-detail-reconciliation-context.md](45-stage-32-payment-detail-reconciliation-context.md)：payment run detail reconciliation context。
 27. [46-stage-33-remaining-roadmap.md](46-stage-33-remaining-roadmap.md)：剩余章节路线图与平台差距总结。
+28. [47-stage-34-console-workflow-controls.md](47-stage-34-console-workflow-controls.md)：console actor/date 筛选、风险提示和详情页返回路径。
 
 ### 路径 C：只看阶段计划和历史
 
@@ -82,6 +83,7 @@
 | [44-stage-31-console-filter-controls.md](44-stage-31-console-filter-controls.md) | console filter controls |
 | [45-stage-32-payment-detail-reconciliation-context.md](45-stage-32-payment-detail-reconciliation-context.md) | payment detail reconciliation context |
 | [46-stage-33-remaining-roadmap.md](46-stage-33-remaining-roadmap.md) | remaining roadmap and platform gap summary |
+| [47-stage-34-console-workflow-controls.md](47-stage-34-console-workflow-controls.md) | console workflow controls |
 
 ## 当前平台能力地图
 
@@ -197,18 +199,20 @@ PlatformOperationsReport
 OperationApprovalReport
 -> FinTech Platform Console
 -> read-only report summaries
--> status filter controls: payment / async / approval
+-> filter controls: payment / async / approval status, actor, date range
 -> recent operations / approval rows
 -> pending approval rows with async status
+-> high-impact approval action risk note
 -> approval detail links
 -> lifecycle timeline in approval detail view
+-> Back to Console links in detail views
 -> async run detail links
 -> platform result detail links
 -> cancelled / expired approval counts
 -> approve / reject / cancel / expire forms for pending approvals
 ```
 
-这个流程回答：运营人员如何在同一个页面里观察 async run、对账摘要、retry 审计、审批记录和待审批 approval，能按 payment / async / approval status 缩小展示范围，能点进只读详情页查看 approval lifecycle timeline、async run request payload、platform result 和 customer audit timeline，并能对 pending approval 执行 approve / reject / cancel / expire。
+这个流程回答：运营人员如何在同一个页面里观察 async run、对账摘要、retry 审计、审批记录和待审批 approval，能按 payment / async / approval status、actor 和日期范围缩小展示范围，能点进只读详情页查看 approval lifecycle timeline、async run request payload、platform result 和 customer audit timeline，并能返回 console 后继续对 pending approval 执行 approve / reject / cancel / expire。
 
 ### Ledger Reconciliation 流程
 
@@ -233,11 +237,11 @@ platform / wallet balance snapshot
 
 ## 下一步候选方向
 
-阶段 33 估算从当前教学版平台到更完整平台还剩约 `6 个建设章节 + 1 个最终验收章节`。
+阶段 34 已完成运营 Console 和工作流补强。
 
-建议下一步进入阶段 34：运营 Console 和工作流补强。
+建议下一步进入阶段 35：身份、权限和表单安全边界。
 
-1. 给 console 增加 `actor` 和日期范围筛选。
-2. 给 pending approval 操作区域增加更明确的风险提示。
-3. 给 detail views 增加返回 console 的链接。
-4. 暂不新增数据库表，不引入前端框架，不处理真实登录。
+1. 设计教学版 user / role / permission。
+2. 把 actor 从“请求自报字段”升级为更接近真实系统的身份上下文。
+3. 梳理 route-level permission、CSRF、敏感字段脱敏和 self-approval 校验边界。
+4. 继续保持教学版范围，不直接声称满足真实金融机构合规要求。
