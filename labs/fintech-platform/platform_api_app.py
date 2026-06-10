@@ -31,6 +31,7 @@ from platform_api_service import (
 )
 from platform_async_service import (  # noqa: E402
     ASYNC_RUN_FAILED,
+    ASYNC_RUN_STATUSES,
     PlatformAsyncRun,
     PlatformAsyncRunStoreError,
     PlatformAsyncWorker,
@@ -51,10 +52,12 @@ from platform_operation_approval import (  # noqa: E402
     OPERATION_APPROVAL_REJECTED,
     OPERATION_APPROVAL_SORT_FIELDS,
     OPERATION_APPROVAL_SORT_ORDERS,
+    OPERATION_APPROVAL_STATUSES,
     OperationApprovalError,
     OperationApprovalRecord,
     SQLiteOperationApprovalStore,
 )
+from fintech_platform import PlatformPaymentStatus  # noqa: E402
 from platform_operation_approval_report import (  # noqa: E402
     build_operation_approval_report,
 )
@@ -121,6 +124,20 @@ REJECT_OPERATION_APPROVAL_CONFIRMATION = "reject_operation_approval"
 CANCEL_OPERATION_APPROVAL_CONFIRMATION = "cancel_operation_approval"
 EXPIRE_OPERATION_APPROVAL_CONFIRMATION = "expire_operation_approval"
 ANONYMOUS_API_CLIENT = "anonymous_api_client"
+CONSOLE_PAYMENT_STATUS_OPTIONS = tuple(status.value for status in PlatformPaymentStatus)
+CONSOLE_ASYNC_STATUS_OPTIONS = (
+    "accepted",
+    "processing",
+    "completed",
+    "failed",
+)
+CONSOLE_OPERATION_APPROVAL_STATUS_OPTIONS = (
+    OPERATION_APPROVAL_PENDING,
+    OPERATION_APPROVAL_APPROVED,
+    OPERATION_APPROVAL_REJECTED,
+    OPERATION_APPROVAL_CANCELLED,
+    OPERATION_APPROVAL_EXPIRED,
+)
 
 
 class PaymentRunRequest(BaseModel):
@@ -205,6 +222,9 @@ def create_app(
     def platform_console(
         approval_error: str | None = None,
         approval_status: str | None = None,
+        async_status: str | None = None,
+        operation_approval_status: str | None = None,
+        payment_status: str | None = None,
         retry_error: str | None = None,
         retry_status: str | None = None,
         x_actor_id: str | None = Header(default=None),
@@ -214,6 +234,9 @@ def create_app(
             app,
             approval_error=approval_error,
             approval_status=approval_status,
+            async_status_filter=async_status,
+            operation_approval_status_filter=operation_approval_status,
+            payment_status_filter=payment_status,
             retry_error=retry_error,
             retry_status=retry_status,
         )
@@ -2532,9 +2555,17 @@ def _render_platform_console_html(
     *,
     approval_error: str | None = None,
     approval_status: str | None = None,
+    async_status_filter: str | None = None,
+    operation_approval_status_filter: str | None = None,
+    payment_status_filter: str | None = None,
     retry_error: str | None = None,
     retry_status: str | None = None,
 ) -> str:
+    filters, filter_errors = _normalize_console_filters(
+        payment_status=payment_status_filter,
+        async_status=async_status_filter,
+        operation_approval_status=operation_approval_status_filter,
+    )
     app.state.database_path.parent.mkdir(parents=True, exist_ok=True)
     service = PlatformApiService(
         store=SQLitePlatformStore(app.state.database_path),
@@ -2546,29 +2577,52 @@ def _render_platform_console_html(
 
     access_events = _access_events(app)
     async_runs = _async_runs(app)
-    platform_snapshots = _platform_snapshots(app, runs)
     operation_approval_records = _operation_approval_records(app)
+    display_runs = _filter_payment_runs(
+        runs,
+        status_filter=filters["payment_status"],
+    )
+    display_async_runs = _filter_async_runs(
+        async_runs,
+        status_filter=filters["async_status"],
+    )
+    display_operation_approval_records = _filter_operation_approval_records(
+        operation_approval_records,
+        status_filter=filters["operation_approval_status"],
+    )
+    display_platform_snapshots = _platform_snapshots(app, display_runs)
     operations_report = build_platform_operations_report(
-        async_runs=async_runs,
-        snapshots=platform_snapshots,
+        async_runs=display_async_runs,
+        snapshots=display_platform_snapshots,
         access_events=access_events,
     )
+    display_operations_run_rows = _filter_operations_run_rows(
+        operations_report.run_rows,
+        payment_status_filter=filters["payment_status"],
+        async_status_filter=filters["async_status"],
+    )
     ledger_reconciliation_findings = evaluate_platform_ledger_reconciliation(
-        platform_snapshots,
+        display_platform_snapshots,
     )
     operation_approval_report = build_operation_approval_report(
-        records=operation_approval_records,
+        records=display_operation_approval_records,
     )
     findings = detect_platform_api_access_anomalies(access_events)
     cases = _investigation_cases(app)
 
     summary_rows = [
-        ("Payment runs", str(len(runs))),
-        ("Completed runs", str(_count_by_status(runs, "completed"))),
-        ("Risk review runs", str(_count_by_status(runs, "risk_review_required"))),
-        ("Async runs", str(len(async_runs))),
-        ("Accepted async runs", str(_count_async_status(async_runs, "accepted"))),
-        ("Failed async runs", str(_count_async_status(async_runs, "failed"))),
+        ("Payment runs", str(len(display_runs))),
+        ("Completed runs", str(_count_by_status(display_runs, "completed"))),
+        (
+            "Risk review runs",
+            str(_count_by_status(display_runs, "risk_review_required")),
+        ),
+        ("Async runs", str(len(display_async_runs))),
+        (
+            "Accepted async runs",
+            str(_count_async_status(display_async_runs, "accepted")),
+        ),
+        ("Failed async runs", str(_count_async_status(display_async_runs, "failed"))),
         ("API access events", str(len(access_events))),
         ("API access anomalies", str(len(findings))),
         ("Investigation cases", str(len(cases))),
@@ -2716,6 +2770,65 @@ def _render_platform_console_html(
       min-height: 44px;
       padding: 8px 12px;
     }}
+    .filter-form {{
+      border: 1px solid #d1d5db;
+      border-radius: 6px;
+      display: grid;
+      gap: 12px;
+      margin: 16px 0;
+      padding: 12px;
+    }}
+    .filter-fields {{
+      display: grid;
+      gap: 12px;
+      grid-template-columns: 1fr;
+    }}
+    @media (min-width: 768px) {{
+      .filter-fields {{
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }}
+    }}
+    .filter-field label {{
+      color: #374151;
+      display: block;
+      font-size: 14px;
+      margin-bottom: 6px;
+    }}
+    .filter-field select {{
+      border: 1px solid #d1d5db;
+      border-radius: 4px;
+      box-sizing: border-box;
+      font: inherit;
+      min-height: 44px;
+      padding: 8px;
+      width: 100%;
+    }}
+    .filter-actions {{
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }}
+    .filter-actions button,
+    .filter-actions a {{
+      align-items: center;
+      border-radius: 4px;
+      box-sizing: border-box;
+      display: inline-flex;
+      font: inherit;
+      min-height: 44px;
+      padding: 8px 12px;
+      text-decoration: none;
+    }}
+    .filter-actions button {{
+      background: #1f2937;
+      border: 0;
+      color: #ffffff;
+      cursor: pointer;
+    }}
+    .filter-actions a {{
+      border: 1px solid #d1d5db;
+      color: #1f2937;
+    }}
     code {{
       background: #f3f4f6;
       border-radius: 4px;
@@ -2734,6 +2847,8 @@ def _render_platform_console_html(
         approval_status=approval_status,
         approval_error=approval_error,
     )}
+  {_console_filter_feedback_html(filter_errors)}
+  {_console_filter_form_html(filters)}
 
   <div class="summary">
     {''.join(_metric_html(label, value) for label, value in summary_rows)}
@@ -2751,7 +2866,7 @@ def _render_platform_console_html(
             "audit_event_count",
             "created_at",
         ],
-        _payment_console_rows(_latest_rows(runs, key="created_at")),
+        _payment_console_rows(_latest_rows(display_runs, key="created_at")),
         empty_message="No payment runs have been recorded yet.",
     )}
   </div>
@@ -2768,7 +2883,7 @@ def _render_platform_console_html(
             "last_error",
             "updated_at",
         ],
-        _async_console_rows(app, _latest_async_runs(async_runs)),
+        _async_console_rows(app, _latest_async_runs(display_async_runs)),
         empty_message="No async runs have been recorded yet.",
     )}
   </div>
@@ -2776,7 +2891,7 @@ def _render_platform_console_html(
   <div class="section">
     <h2>Failed Async Runs</h2>
     {_failed_async_runs_table(
-        _failed_async_runs(async_runs),
+        _failed_async_runs(display_async_runs),
         empty_message="No failed async runs have been recorded yet.",
     )}
   </div>
@@ -2813,7 +2928,7 @@ def _render_platform_console_html(
             "retry_denied_count",
             "reconciliation_status",
         ],
-        _operations_run_rows(operations_report.run_rows),
+        _operations_run_rows(display_operations_run_rows),
         empty_message="No operations run rows are available yet.",
     )}
   </div>
@@ -2848,7 +2963,7 @@ def _render_platform_console_html(
         ],
         _pending_operation_approval_rows(
             operation_approval_report.records,
-            async_runs,
+            display_async_runs,
         ),
         empty_message="No pending operation approvals have been recorded yet.",
     )}
@@ -2964,6 +3079,129 @@ def _metric_html(label: str, value: str) -> str:
         <div class="metric-value">{html.escape(value)}</div>
       </div>
     """
+
+
+def _normalize_console_filters(
+    *,
+    payment_status: str | None,
+    async_status: str | None,
+    operation_approval_status: str | None,
+) -> tuple[dict[str, str | None], list[str]]:
+    filters = {
+        "payment_status": _normalize_console_filter_value(payment_status),
+        "async_status": _normalize_console_filter_value(async_status),
+        "operation_approval_status": _normalize_console_filter_value(
+            operation_approval_status
+        ),
+    }
+    errors: list[str] = []
+    if filters["payment_status"] not in {None, *CONSOLE_PAYMENT_STATUS_OPTIONS}:
+        errors.append(f"Unknown payment_status filter: {filters['payment_status']}")
+        filters["payment_status"] = None
+    if filters["async_status"] not in {None, *ASYNC_RUN_STATUSES}:
+        errors.append(f"Unknown async_status filter: {filters['async_status']}")
+        filters["async_status"] = None
+    if filters["operation_approval_status"] not in {
+        None,
+        *OPERATION_APPROVAL_STATUSES,
+    }:
+        errors.append(
+            "Unknown operation_approval_status filter: "
+            f"{filters['operation_approval_status']}"
+        )
+        filters["operation_approval_status"] = None
+    return filters, errors
+
+
+def _normalize_console_filter_value(value: str | None) -> str | None:
+    if value is None:
+        return None
+    normalized = value.strip()
+    return normalized or None
+
+
+def _console_filter_feedback_html(errors: list[str]) -> str:
+    if not errors:
+        return ""
+    items = "".join(f"<li>{html.escape(error)}</li>" for error in errors)
+    return (
+        '<div class="notice notice-error">'
+        f"Console filter ignored invalid value:<ul>{items}</ul>"
+        "</div>"
+    )
+
+
+def _console_filter_form_html(filters: dict[str, str | None]) -> str:
+    return f"""
+      <form class="filter-form" method="get" action="/platform/view">
+        <div class="filter-fields">
+          {_console_filter_select_html(
+              name="payment_status",
+              label="Payment status",
+              options=CONSOLE_PAYMENT_STATUS_OPTIONS,
+              selected=filters["payment_status"],
+          )}
+          {_console_filter_select_html(
+              name="async_status",
+              label="Async status",
+              options=CONSOLE_ASYNC_STATUS_OPTIONS,
+              selected=filters["async_status"],
+          )}
+          {_console_filter_select_html(
+              name="operation_approval_status",
+              label="Approval status",
+              options=CONSOLE_OPERATION_APPROVAL_STATUS_OPTIONS,
+              selected=filters["operation_approval_status"],
+          )}
+        </div>
+        <div class="filter-actions">
+          <button type="submit">Apply Filters</button>
+          <a href="/platform/view">Clear Filters</a>
+        </div>
+      </form>
+    """
+
+
+def _console_filter_select_html(
+    *,
+    name: str,
+    label: str,
+    options: tuple[str, ...],
+    selected: str | None,
+) -> str:
+    escaped_name = html.escape(name, quote=True)
+    option_html = [
+        _console_filter_option_html(value="", label="All", selected=selected is None)
+    ]
+    option_html.extend(
+        _console_filter_option_html(
+            value=option,
+            label=option,
+            selected=selected == option,
+        )
+        for option in options
+    )
+    return f"""
+      <div class="filter-field">
+        <label for="{escaped_name}">{html.escape(label)}</label>
+        <select id="{escaped_name}" name="{escaped_name}">
+          {''.join(option_html)}
+        </select>
+      </div>
+    """
+
+
+def _console_filter_option_html(
+    *,
+    value: str,
+    label: str,
+    selected: bool,
+) -> str:
+    selected_attr = " selected" if selected else ""
+    return (
+        f'<option value="{html.escape(value, quote=True)}"{selected_attr}>'
+        f"{html.escape(label)}</option>"
+    )
 
 
 def _retry_feedback_html(
@@ -3111,6 +3349,53 @@ def _retry_form_html(run_id: str) -> str:
 
 def _latest_rows(rows: tuple[dict, ...], *, key: str, limit: int = 5) -> tuple[dict, ...]:
     return tuple(sorted(rows, key=lambda row: row[key], reverse=True)[:limit])
+
+
+def _filter_payment_runs(
+    runs: tuple[dict, ...],
+    *,
+    status_filter: str | None,
+) -> tuple[dict, ...]:
+    if status_filter is None:
+        return runs
+    return tuple(run for run in runs if run["status"] == status_filter)
+
+
+def _filter_async_runs(
+    runs: tuple[PlatformAsyncRun, ...],
+    *,
+    status_filter: str | None,
+) -> tuple[PlatformAsyncRun, ...]:
+    if status_filter is None:
+        return runs
+    return tuple(run for run in runs if run.status == status_filter)
+
+
+def _filter_operation_approval_records(
+    records: tuple[OperationApprovalRecord, ...],
+    *,
+    status_filter: str | None,
+) -> tuple[OperationApprovalRecord, ...]:
+    if status_filter is None:
+        return records
+    return tuple(record for record in records if record.status == status_filter)
+
+
+def _filter_operations_run_rows(
+    run_rows,
+    *,
+    payment_status_filter: str | None,
+    async_status_filter: str | None,
+):
+    return [
+        row
+        for row in run_rows
+        if (
+            payment_status_filter is None
+            or row.platform_status == payment_status_filter
+        )
+        and (async_status_filter is None or row.async_status == async_status_filter)
+    ]
 
 
 def _has_next_page(

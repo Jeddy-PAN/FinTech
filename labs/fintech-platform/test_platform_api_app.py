@@ -1214,6 +1214,148 @@ def test_platform_console_renders_operations_and_approval_report_views() -> None
         _remove_database(operation_approval_database_path)
 
 
+def test_platform_console_filters_operation_tables() -> None:
+    (
+        client,
+        database_path,
+        access_audit_database_path,
+        async_database_path,
+        operation_approval_database_path,
+    ) = _client_with_async_and_operation_approval()
+    try:
+        completed = client.post(
+            "/platform/payment-runs",
+            json=_payload(
+                run_id="run_console_completed",
+                order_id="order_console_completed",
+            ),
+        )
+        review = client.post(
+            "/platform/payment-runs",
+            json=_payload(
+                run_id="run_console_review",
+                order_id="order_console_review",
+                amount="1500.00",
+            ),
+        )
+        assert completed.status_code == 201
+        assert review.status_code == 201
+
+        client.post(
+            "/platform/async-payment-runs",
+            json=_payload(run_id="run_async_failed", order_id="order_async_failed"),
+        )
+        _fail_async_run(
+            database_path=database_path,
+            async_database_path=async_database_path,
+            run_id="run_async_failed",
+        )
+        client.post(
+            "/platform/async-payment-runs",
+            json=_payload(
+                run_id="run_async_accepted",
+                order_id="order_async_accepted",
+            ),
+        )
+        _save_pending_approval(
+            operation_approval_database_path,
+            approval_id="approval_pending_filter",
+            operation_id="run_async_failed",
+        )
+        _save_pending_approval(
+            operation_approval_database_path,
+            approval_id="approval_approved_filter",
+            operation_id="run_async_accepted",
+        )
+        approval_store = SQLiteOperationApprovalStore(
+            operation_approval_database_path
+        )
+        try:
+            approval_store.approve_pending(
+                "approval_approved_filter",
+                approved_by="ops_manager_001",
+                approval_reason="Approved for filter test",
+                decided_at=datetime(2026, 6, 8, 10, 0, tzinfo=timezone.utc),
+            )
+        finally:
+            approval_store.close()
+
+        console = client.get(
+            "/platform/view",
+            params={
+                "payment_status": "risk_review_required",
+                "async_status": "failed",
+                "operation_approval_status": "pending",
+            },
+        )
+
+        assert console.status_code == 200
+        body = console.text
+        assert '<option value="risk_review_required" selected>' in body
+        assert '<option value="failed" selected>' in body
+        assert '<option value="pending" selected>' in body
+        assert "run_console_review" in body
+        assert "run_console_completed" not in body
+        assert "run_async_failed" in body
+        assert "run_async_accepted" not in body
+        assert "approval_pending_filter" in body
+        assert "approval_approved_filter" not in body
+        assert "Risk review runs" in body
+        assert "Failed async runs" in body
+    finally:
+        client.close()
+        _remove_database(database_path)
+        _remove_database(access_audit_database_path)
+        _remove_database(async_database_path)
+        _remove_database(operation_approval_database_path)
+
+
+def test_platform_console_reports_invalid_filters_and_keeps_full_view() -> None:
+    (
+        client,
+        database_path,
+        access_audit_database_path,
+        async_database_path,
+        operation_approval_database_path,
+    ) = _client_with_async_and_operation_approval()
+    try:
+        created = client.post(
+            "/platform/payment-runs",
+            json=_payload(
+                run_id="run_console_completed",
+                order_id="order_console_completed",
+            ),
+        )
+        assert created.status_code == 201
+
+        console = client.get(
+            "/platform/view",
+            params={
+                "payment_status": "not_a_payment_status",
+                "async_status": "not_an_async_status",
+                "operation_approval_status": "not_an_approval_status",
+            },
+        )
+
+        assert console.status_code == 200
+        body = console.text
+        assert "Console filter ignored invalid value:" in body
+        assert "Unknown payment_status filter: not_a_payment_status" in body
+        assert "Unknown async_status filter: not_an_async_status" in body
+        assert (
+            "Unknown operation_approval_status filter: not_an_approval_status"
+            in body
+        )
+        assert "run_console_completed" in body
+        assert '<option value="" selected>All</option>' in body
+    finally:
+        client.close()
+        _remove_database(database_path)
+        _remove_database(access_audit_database_path)
+        _remove_database(async_database_path)
+        _remove_database(operation_approval_database_path)
+
+
 def test_platform_console_approval_approve_form_executes_retry() -> None:
     (
         client,

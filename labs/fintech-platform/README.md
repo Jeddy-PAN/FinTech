@@ -234,6 +234,7 @@ investigation_case
 32. 已完成阶段 28 第一版：async run 和 platform result 支持只读详情页，并从 console / approval detail 链接进入。
 33. 已完成阶段 29 第一版：operation approval 查询返回 `total_count`、`has_next_page` 和 `next_offset`。
 34. 已完成阶段 30 第一版：console 支持 pending operation approval cancel / expire 表单。
+35. 已完成阶段 31 第一版：console 支持 payment / async / approval status 筛选入口。
 
 ## 运行示例
 
@@ -274,7 +275,7 @@ demo 还会输出 `Risk review completion`，用于观察 `risk_review_required 
 
 demo 现在也会输出 `Exported platform operations reports`，用于观察 `PlatformAsyncRun`、`PlatformRunSnapshot`、`ledger_transaction.posted` audit event 和 `retry_platform_async_run` access audit 如何组成一份运营对账报告。
 
-demo 现在也会输出 `Exported operation approval reports`，用于观察 `OperationApprovalRecord` 如何汇总为 approval records CSV、approval summary CSV 和 HTML 报告。运行 API 服务后，`FinTech Platform Console` 也会显示 `Operations Report Summary`、`Operation Approval Summary`、`Operations Run Rows`、`Pending Operation Approvals` 和 `Approval Records` 区块；approval 表格默认按 `requested_at desc` 展示最新记录，`approval_id` 会链接到只读详情页，pending approval 行支持 approve / reject / cancel / expire 表单。
+demo 现在也会输出 `Exported operation approval reports`，用于观察 `OperationApprovalRecord` 如何汇总为 approval records CSV、approval summary CSV 和 HTML 报告。运行 API 服务后，`FinTech Platform Console` 也会显示 `Operations Report Summary`、`Operation Approval Summary`、`Operations Run Rows`、`Pending Operation Approvals` 和 `Approval Records` 区块；approval 表格默认按 `requested_at desc` 展示最新记录，`approval_id` 会链接到只读详情页，pending approval 行支持 approve / reject / cancel / expire 表单。console 还支持按 payment status、async status 和 approval status 缩小展示范围。
 
 demo 现在也会输出 `Pending operation approval flow`，用于观察 retry approval request 如何先创建 `pending` approval，再通过 approve endpoint 流转为 `approved`，并在审批通过后把 failed async run 放回 `accepted`；同时展示独立样例 approval 如何流转为 `cancelled` 和 `expired`。
 
@@ -300,7 +301,7 @@ labs/fintech-platform/.test-data/demo_platform_api_investigation_cases.db
 
 ## 当前状态
 
-这个目录已经包含第一版综合平台设计、最小 orchestration、demo、综合报表导出、SQLite 持久化、历史运行报表、risk review 后续处理、教学版一致性检查、平台报表访问控制与访问审计、平台访问异常检测、平台访问异常调查工单、异步任务、运营控制台、retry 审批边界、运行报告与对账视角、operation approval record、operation approval report、console report views、ledger reconciliation report、operation approval state flow、operation approval HTTP endpoints、create operation approval HTTP endpoint、retry approval before execution、operation approval console view、operation approval pagination and sorting、operation approval detail view、operation approval lifecycle、console approval actions、approval lifecycle timeline、async run detail view、platform result detail view、operation approval pagination metadata、console cancel / expire approval actions，以及测试。阶段 8 以来的目标仍然是把已有实验组合成一个清晰的学习平台，而不是立即扩成生产级系统。
+这个目录已经包含第一版综合平台设计、最小 orchestration、demo、综合报表导出、SQLite 持久化、历史运行报表、risk review 后续处理、教学版一致性检查、平台报表访问控制与访问审计、平台访问异常检测、平台访问异常调查工单、异步任务、运营控制台、retry 审批边界、运行报告与对账视角、operation approval record、operation approval report、console report views、ledger reconciliation report、operation approval state flow、operation approval HTTP endpoints、create operation approval HTTP endpoint、retry approval before execution、operation approval console view、operation approval pagination and sorting、operation approval detail view、operation approval lifecycle、console approval actions、approval lifecycle timeline、async run detail view、platform result detail view、operation approval pagination metadata、console cancel / expire approval actions、console filter controls，以及测试。阶段 8 以来的目标仍然是把已有实验组合成一个清晰的学习平台，而不是立即扩成生产级系统。
 
 阶段 9 已经开始在这个目录上做 API 服务化的第一步：
 
@@ -627,3 +628,13 @@ test_platform_api_app.py
 ```
 
 阶段 30 把阶段 25 已有的 cancel / expire 生命周期动作接入 `FinTech Platform Console` 的 `Pending Operation Approvals` 表格。FastAPI 新增 `POST /platform/operation-approvals/{approval_id}/cancel-form` 和 `/expire-form` 浏览器表单适配层，并让 JSON cancel / expire endpoint 与 form endpoint 复用 `_cancel_operation_approval()` / `_expire_operation_approval()` helper。pending approval 现在可在 console 中流转到 approved / rejected / cancelled / expired；cancel / expire 只改变 approval 终态，不执行 retry。当前仍不做真实 IAM、登录、CSRF、批量操作、自动过期任务、通知、SLA、认领或锁定。
+
+阶段 31 第一版已完成：
+
+```text
+docs/44-stage-31-console-filter-controls.md
+platform_api_app.py
+test_platform_api_app.py
+```
+
+阶段 31 在 `GET /platform/view` 新增 `payment_status`、`async_status` 和 `operation_approval_status` 三个查询参数，并在页面顶部新增原生 HTML GET 筛选表单。筛选会影响 Recent Payment Runs、Recent Async Runs、Failed Async Runs、Operations Report Summary、Operations Run Rows、Ledger Reconciliation Findings、Operation Approval Summary、Pending Operation Approvals 和 Approval Records。未知筛选值会在页面顶部提示并被忽略。当前仍不做复杂搜索、日期范围、actor 筛选、多选筛选、cursor pagination、真实 IAM、登录、session 或 CSRF。
