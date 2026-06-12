@@ -243,6 +243,7 @@ investigation_case
 41. 已完成阶段 37 第一版：新增教学版 `ProviderSettlementRow` 和 settlement reconciliation report，用外部 provider settlement row 检查内部 completed run、金额、币种和孤立外部记录。
 42. 已完成阶段 38 第一版：新增教学版 evidence package，把 settlement reconciliation findings、access anomaly findings、operation approval records 和 denied access events 汇总成可导出的证据包。
 43. 已完成阶段 39 第一版：新增教学版 operability readiness、metrics 和 test matrix API，用于本地交付、观测和验收。
+44. 已完成阶段 40 第一版：形成最终验收与学习作品集总结，明确当前能力、验收命令和仍不覆盖的生产级边界。
 
 ## 运行示例
 
@@ -742,4 +743,12 @@ test_platform_api_app.py
 demo.py
 ```
 
-阶段 39 新增教学版 operability 边界：`build_platform_readiness_report()` 会检查 platform store、access audit store、async run store、investigation case store 和 operation approval store 是否可打开；`build_platform_metrics_snapshot()` 会汇总 payment runs、async runs、operation approvals、access events 和 investigation cases 的结构化计数；`build_platform_test_matrix()` 会列出本地 py_compile、平台测试、demo 和全量 labs 测试矩阵。FastAPI 已新增 `/platform/operability/readiness`、`/platform/operability/metrics` 和 `/platform/operability/test-matrix`，并写入 granted / denied access audit；demo 已接入 `Platform operability snapshot`。当前仍不做真实部署平台、生产监控、Prometheus/OpenTelemetry、SLO/SLA、告警或 secret 管理；下一步建议进入阶段 40：最终验收与学习作品集总结。
+阶段 39 新增教学版 operability 边界：`build_platform_readiness_report()` 会检查 platform store、access audit store、async run store、investigation case store 和 operation approval store 是否可打开；`build_platform_metrics_snapshot()` 会汇总 payment runs、async runs、operation approvals、access events 和 investigation cases 的结构化计数；`build_platform_test_matrix()` 会列出本地 py_compile、平台测试、demo 和全量 labs 测试矩阵。FastAPI 已新增 `/platform/operability/readiness`、`/platform/operability/metrics` 和 `/platform/operability/test-matrix`，并写入 granted / denied access audit；demo 已接入 `Platform operability snapshot`。当前仍不做真实部署平台、生产监控、Prometheus/OpenTelemetry、SLO/SLA、告警或 secret 管理；随后阶段 40 已进入最终验收与学习作品集总结。
+
+阶段 40 第一版已完成：
+
+```text
+docs/53-stage-40-final-acceptance-and-portfolio.md
+```
+
+阶段 40 不新增业务代码，重点把当前平台作为学习作品集做收口：总结主业务、异步任务、运营控制台、审批工作流、报表对账、证据包和 operability；列出本地验收命令；记录当前验证结果；明确仍不覆盖真实支付通道、真实监管合规、真实 IAM、真实部署、生产监控、secret 管理和法律/税务/会计/合规建议。后续如继续扩展，建议按真实外部接口模拟、生产化基础设施、身份权限、数据治理或作品集包装这些大章节推进。
