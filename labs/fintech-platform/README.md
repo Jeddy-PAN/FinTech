@@ -239,6 +239,7 @@ investigation_case
 37. 已完成阶段 33 第一版：形成剩余章节路线图与平台差距总结，建议后续按 6 个建设章节加 1 个最终验收章节推进。
 38. 已完成阶段 34 第一版：console 支持 actor 和日期范围筛选，pending approval 区块新增高影响操作风险提示，operation approval、async run 和 payment run 详情页新增返回 console 的入口。
 39. 已完成阶段 35 第一版：新增教学版 `PlatformIdentityContext`、role / permission policy，并对 access audit 查询、operation approval 查询和更新路径增加权限校验与身份一致性校验。
+40. 已完成阶段 36 第一版：async worker 使用 `claim_next_accepted()` 原子认领 accepted run，operation approval 终态决策使用 pending 状态条件更新，并补充重复 claim / 重复 approve-retry 冲突测试。
 
 ## 运行示例
 
@@ -305,7 +306,7 @@ labs/fintech-platform/.test-data/demo_platform_api_investigation_cases.db
 
 ## 当前状态
 
-这个目录已经包含第一版综合平台设计、最小 orchestration、demo、综合报表导出、SQLite 持久化、历史运行报表、risk review 后续处理、教学版一致性检查、平台报表访问控制与访问审计、平台访问异常检测、平台访问异常调查工单、异步任务、运营控制台、retry 审批边界、运行报告与对账视角、operation approval record、operation approval report、console report views、ledger reconciliation report、operation approval state flow、operation approval HTTP endpoints、create operation approval HTTP endpoint、retry approval before execution、operation approval console view、operation approval pagination and sorting、operation approval detail view、operation approval lifecycle、console approval actions、approval lifecycle timeline、async run detail view、platform result detail view、operation approval pagination metadata、console cancel / expire approval actions、console filter controls、payment detail reconciliation context、剩余章节路线图、console workflow controls、identity / permission / form security boundary，以及测试。阶段 8 以来的目标仍然是把已有实验组合成一个清晰的学习平台，而不是立即扩成生产级系统。
+这个目录已经包含第一版综合平台设计、最小 orchestration、demo、综合报表导出、SQLite 持久化、历史运行报表、risk review 后续处理、教学版一致性检查、平台报表访问控制与访问审计、平台访问异常检测、平台访问异常调查工单、异步任务、运营控制台、retry 审批边界、运行报告与对账视角、operation approval record、operation approval report、console report views、ledger reconciliation report、operation approval state flow、operation approval HTTP endpoints、create operation approval HTTP endpoint、retry approval before execution、operation approval console view、operation approval pagination and sorting、operation approval detail view、operation approval lifecycle、console approval actions、approval lifecycle timeline、async run detail view、platform result detail view、operation approval pagination metadata、console cancel / expire approval actions、console filter controls、payment detail reconciliation context、剩余章节路线图、console workflow controls、identity / permission / form security boundary、consistency / concurrency / recovery boundary，以及测试。阶段 8 以来的目标仍然是把已有实验组合成一个清晰的学习平台，而不是立即扩成生产级系统。
 
 阶段 9 已经开始在这个目录上做 API 服务化的第一步：
 
@@ -680,3 +681,16 @@ test_platform_api_app.py
 ```
 
 阶段 35 新增教学版 `PlatformIdentityContext`，支持从 `x-actor-id` 和可选 `x-actor-role` 构造身份上下文，并在未显式传 role 时按样例 actor 前缀推断角色。`PERMISSIONS_BY_ROLE` 定义了本地 role / permission policy，`_require_permission()` 会对敏感查询和 operation approval 创建、查询、更新路径做权限校验；`_require_identity_actor_matches()` 会拒绝 JSON 审批更新中 `x-actor-id` 和 `decided_by` 不一致的请求。权限拒绝和身份不一致都会写入 denied access audit。当前仍不做真实登录、session、token、企业 IAM、CSRF token 或按角色脱敏；下一步建议进入阶段 36：一致性、并发和恢复。
+
+阶段 36 第一版已完成：
+
+```text
+docs/49-stage-36-consistency-concurrency-recovery.md
+platform_async_service.py
+platform_operation_approval.py
+test_platform_async_service.py
+test_platform_operation_approval.py
+test_platform_api_app.py
+```
+
+阶段 36 补强了教学平台的一致性、并发和恢复边界：`SQLitePlatformAsyncRunStore.claim_next_accepted()` 会用状态条件把 accepted run 原子认领为 processing，`PlatformAsyncWorker.process_next()` 改为先 claim 再处理；`SQLiteOperationApprovalStore` 的 approve / reject / cancel / expire 决策改为通过 `WHERE status = 'pending'` 的条件更新消费 pending approval。测试覆盖两个连接重复 claim 同一条 async run、两个连接重复决策同一条 approval，以及 API 层重复 approve retry 只执行一次 retry execution audit。当前仍不做生产级分布式锁、lease timeout scanner、saga/workflow engine、版本化 migration 框架或自动 backup / restore；下一步建议进入阶段 37：外部支付、清结算和真实对账模型。

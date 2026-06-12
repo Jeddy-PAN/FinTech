@@ -1,6 +1,6 @@
 # docs 文档入口
 
-这个目录保存 FinTech 学习笔记、阶段计划和阶段总结。当前文档已经比较多，阅读时不建议从文件名 01 一路顺读到 48，而应按目标选择路径。
+这个目录保存 FinTech 学习笔记、阶段计划和阶段总结。当前文档已经比较多，阅读时不建议从文件名 01 一路顺读到 49，而应按目标选择路径。
 
 ## 推荐阅读路径
 
@@ -47,6 +47,7 @@
 27. [46-stage-33-remaining-roadmap.md](46-stage-33-remaining-roadmap.md)：剩余章节路线图与平台差距总结。
 28. [47-stage-34-console-workflow-controls.md](47-stage-34-console-workflow-controls.md)：console actor/date 筛选、风险提示和详情页返回路径。
 29. [48-stage-35-identity-permission-form-security.md](48-stage-35-identity-permission-form-security.md)：identity context、permission policy 和表单安全边界。
+30. [49-stage-36-consistency-concurrency-recovery.md](49-stage-36-consistency-concurrency-recovery.md)：一致性、并发和恢复边界。
 
 ### 路径 C：只看阶段计划和历史
 
@@ -86,6 +87,7 @@
 | [46-stage-33-remaining-roadmap.md](46-stage-33-remaining-roadmap.md) | remaining roadmap and platform gap summary |
 | [47-stage-34-console-workflow-controls.md](47-stage-34-console-workflow-controls.md) | console workflow controls |
 | [48-stage-35-identity-permission-form-security.md](48-stage-35-identity-permission-form-security.md) | identity, permission and form security boundary |
+| [49-stage-36-consistency-concurrency-recovery.md](49-stage-36-consistency-concurrency-recovery.md) | consistency, concurrency and recovery boundary |
 
 ## 当前平台能力地图
 
@@ -112,7 +114,8 @@ API request
 ```text
 POST /platform/async-payment-runs
 -> SQLitePlatformAsyncRunStore: accepted
--> PlatformAsyncWorker: processing
+-> PlatformAsyncWorker: claim_next_accepted
+-> SQLitePlatformAsyncRunStore: processing
 -> PlatformApiService
 -> SQLitePlatformStore: final platform result
 -> SQLitePlatformAsyncRunStore: completed / failed
@@ -129,7 +132,7 @@ POST /platform/async-payment-runs
 failed async run
 -> retry approval request
 -> operation approval record pending
--> approve / reject approval
+-> conditional approve / reject approval
 -> approval access audit granted / denied
 -> retry execution access audit
 -> failed -> accepted
@@ -209,6 +212,24 @@ x-actor-id / x-actor-role
 
 这个流程回答：教学版 API 如何把 actor 字符串整理成身份上下文，如何按 role / permission 校验敏感查询和审批更新路径，以及为什么权限拒绝和身份不一致也要写入 access audit。当前仍不代表真实 login、session、token、企业 IAM 或 CSRF 防护。
 
+### 一致性、并发和恢复边界
+
+```text
+accepted async run
+-> claim_next_accepted with status guard
+-> processing
+
+pending operation approval
+-> conditional terminal update with status guard
+-> approved / rejected / cancelled / expired
+
+duplicate claim or duplicate decision
+-> no second execution
+-> denied / conflict audit trail
+```
+
+这个流程回答：同一个 async run 为什么只能被一个 worker 认领，同一条 pending approval 为什么只能被一个终态决策消费，以及冲突请求为什么应该被显式拒绝并留下审计记录。当前仍不代表生产级分布式锁、lease timeout、自动 recovery scanner、saga/workflow engine 或跨多个 SQLite 文件的强事务。
+
 ### Console 报表视图
 
 ```text
@@ -254,11 +275,11 @@ platform / wallet balance snapshot
 
 ## 下一步候选方向
 
-阶段 35 已完成教学版身份、权限和表单安全边界第一版。
+阶段 36 已完成一致性、并发和恢复边界第一版。
 
-建议下一步进入阶段 36：一致性、并发和恢复。
+建议下一步进入阶段 37：外部支付、清结算和真实对账模型。
 
-1. 梳理 platform store、async run store、approval store 的事务边界。
-2. 增加 worker claim / lease / timeout 的教学实现或设计。
-3. 增加并发 approve / retry 的冲突测试。
-4. 规划 schema migration、backup / restore 和失败恢复演练。
+1. 梳理外部 payment provider、clearing、settlement 和 reconciliation file 的稳定概念。
+2. 为教学平台增加外部支付结果和清结算文件的最小样例。
+3. 把内部 ledger reconciliation 扩展到外部流水/清算差异视角。
+4. 继续避免真实市场数据和真实通道规则，所有时效性资料必须先查证官方或专业来源。

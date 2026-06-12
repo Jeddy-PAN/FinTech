@@ -2421,6 +2421,15 @@ def test_platform_api_approves_pending_operation_approval() -> None:
             },
             headers={"x-actor-id": "ops_manager_001"},
         )
+        duplicate = client.patch(
+            "/platform/operation-approvals/approval_pending_001/approve",
+            json={
+                "decided_by": "ops_manager_002",
+                "decision_reason": "Concurrent duplicate retry approval",
+                "decided_at": "2026-06-08T09:35:00Z",
+            },
+            headers={"x-actor-id": "ops_manager_002"},
+        )
 
         assert response.status_code == 200
         body = response.json()["record"]
@@ -2431,6 +2440,8 @@ def test_platform_api_approves_pending_operation_approval() -> None:
         assert body["decided_at"] == "2026-06-08T09:30:00+00:00"
         assert response.json()["run"]["run_id"] == "run_retry_http"
         assert response.json()["run"]["status"] == "accepted"
+        assert duplicate.status_code == 409
+        assert "Cannot approve approved" in duplicate.json()["detail"]["message"]
 
         saved = _approval_records(operation_approval_database_path)
         assert saved[0].status == OPERATION_APPROVAL_APPROVED
@@ -2441,9 +2452,11 @@ def test_platform_api_approves_pending_operation_approval() -> None:
             for event in _access_events(access_audit_database_path)
             if event.permission == UPDATE_PLATFORM_OPERATION_APPROVALS
         ]
-        assert len(events) == 1
+        assert len(events) == 2
         assert events[0].actor == "ops_manager_001"
         assert events[0].outcome == "granted"
+        assert events[1].actor == "ops_manager_002"
+        assert events[1].outcome == "denied"
 
         retry_events = [
             event

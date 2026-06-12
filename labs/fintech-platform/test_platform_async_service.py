@@ -103,6 +103,32 @@ def test_async_run_store_queries_runs_by_status() -> None:
         _close_and_remove(store)
 
 
+def test_async_run_store_claims_next_accepted_run_once_across_connections() -> None:
+    database_path = _database_path()
+    first_store = SQLitePlatformAsyncRunStore(database_path)
+    second_store = SQLitePlatformAsyncRunStore(database_path)
+    try:
+        first_store.create_run(_api_request(), created_at=_created_at())
+
+        claimed = first_store.claim_next_accepted(started_at=_processed_at())
+        duplicate_claim = second_store.claim_next_accepted(started_at=_processed_at())
+
+        assert claimed is not None
+        assert claimed.run_id == "run_async_001"
+        assert claimed.status == ASYNC_RUN_PROCESSING
+        assert claimed.attempt_count == 1
+        assert duplicate_claim is None
+        assert second_store.get_run("run_async_001").status == ASYNC_RUN_PROCESSING
+
+        with pytest.raises(PlatformAsyncRunStoreError, match="Cannot process processing"):
+            second_store.mark_processing("run_async_001", started_at=_processed_at())
+    finally:
+        first_store.close()
+        second_store.close()
+        if database_path.exists():
+            database_path.unlink()
+
+
 def test_async_run_store_survives_reopen_and_can_rebuild_request() -> None:
     database_path = _database_path()
     store = SQLitePlatformAsyncRunStore(database_path)

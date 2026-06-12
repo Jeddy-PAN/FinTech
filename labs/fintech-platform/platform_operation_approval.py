@@ -118,10 +118,6 @@ class SQLiteOperationApprovalStore:
         decided_at: datetime,
     ) -> OperationApprovalRecord:
         existing = self.get_record(approval_id)
-        if existing.status != OPERATION_APPROVAL_PENDING:
-            raise OperationApprovalError(
-                f"Cannot approve {existing.status} operation approval record"
-            )
         approved = OperationApprovalRecord(
             approval_id=existing.approval_id,
             operation_type=existing.operation_type,
@@ -136,8 +132,11 @@ class SQLiteOperationApprovalStore:
             requested_at=existing.requested_at,
             decided_at=decided_at,
         )
-        self.save_record(approved)
-        return approved
+        return self._transition_pending(
+            existing,
+            approved,
+            action_name="approve",
+        )
 
     def reject_pending(
         self,
@@ -148,10 +147,6 @@ class SQLiteOperationApprovalStore:
         decided_at: datetime,
     ) -> OperationApprovalRecord:
         existing = self.get_record(approval_id)
-        if existing.status != OPERATION_APPROVAL_PENDING:
-            raise OperationApprovalError(
-                f"Cannot reject {existing.status} operation approval record"
-            )
         rejected = OperationApprovalRecord(
             approval_id=existing.approval_id,
             operation_type=existing.operation_type,
@@ -166,8 +161,11 @@ class SQLiteOperationApprovalStore:
             requested_at=existing.requested_at,
             decided_at=decided_at,
         )
-        self.save_record(rejected)
-        return rejected
+        return self._transition_pending(
+            existing,
+            rejected,
+            action_name="reject",
+        )
 
     def cancel_pending(
         self,
@@ -178,10 +176,6 @@ class SQLiteOperationApprovalStore:
         decided_at: datetime,
     ) -> OperationApprovalRecord:
         existing = self.get_record(approval_id)
-        if existing.status != OPERATION_APPROVAL_PENDING:
-            raise OperationApprovalError(
-                f"Cannot cancel {existing.status} operation approval record"
-            )
         cancelled = OperationApprovalRecord(
             approval_id=existing.approval_id,
             operation_type=existing.operation_type,
@@ -196,8 +190,11 @@ class SQLiteOperationApprovalStore:
             requested_at=existing.requested_at,
             decided_at=decided_at,
         )
-        self.save_record(cancelled)
-        return cancelled
+        return self._transition_pending(
+            existing,
+            cancelled,
+            action_name="cancel",
+        )
 
     def expire_pending(
         self,
@@ -208,10 +205,6 @@ class SQLiteOperationApprovalStore:
         decided_at: datetime,
     ) -> OperationApprovalRecord:
         existing = self.get_record(approval_id)
-        if existing.status != OPERATION_APPROVAL_PENDING:
-            raise OperationApprovalError(
-                f"Cannot expire {existing.status} operation approval record"
-            )
         expired = OperationApprovalRecord(
             approval_id=existing.approval_id,
             operation_type=existing.operation_type,
@@ -226,8 +219,11 @@ class SQLiteOperationApprovalStore:
             requested_at=existing.requested_at,
             decided_at=decided_at,
         )
-        self.save_record(expired)
-        return expired
+        return self._transition_pending(
+            existing,
+            expired,
+            action_name="expire",
+        )
 
     def get_record(self, approval_id: str) -> OperationApprovalRecord:
         normalized_approval_id = _require_text(approval_id, "approval_id")
@@ -300,6 +296,59 @@ class SQLiteOperationApprovalStore:
             tuple(parameters),
         ).fetchone()
         return int(row["record_count"])
+
+    def _transition_pending(
+        self,
+        existing: OperationApprovalRecord,
+        next_record: OperationApprovalRecord,
+        *,
+        action_name: str,
+    ) -> OperationApprovalRecord:
+        if existing.status != OPERATION_APPROVAL_PENDING:
+            raise OperationApprovalError(
+                f"Cannot {action_name} {existing.status} operation approval record"
+            )
+        _validate_record(next_record)
+        with self._connection:
+            cursor = self._connection.execute(
+                """
+                UPDATE operation_approvals
+                SET
+                    operation_type = ?,
+                    operation_id = ?,
+                    target = ?,
+                    requested_by = ?,
+                    request_reason = ?,
+                    approved_by = ?,
+                    approval_reason = ?,
+                    status = ?,
+                    decision_reason = ?,
+                    requested_at = ?,
+                    decided_at = ?
+                WHERE approval_id = ? AND status = ?
+                """,
+                (
+                    next_record.operation_type,
+                    next_record.operation_id,
+                    next_record.target,
+                    next_record.requested_by,
+                    next_record.request_reason,
+                    next_record.approved_by,
+                    next_record.approval_reason,
+                    next_record.status,
+                    next_record.decision_reason,
+                    _timestamp_to_storage(next_record.requested_at, "requested_at"),
+                    _optional_timestamp_to_storage(next_record.decided_at, "decided_at"),
+                    next_record.approval_id,
+                    OPERATION_APPROVAL_PENDING,
+                ),
+            )
+            if cursor.rowcount != 1:
+                current = self.get_record(next_record.approval_id)
+                raise OperationApprovalError(
+                    f"Cannot {action_name} {current.status} operation approval record"
+                )
+        return self.get_record(next_record.approval_id)
 
     def _create_schema(self) -> None:
         self._migrate_schema_if_needed()

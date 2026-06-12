@@ -372,6 +372,46 @@ def test_operation_approval_store_rejects_terminal_lifecycle_transitions() -> No
         _remove_database(database_path)
 
 
+def test_operation_approval_store_rejects_duplicate_decision_across_connections() -> None:
+    database_path = _database_path()
+    first_store = SQLiteOperationApprovalStore(database_path)
+    second_store = SQLiteOperationApprovalStore(database_path)
+    pending = _approval_record(
+        approval_id="approval_pending",
+        status=OPERATION_APPROVAL_PENDING,
+        approved_by=None,
+        approval_reason=None,
+        decision_reason="pending approval",
+        decided_at=None,
+    )
+
+    try:
+        first_store.save_record(pending)
+
+        approved = first_store.approve_pending(
+            "approval_pending",
+            approved_by="ops_manager_001",
+            approval_reason="Approved after reviewing retry request",
+            decided_at=_now(),
+        )
+
+        assert approved.status == OPERATION_APPROVAL_APPROVED
+        with pytest.raises(OperationApprovalError, match="Cannot reject approved"):
+            second_store.reject_pending(
+                "approval_pending",
+                rejected_by="ops_manager_002",
+                rejection_reason="Concurrent duplicate decision",
+                decided_at=_now(),
+            )
+        assert second_store.get_record("approval_pending").status == (
+            OPERATION_APPROVAL_APPROVED
+        )
+    finally:
+        first_store.close()
+        second_store.close()
+        _remove_database(database_path)
+
+
 def test_operation_approval_store_migrates_legacy_terminal_status_schema() -> None:
     database_path = _database_path()
     _create_legacy_terminal_status_record(database_path)

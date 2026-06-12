@@ -189,6 +189,48 @@ class SQLitePlatformAsyncRunStore:
         ).fetchone()
         return _run_from_row(row) if row is not None else None
 
+    def claim_next_accepted(
+        self,
+        *,
+        started_at: datetime,
+    ) -> PlatformAsyncRun | None:
+        started_at_text = _timestamp_to_storage(started_at, "started_at")
+        with self._connection:
+            row = self._connection.execute(
+                """
+                SELECT run_id
+                FROM platform_async_runs
+                WHERE status = ?
+                ORDER BY created_at, run_id
+                LIMIT 1
+                """,
+                (ASYNC_RUN_ACCEPTED,),
+            ).fetchone()
+            if row is None:
+                return None
+            cursor = self._connection.execute(
+                """
+                UPDATE platform_async_runs
+                SET
+                    status = ?,
+                    attempt_count = attempt_count + 1,
+                    updated_at = ?,
+                    started_at = ?,
+                    last_error = NULL
+                WHERE run_id = ? AND status = ?
+                """,
+                (
+                    ASYNC_RUN_PROCESSING,
+                    started_at_text,
+                    started_at_text,
+                    row["run_id"],
+                    ASYNC_RUN_ACCEPTED,
+                ),
+            )
+            if cursor.rowcount != 1:
+                return None
+        return self.get_run(row["run_id"])
+
     def mark_processing(
         self,
         run_id: str,
@@ -202,7 +244,7 @@ class SQLitePlatformAsyncRunStore:
             )
         started_at_text = _timestamp_to_storage(started_at, "started_at")
         with self._connection:
-            self._connection.execute(
+            cursor = self._connection.execute(
                 """
                 UPDATE platform_async_runs
                 SET
@@ -211,15 +253,21 @@ class SQLitePlatformAsyncRunStore:
                     updated_at = ?,
                     started_at = ?,
                     last_error = NULL
-                WHERE run_id = ?
+                WHERE run_id = ? AND status = ?
                 """,
                 (
                     ASYNC_RUN_PROCESSING,
                     started_at_text,
                     started_at_text,
                     run.run_id,
+                    ASYNC_RUN_ACCEPTED,
                 ),
             )
+            if cursor.rowcount != 1:
+                current = self.get_run(run.run_id)
+                raise PlatformAsyncRunStoreError(
+                    f"Cannot process {current.status} async run: {current.run_id}"
+                )
         return self.get_run(run.run_id)
 
     def mark_completed(
@@ -380,18 +428,14 @@ class PlatformAsyncWorker:
         *,
         processed_at: datetime | None = None,
     ) -> PlatformAsyncWorkerResult:
-        run = self.async_store.next_accepted_run()
-        if run is None:
+        now = processed_at or datetime.now(timezone.utc)
+        processing_run = self.async_store.claim_next_accepted(started_at=now)
+        if processing_run is None:
             return PlatformAsyncWorkerResult(
                 processed=False,
                 run_id=None,
                 async_status=None,
             )
-        now = processed_at or datetime.now(timezone.utc)
-        processing_run = self.async_store.mark_processing(
-            run.run_id,
-            started_at=now,
-        )
         try:
             service = self._service()
             response = service.create_payment_run(
