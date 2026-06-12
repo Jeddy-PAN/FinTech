@@ -1,6 +1,6 @@
 # docs 文档入口
 
-这个目录保存 FinTech 学习笔记、阶段计划和阶段总结。当前文档已经比较多，阅读时不建议从文件名 01 一路顺读到 46，而应按目标选择路径。
+这个目录保存 FinTech 学习笔记、阶段计划和阶段总结。当前文档已经比较多，阅读时不建议从文件名 01 一路顺读到 48，而应按目标选择路径。
 
 ## 推荐阅读路径
 
@@ -46,6 +46,7 @@
 26. [45-stage-32-payment-detail-reconciliation-context.md](45-stage-32-payment-detail-reconciliation-context.md)：payment run detail reconciliation context。
 27. [46-stage-33-remaining-roadmap.md](46-stage-33-remaining-roadmap.md)：剩余章节路线图与平台差距总结。
 28. [47-stage-34-console-workflow-controls.md](47-stage-34-console-workflow-controls.md)：console actor/date 筛选、风险提示和详情页返回路径。
+29. [48-stage-35-identity-permission-form-security.md](48-stage-35-identity-permission-form-security.md)：identity context、permission policy 和表单安全边界。
 
 ### 路径 C：只看阶段计划和历史
 
@@ -84,6 +85,7 @@
 | [45-stage-32-payment-detail-reconciliation-context.md](45-stage-32-payment-detail-reconciliation-context.md) | payment detail reconciliation context |
 | [46-stage-33-remaining-roadmap.md](46-stage-33-remaining-roadmap.md) | remaining roadmap and platform gap summary |
 | [47-stage-34-console-workflow-controls.md](47-stage-34-console-workflow-controls.md) | console workflow controls |
+| [48-stage-35-identity-permission-form-security.md](48-stage-35-identity-permission-form-security.md) | identity, permission and form security boundary |
 
 ## 当前平台能力地图
 
@@ -176,6 +178,8 @@ OperationApprovalRecord
 ### 操作审批 HTTP 流程
 
 ```text
+PlatformIdentityContext
+-> role / permission policy
 OperationApprovalRecord
 -> POST /platform/operation-approvals
 -> GET /platform/operation-approvals
@@ -190,7 +194,20 @@ OperationApprovalRecord
 -> access audit granted / denied
 ```
 
-这个流程回答：pending approval 如何通过 API 被创建、分页查看、排序查看，并通过 `total_count`、`has_next_page` 和 `next_offset` 判断是否还需要继续翻页；之后可进入详情查看、在详情页按时间解释申请、决策和 retry execution，并继续跳转到关联 async run 和 platform result 详情页；再通过 JSON 或 console form 流转到 approved / rejected / cancelled / expired，并留下访问审计。
+这个流程回答：pending approval 如何通过 API 被创建、分页查看、排序查看，并通过 `total_count`、`has_next_page` 和 `next_offset` 判断是否还需要继续翻页；之后可进入详情查看、在详情页按时间解释申请、决策和 retry execution，并继续跳转到关联 async run 和 platform result 详情页；再通过 JSON 或 console form 流转到 approved / rejected / cancelled / expired，并经过教学版 identity context 和 permission policy 校验，最后留下 granted 或 denied 访问审计。
+
+### 身份权限边界
+
+```text
+x-actor-id / x-actor-role
+-> PlatformIdentityContext
+-> PERMISSIONS_BY_ROLE
+-> _require_permission()
+-> _require_identity_actor_matches()
+-> access audit granted / denied
+```
+
+这个流程回答：教学版 API 如何把 actor 字符串整理成身份上下文，如何按 role / permission 校验敏感查询和审批更新路径，以及为什么权限拒绝和身份不一致也要写入 access audit。当前仍不代表真实 login、session、token、企业 IAM 或 CSRF 防护。
 
 ### Console 报表视图
 
@@ -237,11 +254,11 @@ platform / wallet balance snapshot
 
 ## 下一步候选方向
 
-阶段 34 已完成运营 Console 和工作流补强。
+阶段 35 已完成教学版身份、权限和表单安全边界第一版。
 
-建议下一步进入阶段 35：身份、权限和表单安全边界。
+建议下一步进入阶段 36：一致性、并发和恢复。
 
-1. 设计教学版 user / role / permission。
-2. 把 actor 从“请求自报字段”升级为更接近真实系统的身份上下文。
-3. 梳理 route-level permission、CSRF、敏感字段脱敏和 self-approval 校验边界。
-4. 继续保持教学版范围，不直接声称满足真实金融机构合规要求。
+1. 梳理 platform store、async run store、approval store 的事务边界。
+2. 增加 worker claim / lease / timeout 的教学实现或设计。
+3. 增加并发 approve / retry 的冲突测试。
+4. 规划 schema migration、backup / restore 和失败恢复演练。

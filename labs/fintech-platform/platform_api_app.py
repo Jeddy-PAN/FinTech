@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 import html
 from datetime import date, datetime, timezone
 from pathlib import Path
@@ -138,6 +139,104 @@ CONSOLE_OPERATION_APPROVAL_STATUS_OPTIONS = (
     OPERATION_APPROVAL_CANCELLED,
     OPERATION_APPROVAL_EXPIRED,
 )
+
+ROLE_API_CLIENT = "api_client"
+ROLE_API_VIEWER = "api_viewer"
+ROLE_APPROVAL_REQUESTER = "approval_requester"
+ROLE_APPROVAL_VIEWER = "approval_viewer"
+ROLE_AUDIT_READER = "audit_reader"
+ROLE_COMPLIANCE_LEAD = "compliance_lead"
+ROLE_INVESTIGATOR = "investigator"
+ROLE_OPS_MANAGER = "ops_manager"
+ROLE_OPS_USER = "ops_user"
+ROLE_SYSTEM_SCHEDULER = "system_scheduler"
+ROLE_ASYNC_WORKER = "async_worker"
+ROLE_CONSOLE_READER = "console_reader"
+
+PERMISSIONS_BY_ROLE = {
+    ROLE_API_CLIENT: {
+        CREATE_PLATFORM_PAYMENT_RUN,
+        CREATE_PLATFORM_ASYNC_PAYMENT_RUN,
+        CREATE_PLATFORM_OPERATION_APPROVALS,
+    },
+    ROLE_API_VIEWER: {
+        VIEW_PLATFORM_PAYMENT_RUN,
+        LIST_PLATFORM_PAYMENT_RUNS,
+        VIEW_PLATFORM_ASYNC_PAYMENT_RUN,
+        LIST_PLATFORM_ASYNC_PAYMENT_RUNS,
+        VIEW_PLATFORM_CONSOLE,
+    },
+    ROLE_APPROVAL_REQUESTER: {
+        CREATE_PLATFORM_OPERATION_APPROVALS,
+        VIEW_PLATFORM_OPERATION_APPROVALS,
+        VIEW_PLATFORM_CONSOLE,
+    },
+    ROLE_APPROVAL_VIEWER: {
+        VIEW_PLATFORM_OPERATION_APPROVALS,
+        VIEW_PLATFORM_CONSOLE,
+    },
+    ROLE_AUDIT_READER: {
+        VIEW_PLATFORM_API_ACCESS_EVENTS,
+        VIEW_PLATFORM_API_ACCESS_ANOMALY_FINDINGS,
+        VIEW_PLATFORM_CONSOLE,
+    },
+    ROLE_COMPLIANCE_LEAD: {
+        VIEW_PLATFORM_API_ACCESS_EVENTS,
+        VIEW_PLATFORM_API_ACCESS_ANOMALY_FINDINGS,
+        CREATE_PLATFORM_API_INVESTIGATION_CASES,
+        VIEW_PLATFORM_API_INVESTIGATION_CASES,
+        UPDATE_PLATFORM_API_INVESTIGATION_CASES,
+        VIEW_PLATFORM_CONSOLE,
+    },
+    ROLE_INVESTIGATOR: {
+        VIEW_PLATFORM_API_INVESTIGATION_CASES,
+        UPDATE_PLATFORM_API_INVESTIGATION_CASES,
+        VIEW_PLATFORM_CONSOLE,
+    },
+    ROLE_OPS_MANAGER: {
+        CREATE_PLATFORM_OPERATION_APPROVALS,
+        VIEW_PLATFORM_OPERATION_APPROVALS,
+        UPDATE_PLATFORM_OPERATION_APPROVALS,
+        RETRY_PLATFORM_ASYNC_PAYMENT_RUN,
+        VIEW_PLATFORM_ASYNC_PAYMENT_RUN,
+        LIST_PLATFORM_ASYNC_PAYMENT_RUNS,
+        VIEW_PLATFORM_PAYMENT_RUN,
+        LIST_PLATFORM_PAYMENT_RUNS,
+        VIEW_PLATFORM_CONSOLE,
+    },
+    ROLE_OPS_USER: {
+        CREATE_PLATFORM_OPERATION_APPROVALS,
+        VIEW_PLATFORM_OPERATION_APPROVALS,
+        UPDATE_PLATFORM_OPERATION_APPROVALS,
+        VIEW_PLATFORM_ASYNC_PAYMENT_RUN,
+        LIST_PLATFORM_ASYNC_PAYMENT_RUNS,
+        VIEW_PLATFORM_PAYMENT_RUN,
+        LIST_PLATFORM_PAYMENT_RUNS,
+        VIEW_PLATFORM_CONSOLE,
+    },
+    ROLE_SYSTEM_SCHEDULER: {
+        UPDATE_PLATFORM_OPERATION_APPROVALS,
+        PROCESS_PLATFORM_ASYNC_PAYMENT_RUNS,
+    },
+    ROLE_ASYNC_WORKER: {
+        PROCESS_PLATFORM_ASYNC_PAYMENT_RUNS,
+    },
+    ROLE_CONSOLE_READER: {
+        VIEW_PLATFORM_CONSOLE,
+        VIEW_PLATFORM_PAYMENT_RUN,
+        LIST_PLATFORM_PAYMENT_RUNS,
+        VIEW_PLATFORM_ASYNC_PAYMENT_RUN,
+        LIST_PLATFORM_ASYNC_PAYMENT_RUNS,
+        VIEW_PLATFORM_OPERATION_APPROVALS,
+    },
+}
+
+
+@dataclass(frozen=True)
+class PlatformIdentityContext:
+    actor: str
+    roles: tuple[str, ...]
+    source: str
 
 
 class PaymentRunRequest(BaseModel):
@@ -685,7 +784,15 @@ def create_app(
         permission: str | None = None,
         outcome: str | None = None,
         x_actor_id: str | None = Header(default=None),
+        x_actor_role: str | None = Header(default=None),
     ) -> dict:
+        identity = _identity_context(x_actor_id, x_actor_role)
+        _require_permission(
+            app,
+            identity,
+            permission=VIEW_PLATFORM_API_ACCESS_EVENTS,
+            target=PLATFORM_API_ACCESS_EVENTS_TARGET,
+        )
         store = _access_audit_store(app)
         try:
             events = store.query_access_events(
@@ -697,7 +804,7 @@ def create_app(
             store.close()
         _record_api_access(
             app,
-            actor=_api_actor(x_actor_id),
+            actor=identity.actor,
             permission=VIEW_PLATFORM_API_ACCESS_EVENTS,
             target=PLATFORM_API_ACCESS_EVENTS_TARGET,
             outcome="granted",
@@ -707,12 +814,20 @@ def create_app(
     @app.get("/platform/api-access-anomaly-findings")
     def list_api_access_anomaly_findings(
         x_actor_id: str | None = Header(default=None),
+        x_actor_role: str | None = Header(default=None),
     ) -> dict:
+        identity = _identity_context(x_actor_id, x_actor_role)
+        _require_permission(
+            app,
+            identity,
+            permission=VIEW_PLATFORM_API_ACCESS_ANOMALY_FINDINGS,
+            target=PLATFORM_API_ACCESS_ANOMALY_FINDINGS_TARGET,
+        )
         access_events = _access_events(app)
         findings = detect_platform_api_access_anomalies(access_events)
         _record_api_access(
             app,
-            actor=_api_actor(x_actor_id),
+            actor=identity.actor,
             permission=VIEW_PLATFORM_API_ACCESS_ANOMALY_FINDINGS,
             target=PLATFORM_API_ACCESS_ANOMALY_FINDINGS_TARGET,
             outcome="granted",
@@ -722,8 +837,16 @@ def create_app(
     @app.post("/platform/api-access-investigation-cases")
     def create_api_access_investigation_cases(
         x_actor_id: str | None = Header(default=None),
+        x_actor_role: str | None = Header(default=None),
     ) -> dict:
-        actor = _api_actor(x_actor_id)
+        identity = _identity_context(x_actor_id, x_actor_role)
+        _require_permission(
+            app,
+            identity,
+            permission=CREATE_PLATFORM_API_INVESTIGATION_CASES,
+            target=PLATFORM_API_INVESTIGATION_CASES_TARGET,
+        )
+        actor = identity.actor
         access_events = _access_events(app)
         findings = detect_platform_api_access_anomalies(access_events)
         cases = _persist_platform_api_investigation_cases(
@@ -748,7 +871,15 @@ def create_app(
     def create_operation_approval(
         request: CreateOperationApprovalRequest,
         x_actor_id: str | None = Header(default=None),
+        x_actor_role: str | None = Header(default=None),
     ) -> dict:
+        identity = _identity_context(x_actor_id, x_actor_role)
+        _require_permission(
+            app,
+            identity,
+            permission=CREATE_PLATFORM_OPERATION_APPROVALS,
+            target=PLATFORM_OPERATION_APPROVALS_TARGET,
+        )
         store = _operation_approval_store(app)
         try:
             try:
@@ -779,7 +910,7 @@ def create_app(
             _record_operation_approval_access_denial(
                 app,
                 approval_id=request.approval_id,
-                actor=x_actor_id,
+                actor=identity.actor,
                 permission=CREATE_PLATFORM_OPERATION_APPROVALS,
                 error=error,
             )
@@ -788,7 +919,7 @@ def create_app(
             store.close()
         _record_api_access(
             app,
-            actor=_api_actor(x_actor_id),
+            actor=identity.actor,
             permission=CREATE_PLATFORM_OPERATION_APPROVALS,
             target=_operation_approval_target(record.approval_id),
             outcome="granted",
@@ -806,7 +937,15 @@ def create_app(
         sort_by: str = Query(default="requested_at"),
         sort_order: str = Query(default="desc"),
         x_actor_id: str | None = Header(default=None),
+        x_actor_role: str | None = Header(default=None),
     ) -> dict:
+        identity = _identity_context(x_actor_id, x_actor_role)
+        _require_permission(
+            app,
+            identity,
+            permission=VIEW_PLATFORM_OPERATION_APPROVALS,
+            target=PLATFORM_OPERATION_APPROVALS_TARGET,
+        )
         store = _operation_approval_store(app)
         try:
             records = store.query_records(
@@ -827,7 +966,7 @@ def create_app(
             _record_operation_approval_access_denial(
                 app,
                 approval_id=None,
-                actor=x_actor_id,
+                actor=identity.actor,
                 permission=VIEW_PLATFORM_OPERATION_APPROVALS,
                 error=error,
             )
@@ -836,7 +975,7 @@ def create_app(
             store.close()
         _record_api_access(
             app,
-            actor=_api_actor(x_actor_id),
+            actor=identity.actor,
             permission=VIEW_PLATFORM_OPERATION_APPROVALS,
             target=PLATFORM_OPERATION_APPROVALS_TARGET,
             outcome="granted",
@@ -873,7 +1012,15 @@ def create_app(
     def get_operation_approval(
         approval_id: str,
         x_actor_id: str | None = Header(default=None),
+        x_actor_role: str | None = Header(default=None),
     ) -> dict:
+        identity = _identity_context(x_actor_id, x_actor_role)
+        _require_permission(
+            app,
+            identity,
+            permission=VIEW_PLATFORM_OPERATION_APPROVALS,
+            target=_operation_approval_target(approval_id),
+        )
         store = _operation_approval_store(app)
         try:
             record = store.get_record(approval_id)
@@ -881,7 +1028,7 @@ def create_app(
             _record_operation_approval_access_denial(
                 app,
                 approval_id=approval_id,
-                actor=x_actor_id,
+                actor=identity.actor,
                 permission=VIEW_PLATFORM_OPERATION_APPROVALS,
                 error=error,
             )
@@ -890,7 +1037,7 @@ def create_app(
             store.close()
         _record_api_access(
             app,
-            actor=_api_actor(x_actor_id),
+            actor=identity.actor,
             permission=VIEW_PLATFORM_OPERATION_APPROVALS,
             target=_operation_approval_target(approval_id),
             outcome="granted",
@@ -904,7 +1051,15 @@ def create_app(
     def view_operation_approval(
         approval_id: str,
         x_actor_id: str | None = Header(default=None),
+        x_actor_role: str | None = Header(default=None),
     ) -> HTMLResponse:
+        identity = _identity_context(x_actor_id, x_actor_role)
+        _require_permission(
+            app,
+            identity,
+            permission=VIEW_PLATFORM_OPERATION_APPROVALS,
+            target=_operation_approval_target(approval_id),
+        )
         store = _operation_approval_store(app)
         try:
             record = store.get_record(approval_id)
@@ -912,7 +1067,7 @@ def create_app(
             _record_operation_approval_access_denial(
                 app,
                 approval_id=approval_id,
-                actor=x_actor_id,
+                actor=identity.actor,
                 permission=VIEW_PLATFORM_OPERATION_APPROVALS,
                 error=error,
             )
@@ -921,7 +1076,7 @@ def create_app(
             store.close()
         _record_api_access(
             app,
-            actor=_api_actor(x_actor_id),
+            actor=identity.actor,
             permission=VIEW_PLATFORM_OPERATION_APPROVALS,
             target=_operation_approval_target(approval_id),
             outcome="granted",
@@ -934,7 +1089,23 @@ def create_app(
         approval_id: str,
         request: DecideOperationApprovalRequest,
         x_actor_id: str | None = Header(default=None),
+        x_actor_role: str | None = Header(default=None),
     ) -> dict:
+        identity = _identity_context(x_actor_id, x_actor_role)
+        _require_permission(
+            app,
+            identity,
+            permission=UPDATE_PLATFORM_OPERATION_APPROVALS,
+            target=_operation_approval_target(approval_id),
+        )
+        _require_identity_actor_matches(
+            app,
+            identity,
+            submitted_actor=request.decided_by,
+            permission=UPDATE_PLATFORM_OPERATION_APPROVALS,
+            target=_operation_approval_target(approval_id),
+            field_name="decided_by",
+        )
         try:
             record, retried_run = _approve_operation_approval(
                 app,
@@ -942,7 +1113,7 @@ def create_app(
                 decided_by=request.decided_by,
                 decision_reason=request.decision_reason,
                 decided_at=_aware_timestamp(request.decided_at),
-                actor=x_actor_id,
+                actor=identity.actor,
             )
         except OperationApprovalError as error:
             raise _http_exception_from_operation_approval_error(error) from error
@@ -958,7 +1129,23 @@ def create_app(
         approval_id: str,
         request: DecideOperationApprovalRequest,
         x_actor_id: str | None = Header(default=None),
+        x_actor_role: str | None = Header(default=None),
     ) -> dict:
+        identity = _identity_context(x_actor_id, x_actor_role)
+        _require_permission(
+            app,
+            identity,
+            permission=UPDATE_PLATFORM_OPERATION_APPROVALS,
+            target=_operation_approval_target(approval_id),
+        )
+        _require_identity_actor_matches(
+            app,
+            identity,
+            submitted_actor=request.decided_by,
+            permission=UPDATE_PLATFORM_OPERATION_APPROVALS,
+            target=_operation_approval_target(approval_id),
+            field_name="decided_by",
+        )
         try:
             record = _reject_operation_approval(
                 app,
@@ -966,7 +1153,7 @@ def create_app(
                 decided_by=request.decided_by,
                 decision_reason=request.decision_reason,
                 decided_at=_aware_timestamp(request.decided_at),
-                actor=x_actor_id,
+                actor=identity.actor,
             )
         except OperationApprovalError as error:
             raise _http_exception_from_operation_approval_error(error) from error
@@ -983,6 +1170,13 @@ def create_app(
                 form,
                 expected=APPROVE_OPERATION_APPROVAL_CONFIRMATION,
             )
+            identity = _identity_context(_required_form_text(form, "decided_by"), None)
+            _require_permission(
+                app,
+                identity,
+                permission=UPDATE_PLATFORM_OPERATION_APPROVALS,
+                target=_operation_approval_target(approval_id),
+            )
             _approve_operation_approval(
                 app,
                 approval_id=approval_id,
@@ -991,7 +1185,7 @@ def create_app(
                 decided_at=_aware_timestamp(
                     datetime.fromisoformat(_required_form_text(form, "decided_at"))
                 ),
-                actor=_required_form_text(form, "decided_by"),
+                actor=identity.actor,
             )
         except (OperationApprovalError, PlatformAsyncRunStoreError, ValueError) as error:
             message = quote(str(error), safe="")
@@ -1015,6 +1209,13 @@ def create_app(
                 form,
                 expected=REJECT_OPERATION_APPROVAL_CONFIRMATION,
             )
+            identity = _identity_context(_required_form_text(form, "decided_by"), None)
+            _require_permission(
+                app,
+                identity,
+                permission=UPDATE_PLATFORM_OPERATION_APPROVALS,
+                target=_operation_approval_target(approval_id),
+            )
             _reject_operation_approval(
                 app,
                 approval_id=approval_id,
@@ -1023,7 +1224,7 @@ def create_app(
                 decided_at=_aware_timestamp(
                     datetime.fromisoformat(_required_form_text(form, "decided_at"))
                 ),
-                actor=_required_form_text(form, "decided_by"),
+                actor=identity.actor,
             )
         except (OperationApprovalError, PlatformAsyncRunStoreError, ValueError) as error:
             message = quote(str(error), safe="")
@@ -1047,6 +1248,13 @@ def create_app(
                 form,
                 expected=CANCEL_OPERATION_APPROVAL_CONFIRMATION,
             )
+            identity = _identity_context(_required_form_text(form, "decided_by"), None)
+            _require_permission(
+                app,
+                identity,
+                permission=UPDATE_PLATFORM_OPERATION_APPROVALS,
+                target=_operation_approval_target(approval_id),
+            )
             _cancel_operation_approval(
                 app,
                 approval_id=approval_id,
@@ -1055,7 +1263,7 @@ def create_app(
                 decided_at=_aware_timestamp(
                     datetime.fromisoformat(_required_form_text(form, "decided_at"))
                 ),
-                actor=_required_form_text(form, "decided_by"),
+                actor=identity.actor,
             )
         except (OperationApprovalError, PlatformAsyncRunStoreError, ValueError) as error:
             message = quote(str(error), safe="")
@@ -1079,6 +1287,13 @@ def create_app(
                 form,
                 expected=EXPIRE_OPERATION_APPROVAL_CONFIRMATION,
             )
+            identity = _identity_context(_required_form_text(form, "decided_by"), None)
+            _require_permission(
+                app,
+                identity,
+                permission=UPDATE_PLATFORM_OPERATION_APPROVALS,
+                target=_operation_approval_target(approval_id),
+            )
             _expire_operation_approval(
                 app,
                 approval_id=approval_id,
@@ -1087,7 +1302,7 @@ def create_app(
                 decided_at=_aware_timestamp(
                     datetime.fromisoformat(_required_form_text(form, "decided_at"))
                 ),
-                actor=_required_form_text(form, "decided_by"),
+                actor=identity.actor,
             )
         except (OperationApprovalError, PlatformAsyncRunStoreError, ValueError) as error:
             message = quote(str(error), safe="")
@@ -1105,7 +1320,23 @@ def create_app(
         approval_id: str,
         request: DecideOperationApprovalRequest,
         x_actor_id: str | None = Header(default=None),
+        x_actor_role: str | None = Header(default=None),
     ) -> dict:
+        identity = _identity_context(x_actor_id, x_actor_role)
+        _require_permission(
+            app,
+            identity,
+            permission=UPDATE_PLATFORM_OPERATION_APPROVALS,
+            target=_operation_approval_target(approval_id),
+        )
+        _require_identity_actor_matches(
+            app,
+            identity,
+            submitted_actor=request.decided_by,
+            permission=UPDATE_PLATFORM_OPERATION_APPROVALS,
+            target=_operation_approval_target(approval_id),
+            field_name="decided_by",
+        )
         try:
             record = _cancel_operation_approval(
                 app,
@@ -1113,7 +1344,7 @@ def create_app(
                 decided_by=request.decided_by,
                 decision_reason=request.decision_reason,
                 decided_at=_aware_timestamp(request.decided_at),
-                actor=x_actor_id,
+                actor=identity.actor,
             )
         except OperationApprovalError as error:
             raise _http_exception_from_operation_approval_error(error) from error
@@ -1124,7 +1355,23 @@ def create_app(
         approval_id: str,
         request: DecideOperationApprovalRequest,
         x_actor_id: str | None = Header(default=None),
+        x_actor_role: str | None = Header(default=None),
     ) -> dict:
+        identity = _identity_context(x_actor_id, x_actor_role)
+        _require_permission(
+            app,
+            identity,
+            permission=UPDATE_PLATFORM_OPERATION_APPROVALS,
+            target=_operation_approval_target(approval_id),
+        )
+        _require_identity_actor_matches(
+            app,
+            identity,
+            submitted_actor=request.decided_by,
+            permission=UPDATE_PLATFORM_OPERATION_APPROVALS,
+            target=_operation_approval_target(approval_id),
+            field_name="decided_by",
+        )
         try:
             record = _expire_operation_approval(
                 app,
@@ -1132,7 +1379,7 @@ def create_app(
                 decided_by=request.decided_by,
                 decision_reason=request.decision_reason,
                 decided_at=_aware_timestamp(request.decided_at),
-                actor=x_actor_id,
+                actor=identity.actor,
             )
         except OperationApprovalError as error:
             raise _http_exception_from_operation_approval_error(error) from error
@@ -1925,6 +2172,135 @@ def _api_actor(value: str | None) -> str:
         return ANONYMOUS_API_CLIENT
     normalized = value.strip()
     return normalized or ANONYMOUS_API_CLIENT
+
+
+def _identity_context(
+    actor_value: str | None,
+    role_value: str | None = None,
+) -> PlatformIdentityContext:
+    actor = _api_actor(actor_value)
+    roles = _roles_from_header(role_value)
+    source = "x-actor-role"
+    if not roles:
+        roles = _roles_for_actor(actor)
+        source = "actor_inference"
+    return PlatformIdentityContext(actor=actor, roles=roles, source=source)
+
+
+def _roles_from_header(role_value: str | None) -> tuple[str, ...]:
+    if role_value is None:
+        return ()
+    roles = tuple(
+        role.strip()
+        for role in role_value.split(",")
+        if role.strip()
+    )
+    return roles
+
+
+def _roles_for_actor(actor: str) -> tuple[str, ...]:
+    if actor == ANONYMOUS_API_CLIENT:
+        return (ROLE_API_VIEWER,)
+    if actor == "system_scheduler":
+        return (ROLE_SYSTEM_SCHEDULER,)
+    if actor.startswith("async_worker"):
+        return (ROLE_ASYNC_WORKER,)
+    if actor.startswith("ops_manager"):
+        return (ROLE_OPS_MANAGER,)
+    if actor.startswith("ops_user"):
+        return (ROLE_OPS_USER,)
+    if actor.startswith("approval_requester"):
+        return (ROLE_APPROVAL_REQUESTER,)
+    if actor.startswith("approval_viewer"):
+        return (ROLE_APPROVAL_VIEWER,)
+    if actor.startswith("audit_reader") or actor.startswith("api_audit_reader"):
+        return (ROLE_AUDIT_READER,)
+    if actor.startswith("api_compliance_lead") or actor.startswith(
+        "platform_compliance_lead"
+    ):
+        return (ROLE_COMPLIANCE_LEAD,)
+    if actor.startswith("api_investigator") or actor.startswith(
+        "platform_investigator"
+    ):
+        return (ROLE_INVESTIGATOR,)
+    if actor.startswith("console_reader"):
+        return (ROLE_CONSOLE_READER,)
+    if actor.startswith("api_viewer") or actor.endswith("_viewer_001"):
+        return (ROLE_API_VIEWER,)
+    if actor.startswith("api_client"):
+        return (ROLE_API_CLIENT,)
+    return (ROLE_API_VIEWER,)
+
+
+def _identity_has_permission(
+    identity: PlatformIdentityContext,
+    permission: str,
+) -> bool:
+    return any(permission in PERMISSIONS_BY_ROLE.get(role, set()) for role in identity.roles)
+
+
+def _require_permission(
+    app: FastAPI,
+    identity: PlatformIdentityContext,
+    *,
+    permission: str,
+    target: str,
+) -> None:
+    if _identity_has_permission(identity, permission):
+        return
+    reason = (
+        f"403 permission denied: actor={identity.actor}; "
+        f"roles={','.join(identity.roles) or 'none'}; "
+        f"required_permission={permission}; source={identity.source}"
+    )
+    _record_api_access(
+        app,
+        actor=identity.actor,
+        permission=permission,
+        target=target,
+        outcome="denied",
+        reason=reason,
+    )
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail={
+            "error": "PermissionDenied",
+            "message": reason,
+        },
+    )
+
+
+def _require_identity_actor_matches(
+    app: FastAPI,
+    identity: PlatformIdentityContext,
+    *,
+    submitted_actor: str,
+    permission: str,
+    target: str,
+    field_name: str,
+) -> None:
+    normalized_submitted_actor = _api_actor(submitted_actor)
+    if identity.actor == normalized_submitted_actor:
+        return
+    reason = (
+        f"403 identity mismatch: x-actor-id={identity.actor}; "
+        f"{field_name}={normalized_submitted_actor}"
+    )
+    _record_api_access(
+        app,
+        actor=identity.actor,
+        permission=permission,
+        target=target,
+        outcome="denied",
+        reason=reason,
+    )
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail={
+            "error": "IdentityMismatch",
+            "message": reason,
+        },
+    )
 
 
 def _payment_run_target(run_id: str) -> str:

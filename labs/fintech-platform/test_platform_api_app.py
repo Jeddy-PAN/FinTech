@@ -848,6 +848,66 @@ def test_platform_api_lists_api_access_events() -> None:
         _remove_database(access_audit_database_path)
 
 
+def test_platform_api_denies_access_audit_view_for_unprivileged_role() -> None:
+    client, database_path, access_audit_database_path = _client()
+    try:
+        client.post("/platform/payment-runs", json=_payload())
+
+        response = client.get(
+            "/platform/api-access-events",
+            headers={"x-actor-id": "api_viewer_001"},
+        )
+
+        assert response.status_code == 403
+        assert response.json()["detail"]["error"] == "PermissionDenied"
+        assert "required_permission=view_platform_api_access_events" in response.json()[
+            "detail"
+        ]["message"]
+
+        denied_events = [
+            event
+            for event in _access_events(access_audit_database_path)
+            if event.permission == "view_platform_api_access_events"
+        ]
+        assert len(denied_events) == 1
+        assert denied_events[0].actor == "api_viewer_001"
+        assert denied_events[0].outcome == "denied"
+    finally:
+        client.close()
+        _remove_database(database_path)
+        _remove_database(access_audit_database_path)
+
+
+def test_platform_api_allows_explicit_audit_reader_role() -> None:
+    client, database_path, access_audit_database_path = _client()
+    try:
+        client.post("/platform/payment-runs", json=_payload())
+
+        response = client.get(
+            "/platform/api-access-events",
+            headers={
+                "x-actor-id": "support_user_001",
+                "x-actor-role": "audit_reader",
+            },
+        )
+
+        assert response.status_code == 200
+        assert response.json()["events"]
+
+        audit_events = [
+            event
+            for event in _access_events(access_audit_database_path)
+            if event.permission == "view_platform_api_access_events"
+        ]
+        assert len(audit_events) == 1
+        assert audit_events[0].actor == "support_user_001"
+        assert audit_events[0].outcome == "granted"
+    finally:
+        client.close()
+        _remove_database(database_path)
+        _remove_database(access_audit_database_path)
+
+
 def test_platform_api_console_page_renders_platform_summary() -> None:
     (
         client,
@@ -2393,6 +2453,98 @@ def test_platform_api_approves_pending_operation_approval() -> None:
         assert len(retry_events) == 1
         assert retry_events[0].actor == "ops_manager_001"
         assert retry_events[0].outcome == "granted"
+    finally:
+        client.close()
+        _remove_database(database_path)
+        _remove_database(access_audit_database_path)
+        _remove_database(async_database_path)
+        _remove_database(operation_approval_database_path)
+
+
+def test_platform_api_denies_approval_update_for_viewer_role() -> None:
+    (
+        client,
+        database_path,
+        access_audit_database_path,
+        async_database_path,
+        operation_approval_database_path,
+    ) = _client_with_async_and_operation_approval()
+    try:
+        _save_pending_approval(operation_approval_database_path)
+
+        response = client.patch(
+            "/platform/operation-approvals/approval_pending_001/approve",
+            json={
+                "decided_by": "approval_viewer_001",
+                "decision_reason": "Viewer should not approve",
+                "decided_at": "2026-06-08T09:30:00Z",
+            },
+            headers={"x-actor-id": "approval_viewer_001"},
+        )
+
+        assert response.status_code == 403
+        assert response.json()["detail"]["error"] == "PermissionDenied"
+        assert "required_permission=update_platform_operation_approvals" in response.json()[
+            "detail"
+        ]["message"]
+
+        saved = _approval_records(operation_approval_database_path)
+        assert saved[0].status == OPERATION_APPROVAL_PENDING
+
+        events = [
+            event
+            for event in _access_events(access_audit_database_path)
+            if event.permission == UPDATE_PLATFORM_OPERATION_APPROVALS
+        ]
+        assert len(events) == 1
+        assert events[0].actor == "approval_viewer_001"
+        assert events[0].outcome == "denied"
+    finally:
+        client.close()
+        _remove_database(database_path)
+        _remove_database(access_audit_database_path)
+        _remove_database(async_database_path)
+        _remove_database(operation_approval_database_path)
+
+
+def test_platform_api_denies_approval_update_when_identity_mismatches_decider() -> None:
+    (
+        client,
+        database_path,
+        access_audit_database_path,
+        async_database_path,
+        operation_approval_database_path,
+    ) = _client_with_async_and_operation_approval()
+    try:
+        _save_pending_approval(operation_approval_database_path)
+
+        response = client.patch(
+            "/platform/operation-approvals/approval_pending_001/reject",
+            json={
+                "decided_by": "ops_manager_002",
+                "decision_reason": "Header actor should match decided_by",
+                "decided_at": "2026-06-08T09:30:00Z",
+            },
+            headers={"x-actor-id": "ops_manager_001"},
+        )
+
+        assert response.status_code == 403
+        assert response.json()["detail"]["error"] == "IdentityMismatch"
+        assert "x-actor-id=ops_manager_001" in response.json()["detail"]["message"]
+        assert "decided_by=ops_manager_002" in response.json()["detail"]["message"]
+
+        saved = _approval_records(operation_approval_database_path)
+        assert saved[0].status == OPERATION_APPROVAL_PENDING
+
+        events = [
+            event
+            for event in _access_events(access_audit_database_path)
+            if event.permission == UPDATE_PLATFORM_OPERATION_APPROVALS
+        ]
+        assert len(events) == 1
+        assert events[0].actor == "ops_manager_001"
+        assert events[0].outcome == "denied"
+        assert "identity mismatch" in events[0].reason
     finally:
         client.close()
         _remove_database(database_path)
