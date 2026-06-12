@@ -31,6 +31,11 @@ from platform_api_app import create_app
 from platform_ledger_reconciliation_report import (
     export_platform_ledger_reconciliation_report,
 )
+from platform_settlement_reconciliation_report import (
+    PROVIDER_SETTLEMENT_SETTLED,
+    ProviderSettlementRow,
+    export_platform_settlement_reconciliation_report,
+)
 from platform_investigation_cases import (
     export_platform_access_investigation_report,
     open_platform_access_investigation_cases,
@@ -455,6 +460,17 @@ def main() -> None:
         print(f"- {ledger_reconciliation_paths.findings_csv}")
         print(f"- {ledger_reconciliation_paths.html_report}")
 
+        settlement_reconciliation_paths = (
+            export_platform_settlement_reconciliation_report(
+                LAB_DIR / "reports",
+                snapshots=operations_snapshots,
+                provider_rows=_provider_settlement_rows(operations_snapshots),
+            )
+        )
+        print("\nExported platform settlement reconciliation reports:")
+        print(f"- {settlement_reconciliation_paths.findings_csv}")
+        print(f"- {settlement_reconciliation_paths.html_report}")
+
         print("\nPending operation approval flow")
         print(
             f"- before={retry_pending_approval_body['record']['status']} "
@@ -717,6 +733,28 @@ def create_failed_async_run_sample(
         "worker_results": worker_results,
         "failed_async": failed_async,
     }
+
+
+def _provider_settlement_rows(snapshots) -> tuple[ProviderSettlementRow, ...]:
+    rows: list[ProviderSettlementRow] = []
+    for snapshot in snapshots:
+        record = snapshot.record
+        if record.status != "completed" or record.payment_order_id is None:
+            continue
+        rows.append(
+            ProviderSettlementRow(
+                provider="sample_provider",
+                settlement_id=f"settlement_{record.run_id}",
+                provider_payment_id=f"provider_payment_{record.payment_order_id}",
+                platform_run_id=record.run_id,
+                payment_order_id=record.payment_order_id,
+                amount=record.user_wallet_balance,
+                currency="USD",
+                status=PROVIDER_SETTLEMENT_SETTLED,
+                settled_at=record.created_at,
+            )
+        )
+    return tuple(rows)
 
 
 def _seed_sample_platform_access_anomalies(

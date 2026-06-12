@@ -1,6 +1,6 @@
 # docs 文档入口
 
-这个目录保存 FinTech 学习笔记、阶段计划和阶段总结。当前文档已经比较多，阅读时不建议从文件名 01 一路顺读到 49，而应按目标选择路径。
+这个目录保存 FinTech 学习笔记、阶段计划和阶段总结。当前文档已经比较多，阅读时不建议从文件名 01 一路顺读到 50，而应按目标选择路径。
 
 ## 推荐阅读路径
 
@@ -48,6 +48,7 @@
 28. [47-stage-34-console-workflow-controls.md](47-stage-34-console-workflow-controls.md)：console actor/date 筛选、风险提示和详情页返回路径。
 29. [48-stage-35-identity-permission-form-security.md](48-stage-35-identity-permission-form-security.md)：identity context、permission policy 和表单安全边界。
 30. [49-stage-36-consistency-concurrency-recovery.md](49-stage-36-consistency-concurrency-recovery.md)：一致性、并发和恢复边界。
+31. [50-stage-37-external-settlement-reconciliation.md](50-stage-37-external-settlement-reconciliation.md)：外部支付、清结算和真实对账模型。
 
 ### 路径 C：只看阶段计划和历史
 
@@ -88,6 +89,7 @@
 | [47-stage-34-console-workflow-controls.md](47-stage-34-console-workflow-controls.md) | console workflow controls |
 | [48-stage-35-identity-permission-form-security.md](48-stage-35-identity-permission-form-security.md) | identity, permission and form security boundary |
 | [49-stage-36-consistency-concurrency-recovery.md](49-stage-36-consistency-concurrency-recovery.md) | consistency, concurrency and recovery boundary |
+| [50-stage-37-external-settlement-reconciliation.md](50-stage-37-external-settlement-reconciliation.md) | external settlement reconciliation |
 
 ## 当前平台能力地图
 
@@ -160,11 +162,13 @@ PlatformAsyncRun
 PlatformRunSnapshot
 ledger_transaction.posted audit event
 retry_platform_async_run access audit
+ProviderSettlementRow
 -> PlatformOperationsReport
+-> PlatformSettlementReconciliationFinding
 -> CSV / HTML reports
 ```
 
-这个流程回答：运营人员如何横向检查任务状态、最终业务结果、账本入账和 retry 审计是否互相解释得通。
+这个流程回答：运营人员如何横向检查任务状态、最终业务结果、账本入账、retry 审计和教学版外部 provider settlement row 是否互相解释得通。
 
 ### 操作审批报表流程
 
@@ -230,6 +234,20 @@ duplicate claim or duplicate decision
 
 这个流程回答：同一个 async run 为什么只能被一个 worker 认领，同一条 pending approval 为什么只能被一个终态决策消费，以及冲突请求为什么应该被显式拒绝并留下审计记录。当前仍不代表生产级分布式锁、lease timeout、自动 recovery scanner、saga/workflow engine 或跨多个 SQLite 文件的强事务。
 
+### 外部 Settlement 对账边界
+
+```text
+PlatformRunSnapshot
+ProviderSettlementRow
+-> completed internal run requires settled provider row
+-> provider amount / currency must match internal payment
+-> non-completed internal run must not have settled provider row
+-> provider row must map back to an internal run
+-> settlement reconciliation CSV / HTML report
+```
+
+这个流程回答：内部平台显示 completed 之后，为什么还要看外部 payment provider 的 settlement file；以及外部已结算但内部没有 run、内部已完成但外部没结算、金额或币种不一致时，如何形成 reconciliation finding。当前仍不代表真实 provider adapter、webhook 验签、卡组织清算、银行流水解析、多币种 FX 或任何监管结论。
+
 ### Console 报表视图
 
 ```text
@@ -275,11 +293,11 @@ platform / wallet balance snapshot
 
 ## 下一步候选方向
 
-阶段 36 已完成一致性、并发和恢复边界第一版。
+阶段 37 已完成外部支付、清结算和真实对账模型第一版。
 
-建议下一步进入阶段 37：外部支付、清结算和真实对账模型。
+建议下一步进入阶段 38：合规证据、调查工单和留存治理。
 
-1. 梳理外部 payment provider、clearing、settlement 和 reconciliation file 的稳定概念。
-2. 为教学平台增加外部支付结果和清结算文件的最小样例。
-3. 把内部 ledger reconciliation 扩展到外部流水/清算差异视角。
-4. 继续避免真实市场数据和真实通道规则，所有时效性资料必须先查证官方或专业来源。
+1. 增强 investigation case 的 comment、assignee、priority、SLA 和 evidence package 视角。
+2. 把 settlement reconciliation findings、access anomaly findings 和 approval records 组织成合规证据链。
+3. 梳理 legal hold、retention decision 和 export approval 的教学边界。
+4. 任何真实监管、留存期限或报送要求都必须先查证官方或专业来源。

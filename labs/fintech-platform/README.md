@@ -240,6 +240,7 @@ investigation_case
 38. 已完成阶段 34 第一版：console 支持 actor 和日期范围筛选，pending approval 区块新增高影响操作风险提示，operation approval、async run 和 payment run 详情页新增返回 console 的入口。
 39. 已完成阶段 35 第一版：新增教学版 `PlatformIdentityContext`、role / permission policy，并对 access audit 查询、operation approval 查询和更新路径增加权限校验与身份一致性校验。
 40. 已完成阶段 36 第一版：async worker 使用 `claim_next_accepted()` 原子认领 accepted run，operation approval 终态决策使用 pending 状态条件更新，并补充重复 claim / 重复 approve-retry 冲突测试。
+41. 已完成阶段 37 第一版：新增教学版 `ProviderSettlementRow` 和 settlement reconciliation report，用外部 provider settlement row 检查内部 completed run、金额、币种和孤立外部记录。
 
 ## 运行示例
 
@@ -274,6 +275,8 @@ labs/fintech-platform/reports/platform_operation_approval_summary.csv
 labs/fintech-platform/reports/platform_operation_approval_report.html
 labs/fintech-platform/reports/platform_ledger_reconciliation_findings.csv
 labs/fintech-platform/reports/platform_ledger_reconciliation_report.html
+labs/fintech-platform/reports/platform_settlement_reconciliation_findings.csv
+labs/fintech-platform/reports/platform_settlement_reconciliation_report.html
 ```
 
 demo 还会输出 `Risk review completion`，用于观察 `risk_review_required -> completed` 的人工复核通过闭环。它也会输出 `Async payment run via FastAPI`，用 in-process FastAPI client 展示创建 async run、触发教学版 worker、查询最终 platform result 和 API access audit。随后 demo 会输出 `Failed async run sample for console`，通过真实 API 流程构造一个 request fingerprint 冲突导致的 failed async run，用来观察 console 里的 failed async run、attempt count 和 last error。
@@ -285,6 +288,8 @@ demo 现在也会输出 `Exported operation approval reports`，用于观察 `Op
 demo 现在也会输出 `Pending operation approval flow`，用于观察 retry approval request 如何先创建 `pending` approval，再通过 approve endpoint 流转为 `approved`，并在审批通过后把 failed async run 放回 `accepted`；同时展示独立样例 approval 如何流转为 `cancelled` 和 `expired`。
 
 demo 现在也会输出 `Exported platform ledger reconciliation reports`，用于观察 completed run 的 payment order amount、ledger amount、platform bank balance 和 user wallet balance 是否一致。运行 API 服务后，`FinTech Platform Console` 也会显示 `Ledger Reconciliation Findings` 只读区块；单个 payment run 详情页也会显示该 run 的 ledger reconciliation context。
+
+demo 现在也会输出 `Exported platform settlement reconciliation reports`，用于观察内部 completed platform run 和教学版外部 provider settlement row 是否能对上；该报告会检查外部 settled row 是否存在、金额和币种是否匹配、非 completed 内部 run 是否错误出现在外部 settlement file 中，以及外部 row 是否能映射回内部 run。
 
 demo 还会写入并重新读取：
 
@@ -306,7 +311,7 @@ labs/fintech-platform/.test-data/demo_platform_api_investigation_cases.db
 
 ## 当前状态
 
-这个目录已经包含第一版综合平台设计、最小 orchestration、demo、综合报表导出、SQLite 持久化、历史运行报表、risk review 后续处理、教学版一致性检查、平台报表访问控制与访问审计、平台访问异常检测、平台访问异常调查工单、异步任务、运营控制台、retry 审批边界、运行报告与对账视角、operation approval record、operation approval report、console report views、ledger reconciliation report、operation approval state flow、operation approval HTTP endpoints、create operation approval HTTP endpoint、retry approval before execution、operation approval console view、operation approval pagination and sorting、operation approval detail view、operation approval lifecycle、console approval actions、approval lifecycle timeline、async run detail view、platform result detail view、operation approval pagination metadata、console cancel / expire approval actions、console filter controls、payment detail reconciliation context、剩余章节路线图、console workflow controls、identity / permission / form security boundary、consistency / concurrency / recovery boundary，以及测试。阶段 8 以来的目标仍然是把已有实验组合成一个清晰的学习平台，而不是立即扩成生产级系统。
+这个目录已经包含第一版综合平台设计、最小 orchestration、demo、综合报表导出、SQLite 持久化、历史运行报表、risk review 后续处理、教学版一致性检查、平台报表访问控制与访问审计、平台访问异常检测、平台访问异常调查工单、异步任务、运营控制台、retry 审批边界、运行报告与对账视角、operation approval record、operation approval report、console report views、ledger reconciliation report、operation approval state flow、operation approval HTTP endpoints、create operation approval HTTP endpoint、retry approval before execution、operation approval console view、operation approval pagination and sorting、operation approval detail view、operation approval lifecycle、console approval actions、approval lifecycle timeline、async run detail view、platform result detail view、operation approval pagination metadata、console cancel / expire approval actions、console filter controls、payment detail reconciliation context、剩余章节路线图、console workflow controls、identity / permission / form security boundary、consistency / concurrency / recovery boundary、external settlement reconciliation，以及测试。阶段 8 以来的目标仍然是把已有实验组合成一个清晰的学习平台，而不是立即扩成生产级系统。
 
 阶段 9 已经开始在这个目录上做 API 服务化的第一步：
 
@@ -694,3 +699,14 @@ test_platform_api_app.py
 ```
 
 阶段 36 补强了教学平台的一致性、并发和恢复边界：`SQLitePlatformAsyncRunStore.claim_next_accepted()` 会用状态条件把 accepted run 原子认领为 processing，`PlatformAsyncWorker.process_next()` 改为先 claim 再处理；`SQLiteOperationApprovalStore` 的 approve / reject / cancel / expire 决策改为通过 `WHERE status = 'pending'` 的条件更新消费 pending approval。测试覆盖两个连接重复 claim 同一条 async run、两个连接重复决策同一条 approval，以及 API 层重复 approve retry 只执行一次 retry execution audit。当前仍不做生产级分布式锁、lease timeout scanner、saga/workflow engine、版本化 migration 框架或自动 backup / restore；下一步建议进入阶段 37：外部支付、清结算和真实对账模型。
+
+阶段 37 第一版已完成：
+
+```text
+docs/50-stage-37-external-settlement-reconciliation.md
+platform_settlement_reconciliation_report.py
+test_platform_settlement_reconciliation_report.py
+demo.py
+```
+
+阶段 37 新增教学版外部 settlement reconciliation：`ProviderSettlementRow` 表示外部 provider settlement file 的一行，`evaluate_platform_settlement_reconciliation()` 会检查内部 completed run 是否有外部 settled row、外部金额和币种是否匹配内部 payment audit payload、非 completed 内部 run 是否错误出现在外部 settlement file 中，以及外部 row 是否能映射回内部 run。`export_platform_settlement_reconciliation_report()` 可导出 CSV/HTML；demo 已接入 `Exported platform settlement reconciliation reports`。当前仍不接真实 payment provider、webhook、卡组织清算、银行流水、多币种 FX 或任何监管结论；下一步建议进入阶段 38：合规证据、调查工单和留存治理。
