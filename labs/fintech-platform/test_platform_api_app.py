@@ -1041,6 +1041,8 @@ def test_platform_api_console_page_renders_platform_summary() -> None:
         assert "Failed async runs" in body
         assert "Recent Async Runs" in body
         assert "Failed Async Runs" in body
+        assert 'href="/platform/manual"' in body
+        assert "Manual" in body
         assert "API access anomalies" in body
         assert "Investigation cases" in body
         assert "run_http_001" in body
@@ -1075,6 +1077,7 @@ def test_platform_api_console_page_renders_empty_state() -> None:
         assert console.headers["content-type"].startswith("text/html")
         body = console.text
         assert "FinTech Platform Console" in body
+        assert 'href="/platform/manual"' in body
         assert "No payment runs have been recorded yet." in body
         assert "No async runs have been recorded yet." in body
         assert "No failed async runs have been recorded yet." in body
@@ -1089,6 +1092,39 @@ def test_platform_api_console_page_renders_empty_state() -> None:
         _remove_database(database_path)
         _remove_database(access_audit_database_path)
         _remove_database(investigation_database_path)
+
+
+def test_platform_manual_page_renders_workflows_and_records_access() -> None:
+    client, database_path, access_audit_database_path = _client()
+    try:
+        manual = client.get(
+            "/platform/manual",
+            headers={"x-actor-id": "console_reader_001"},
+        )
+
+        assert manual.status_code == 200
+        assert manual.headers["content-type"].startswith("text/html")
+        body = manual.text
+        assert "Platform User Manual" in body
+        assert "What This Platform Does" in body
+        assert "Payment Workflow" in body
+        assert "Async Workflow" in body
+        assert "Approval Workflow" in body
+        assert "Evidence Packages" in body
+        assert "Educational Boundary" in body
+        assert 'href="/platform/view"' in body
+
+        events = _access_events(access_audit_database_path)
+        assert len(events) == 1
+        assert events[0].actor == "console_reader_001"
+        assert events[0].permission == "view_platform_console"
+        assert events[0].target == "fintech_platform_manual"
+        assert events[0].outcome == "granted"
+        assert events[0].reason == "view manual"
+    finally:
+        client.close()
+        _remove_database(database_path)
+        _remove_database(access_audit_database_path)
 
 
 def test_platform_demo_failed_async_sample_is_visible_in_console() -> None:

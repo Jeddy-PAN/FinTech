@@ -130,6 +130,7 @@ PLATFORM_API_INVESTIGATION_CASES_TARGET = (
 )
 PLATFORM_OPERATION_APPROVALS_TARGET = "fintech_platform_operation_approvals"
 PLATFORM_CONSOLE_TARGET = "fintech_platform_api_console"
+PLATFORM_MANUAL_TARGET = "fintech_platform_manual"
 RETRY_FAILED_ASYNC_RUN_CONFIRMATION = "retry_failed_async_run"
 APPROVE_OPERATION_APPROVAL_CONFIRMATION = "approve_operation_approval"
 REJECT_OPERATION_APPROVAL_CONFIRMATION = "reject_operation_approval"
@@ -373,6 +374,19 @@ def create_app(
             outcome="granted",
         )
         return HTMLResponse(content=html_body)
+
+    @app.get("/platform/manual", response_class=HTMLResponse)
+    def platform_manual(x_actor_id: str | None = Header(default=None)) -> HTMLResponse:
+        actor = _api_actor(x_actor_id)
+        _record_api_access(
+            app,
+            actor=actor,
+            permission=VIEW_PLATFORM_CONSOLE,
+            target=PLATFORM_MANUAL_TARGET,
+            outcome="granted",
+            reason="view manual",
+        )
+        return HTMLResponse(content=_render_platform_manual_html())
 
     @app.get("/health")
     def health(x_actor_id: str | None = Header(default=None)) -> dict:
@@ -2763,6 +2777,535 @@ def _retry_execution_events_for_approval(
     )
 
 
+def _platform_page_shell(
+    *,
+    title: str,
+    subtitle: str,
+    active_nav: str,
+    content_html: str,
+) -> str:
+    return f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{html.escape(title)}</title>
+  <style>
+    {_platform_chrome_css()}
+    {_platform_content_css()}
+  </style>
+</head>
+<body class="platform-shell">
+  {_platform_topbar_html(active_nav)}
+  <main class="platform-main">
+    {_platform_page_header_html(title, subtitle)}
+    {content_html}
+  </main>
+</body>
+</html>"""
+
+
+def _platform_topbar_html(active_nav: str) -> str:
+    return f"""
+  <header class="platform-topbar">
+    <div>
+      <div class="platform-brand">FinTech Platform</div>
+      <div class="platform-caption">Learning operations workbench</div>
+    </div>
+    {_platform_nav_html(active_nav)}
+  </header>
+"""
+
+
+def _platform_nav_html(active_nav: str) -> str:
+    nav_items = (
+        ("dashboard", "Dashboard", "/platform/view"),
+        ("payments", "Payment Runs", "/platform/view#payment-runs"),
+        ("async", "Async Runs", "/platform/view#async-runs"),
+        ("approvals", "Approvals", "/platform/view#approvals"),
+        ("reconciliation", "Reconciliation", "/platform/view#reconciliation"),
+        ("audit", "Audit & Cases", "/platform/view#audit-cases"),
+        ("evidence", "Evidence", "/platform/manual#evidence-packages"),
+        ("operability", "Operability", "/platform/manual#operability"),
+        ("manual", "Manual", "/platform/manual"),
+    )
+    links = []
+    for key, label, href in nav_items:
+        current_attr = ' aria-current="page"' if key == active_nav else ""
+        links.append(
+            f'<a href="{html.escape(href, quote=True)}"{current_attr}>'
+            f"{html.escape(label)}</a>"
+        )
+    return f'<nav class="platform-nav" aria-label="Platform navigation">{"".join(links)}</nav>'
+
+
+def _platform_page_header_html(title: str, subtitle: str) -> str:
+    return f"""
+    <section class="platform-page-header">
+      <div>
+        <p class="platform-kicker">Operations Console</p>
+        <h1>{html.escape(title)}</h1>
+        <p>{html.escape(subtitle)}</p>
+      </div>
+      <div class="platform-header-actions">
+        <a href="/platform/view">Console</a>
+        <a href="/platform/manual">Manual</a>
+      </div>
+    </section>
+"""
+
+
+def _platform_chrome_css() -> str:
+    return """
+    :root {
+      color-scheme: light;
+      --platform-bg: #f7f8f5;
+      --platform-panel: #ffffff;
+      --platform-ink: #18201b;
+      --platform-muted: #617066;
+      --platform-line: #d7ded4;
+      --platform-strong: #17251f;
+      --platform-accent: #0f766e;
+      --platform-accent-soft: #e4f3f0;
+      --platform-warn: #8a5a00;
+      --platform-warn-soft: #fff6d8;
+    }
+    * {
+      box-sizing: border-box;
+    }
+    html {
+      scroll-behavior: smooth;
+    }
+    body.platform-shell {
+      background: var(--platform-bg);
+      color: var(--platform-ink);
+      font-family: "Segoe UI", "Aptos", "Helvetica Neue", sans-serif;
+      line-height: 1.5;
+      margin: 0;
+      max-width: none;
+      padding: 0;
+      width: 100%;
+    }
+    .platform-topbar {
+      align-items: flex-start;
+      background: var(--platform-strong);
+      color: #ffffff;
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+      padding: 1rem;
+    }
+    .platform-brand {
+      font-size: 1.05rem;
+      font-weight: 700;
+    }
+    .platform-caption {
+      color: #b8c7be;
+      font-size: 0.875rem;
+      margin-top: 0.125rem;
+    }
+    .platform-nav {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      width: 100%;
+    }
+    .platform-nav a,
+    .platform-header-actions a {
+      align-items: center;
+      border-radius: 0.375rem;
+      display: inline-flex;
+      min-height: 44px;
+      text-decoration: none;
+    }
+    .platform-nav a {
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      color: #eef5f0;
+      font-size: 0.875rem;
+      padding: 0.5rem 0.625rem;
+    }
+    .platform-nav a[aria-current="page"] {
+      background: #ffffff;
+      border-color: #ffffff;
+      color: var(--platform-strong);
+      font-weight: 700;
+    }
+    .platform-main {
+      margin: 0 auto;
+      max-width: 82.5rem;
+      padding: 1rem;
+      width: 100%;
+    }
+    .platform-page-header {
+      align-items: flex-start;
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+      margin-bottom: 1rem;
+      padding: 0.5rem 0 0.75rem;
+    }
+    .platform-page-header h1 {
+      font-size: 2rem;
+      line-height: 1.15;
+      margin: 0 0 0.5rem;
+    }
+    .platform-page-header p {
+      color: var(--platform-muted);
+      margin: 0;
+      max-width: 68ch;
+    }
+    .platform-kicker {
+      color: var(--platform-accent) !important;
+      font-size: 0.75rem;
+      font-weight: 700;
+      margin-bottom: 0.375rem !important;
+      text-transform: uppercase;
+    }
+    .platform-header-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+    }
+    .platform-header-actions a {
+      border: 1px solid var(--platform-line);
+      color: var(--platform-strong);
+      padding: 0.5rem 0.75rem;
+    }
+    @media (min-width: 768px) {
+      .platform-topbar {
+        padding: 1rem 1.5rem;
+      }
+      .platform-main {
+        padding: 1.5rem;
+      }
+    }
+    @media (min-width: 1024px) {
+      .platform-topbar {
+        align-items: center;
+        flex-direction: row;
+        justify-content: space-between;
+      }
+      .platform-nav {
+        justify-content: flex-end;
+        width: auto;
+      }
+      .platform-page-header {
+        align-items: flex-end;
+        flex-direction: row;
+        justify-content: space-between;
+      }
+    }
+    """
+
+
+def _platform_content_css() -> str:
+    return """
+    h2 {
+      margin: 0 0 0.75rem;
+    }
+    .platform-section,
+    .section {
+      background: var(--platform-panel);
+      border: 1px solid var(--platform-line);
+      border-radius: 0.5rem;
+      margin-top: 1rem;
+      overflow-x: auto;
+      padding: 1rem;
+    }
+    .platform-section h2,
+    .section h2 {
+      color: var(--platform-strong);
+      font-size: 1.1rem;
+    }
+    .section-grid,
+    .manual-grid {
+      display: grid;
+      gap: 1rem;
+      grid-template-columns: 1fr;
+      margin-top: 1rem;
+    }
+    .summary {
+      display: grid;
+      gap: 0.75rem;
+      grid-template-columns: repeat(auto-fit, minmax(10.625rem, 1fr));
+      margin-top: 1rem;
+    }
+    .metric {
+      background: var(--platform-panel);
+      border: 1px solid var(--platform-line);
+      border-radius: 0.5rem;
+      padding: 0.875rem;
+    }
+    .metric-label {
+      color: var(--platform-muted);
+      font-size: 0.875rem;
+      margin-bottom: 0.375rem;
+    }
+    .metric-value {
+      color: var(--platform-strong);
+      font-size: 1.5rem;
+      font-weight: 700;
+    }
+    table {
+      border-collapse: collapse;
+      margin-top: 0.5rem;
+      min-width: 42.5rem;
+      width: 100%;
+    }
+    th, td {
+      border: 1px solid var(--platform-line);
+      padding: 0.5rem 0.625rem;
+      text-align: left;
+      vertical-align: top;
+    }
+    th {
+      background: #eef3ed;
+      color: var(--platform-strong);
+    }
+    .meta,
+    .muted {
+      color: var(--platform-muted);
+      font-size: 0.875rem;
+    }
+    .page-actions,
+    .filter-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+    }
+    .page-actions {
+      margin-bottom: 1rem;
+    }
+    .page-actions a,
+    .filter-actions a,
+    .filter-actions button,
+    .operation-form button {
+      align-items: center;
+      border-radius: 0.375rem;
+      box-sizing: border-box;
+      display: inline-flex;
+      font: inherit;
+      min-height: 44px;
+      padding: 0.5rem 0.75rem;
+      text-decoration: none;
+    }
+    .page-actions a,
+    .filter-actions a {
+      border: 1px solid var(--platform-line);
+      color: var(--platform-strong);
+    }
+    .filter-actions button,
+    .operation-form button {
+      background: var(--platform-strong);
+      border: 0;
+      color: #ffffff;
+      cursor: pointer;
+    }
+    .notice,
+    .risk-note {
+      border-radius: 0.5rem;
+      margin: 1rem 0;
+      padding: 0.75rem;
+    }
+    .notice-success {
+      background: var(--platform-accent-soft);
+      border: 1px solid #a7d9d2;
+      color: #075e55;
+    }
+    .notice-error {
+      background: #fff0f0;
+      border: 1px solid #f1b6b6;
+      color: #8a1f1f;
+    }
+    .risk-note {
+      background: var(--platform-warn-soft);
+      border: 1px solid #efd383;
+      color: var(--platform-warn);
+    }
+    .operation-form,
+    .filter-form {
+      display: grid;
+      gap: 0.75rem;
+    }
+    .operation-form {
+      min-width: 16.25rem;
+    }
+    .filter-form {
+      background: var(--platform-panel);
+      border: 1px solid var(--platform-line);
+      border-radius: 0.5rem;
+      margin: 1rem 0;
+      padding: 1rem;
+    }
+    .filter-fields {
+      display: grid;
+      gap: 0.75rem;
+      grid-template-columns: 1fr;
+    }
+    .filter-field label {
+      color: var(--platform-strong);
+      display: block;
+      font-size: 0.875rem;
+      margin-bottom: 0.375rem;
+    }
+    .filter-field input,
+    .filter-field select,
+    .operation-form input {
+      border: 1px solid var(--platform-line);
+      border-radius: 0.375rem;
+      font: inherit;
+      min-height: 44px;
+      padding: 0.5rem;
+      width: 100%;
+    }
+    code {
+      background: #eef3ed;
+      border-radius: 0.25rem;
+      padding: 0.125rem 0.25rem;
+    }
+    pre {
+      background: #16221d;
+      border-radius: 0.5rem;
+      color: #eef5f0;
+      overflow-x: auto;
+      padding: 1rem;
+    }
+    .manual-list {
+      margin: 0;
+      padding-left: 1.25rem;
+    }
+    .manual-list li {
+      margin: 0.375rem 0;
+    }
+    @media (min-width: 768px) {
+      .filter-fields,
+      .manual-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+    @media (min-width: 1024px) {
+      .section-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+      .filter-fields {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+    }
+    """
+
+
+def _render_platform_manual_html() -> str:
+    content = """
+    <section class="platform-section">
+      <h2>What This Platform Does</h2>
+      <p class="muted">
+        This is an educational FinTech operations platform. It shows how onboarding,
+        payment processing, risk review, ledger posting, audit trails, approvals,
+        reconciliation, evidence exports, and operability checks connect in one
+        small system.
+      </p>
+    </section>
+
+    <div class="manual-grid">
+      <section class="platform-section" id="payment-workflow">
+        <h2>Payment Workflow</h2>
+        <ol class="manual-list">
+          <li>Create a payment run through <code>POST /platform/payment-runs</code>.</li>
+          <li>The platform evaluates KYC/AML context, creates a payment order, runs risk checks, and posts ledger entries when the run is completed.</li>
+          <li>Use the console payment table to open a run detail page and inspect the platform result, ledger context, and audit timeline.</li>
+        </ol>
+      </section>
+
+      <section class="platform-section" id="async-workflow">
+        <h2>Async Workflow</h2>
+        <ol class="manual-list">
+          <li>Create an async run through <code>POST /platform/async-payment-runs</code>.</li>
+          <li>Process queued work through the worker endpoint or demo flow.</li>
+          <li>Failed async runs appear in the console with a retry approval request form.</li>
+        </ol>
+      </section>
+
+      <section class="platform-section" id="approval-workflow">
+        <h2>Approval Workflow</h2>
+        <ol class="manual-list">
+          <li>A retry request creates a pending operation approval.</li>
+          <li>An authorized operator reviews the request, async status, and reason.</li>
+          <li>The approval can be approved, rejected, cancelled, or expired. The detail page shows the lifecycle timeline.</li>
+        </ol>
+      </section>
+
+      <section class="platform-section" id="reconciliation">
+        <h2>Reconciliation</h2>
+        <p class="muted">
+          The console includes ledger reconciliation findings for teaching consistency
+          checks between platform status, payment order status, ledger posting, and
+          customer audit events. These checks are not a production settlement control.
+        </p>
+      </section>
+    </div>
+
+    <section class="platform-section" id="audit-cases">
+      <h2>Audit And Cases</h2>
+      <ul class="manual-list">
+        <li>Every API and console view writes an access audit event.</li>
+        <li>Access anomaly detection summarizes repeated denied access and suspicious platform API access patterns.</li>
+        <li>Investigation cases can be opened from anomaly findings and moved through a simple investigation lifecycle.</li>
+      </ul>
+    </section>
+
+    <section class="platform-section" id="evidence-packages">
+      <h2>Evidence Packages</h2>
+      <p class="muted">
+        The platform demo can export educational evidence package files that collect
+        platform reports, reconciliation outputs, approval records, audit records,
+        and operability outputs for portfolio review.
+      </p>
+    </section>
+
+    <section class="platform-section" id="operability">
+      <h2>Operability</h2>
+      <ul class="manual-list">
+        <li><code>GET /platform/operability/readiness</code> checks whether the local stores are reachable.</li>
+        <li><code>GET /platform/operability/metrics</code> returns teaching metrics for payment runs, async runs, access events, approvals, and cases.</li>
+        <li><code>GET /platform/operability/test-matrix</code> lists the local verification commands used by this lab.</li>
+      </ul>
+    </section>
+
+    <section class="platform-section" id="roles-permissions">
+      <h2>Roles And Permissions</h2>
+      <p class="muted">
+        The lab uses a teaching identity model based on actor names and optional
+        <code>x-actor-role</code> headers. It demonstrates permission checks and
+        denied-access audit records; it is not enterprise IAM, SSO, or a legal
+        authorization model.
+      </p>
+    </section>
+
+    <section class="platform-section" id="local-commands">
+      <h2>Local Commands</h2>
+      <pre><code>python -m pytest -p no:cacheprovider labs/fintech-platform -q
+python labs/fintech-platform/demo.py
+python -m uvicorn platform_api_app:app --host 127.0.0.1 --port 8000</code></pre>
+    </section>
+
+    <section class="platform-section" id="boundary">
+      <h2>Educational Boundary</h2>
+      <p class="muted">
+        This platform does not connect to real payment rails, external KYC vendors,
+        live market data, legal retention systems, production settlement, or licensed
+        compliance workflows. It is designed for engineering learning and portfolio
+        demonstration only.
+      </p>
+    </section>
+"""
+    return _platform_page_shell(
+        title="Platform User Manual",
+        subtitle="A workflow guide for using the FinTech learning platform console.",
+        active_nav="manual",
+        content_html=content,
+    )
+
+
 def _render_operation_approval_detail_html(
     app: FastAPI,
     record: OperationApprovalRecord,
@@ -2783,79 +3326,14 @@ def _render_operation_approval_detail_html(
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Operation Approval Detail</title>
   <style>
-    body {{
-      color: #1f2937;
-      font-family: Arial, sans-serif;
-      line-height: 1.5;
-      margin: 0;
-      max-width: 1080px;
-      padding: 16px;
-    }}
-    @media (min-width: 768px) {{
-      body {{
-        padding: 24px;
-      }}
-    }}
-    h1, h2 {{
-      margin: 0 0 12px;
-    }}
-    h2 {{
-      margin-top: 28px;
-    }}
-    .meta {{
-      color: #6b7280;
-      font-size: 14px;
-      margin-bottom: 18px;
-    }}
-    .page-actions {{
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      margin-bottom: 18px;
-    }}
-    .page-actions a {{
-      align-items: center;
-      border: 1px solid #d1d5db;
-      border-radius: 4px;
-      box-sizing: border-box;
-      color: #1f2937;
-      display: inline-flex;
-      min-height: 44px;
-      padding: 8px 12px;
-      text-decoration: none;
-    }}
-    .section {{
-      margin-top: 24px;
-      overflow-x: auto;
-    }}
-    table {{
-      border-collapse: collapse;
-      margin-top: 8px;
-      min-width: 680px;
-      width: 100%;
-    }}
-    th, td {{
-      border: 1px solid #d1d5db;
-      padding: 8px 10px;
-      text-align: left;
-      vertical-align: top;
-    }}
-    th {{
-      background: #f3f4f6;
-    }}
-    .muted {{
-      color: #6b7280;
-      font-size: 14px;
-    }}
-    code {{
-      background: #f3f4f6;
-      border-radius: 4px;
-      padding: 2px 4px;
-    }}
+    {_platform_chrome_css()}
+    {_platform_content_css()}
   </style>
 </head>
-<body>
-  <h1>Operation Approval Detail</h1>
+<body class="platform-shell">
+  {_platform_topbar_html("approvals")}
+  <main class="platform-main">
+  {_platform_page_header_html("Operation Approval Detail", "Read-only approval context and lifecycle timeline.")}
   <div class="meta">
     Read-only approval context. Back to <a href="/platform/view">FinTech Platform Console</a>.
   </div>
@@ -2902,6 +3380,7 @@ def _render_operation_approval_detail_html(
         empty_message="No completed platform result is available.",
     )}
   </div>
+  </main>
 </body>
 </html>"""
 
@@ -2918,11 +3397,14 @@ def _render_async_run_detail_html(
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Async Run Detail</title>
   <style>
-    {_detail_page_css()}
+    {_platform_chrome_css()}
+    {_platform_content_css()}
   </style>
 </head>
-<body>
-  <h1>Async Run Detail</h1>
+<body class="platform-shell">
+  {_platform_topbar_html("async")}
+  <main class="platform-main">
+  {_platform_page_header_html("Async Run Detail", "Read-only async request, worker status, and platform result context.")}
   <div class="meta">
     Read-only async run context. Back to <a href="/platform/view">FinTech Platform Console</a>.
   </div>
@@ -2960,6 +3442,7 @@ def _render_async_run_detail_html(
         empty_message="No completed platform result is available.",
     )}
   </div>
+  </main>
 </body>
 </html>"""
 
@@ -2976,11 +3459,14 @@ def _render_payment_run_detail_html(
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Payment Run Detail</title>
   <style>
-    {_detail_page_css()}
+    {_platform_chrome_css()}
+    {_platform_content_css()}
   </style>
 </head>
-<body>
-  <h1>Payment Run Detail</h1>
+<body class="platform-shell">
+  {_platform_topbar_html("payments")}
+  <main class="platform-main">
+  {_platform_page_header_html("Payment Run Detail", "Read-only platform result, ledger context, and audit timeline.")}
   <div class="meta">
     Read-only platform result context. Back to <a href="/platform/view">FinTech Platform Console</a>.
   </div>
@@ -3035,6 +3521,7 @@ def _render_payment_run_detail_html(
         empty_message="No customer audit events are available.",
     )}
   </div>
+  </main>
 </body>
 </html>"""
 
@@ -3422,14 +3909,17 @@ def _render_platform_console_html(
       border-radius: 4px;
       padding: 2px 4px;
     }}
+    {_platform_chrome_css()}
+    {_platform_content_css()}
   </style>
 </head>
-<body>
-  <h1>FinTech Platform Console</h1>
-  <div class="meta">
-    Minimal operations console for the learning platform.
-    API docs remain available at <code>/docs</code>.
-  </div>
+<body class="platform-shell">
+  {_platform_topbar_html("dashboard")}
+  <main class="platform-main">
+  {_platform_page_header_html(
+        "FinTech Platform Console",
+        "Minimal operations workbench for the learning platform. API docs remain available at /docs.",
+    )}
   {_retry_feedback_html(retry_status=retry_status, retry_error=retry_error)}
   {_approval_feedback_html(
         approval_status=approval_status,
@@ -3442,7 +3932,7 @@ def _render_platform_console_html(
     {''.join(_metric_html(label, value) for label, value in summary_rows)}
   </div>
 
-  <div class="section">
+  <div class="section" id="payment-runs">
     <h2>Recent Payment Runs</h2>
     {_html_table(
         [
@@ -3459,7 +3949,7 @@ def _render_platform_console_html(
     )}
   </div>
 
-  <div class="section">
+  <div class="section" id="async-runs">
     <h2>Recent Async Runs</h2>
     {_html_table(
         [
@@ -3476,7 +3966,7 @@ def _render_platform_console_html(
     )}
   </div>
 
-  <div class="section">
+  <div class="section" id="failed-async-runs">
     <h2>Failed Async Runs</h2>
     {_failed_async_runs_table(
         _failed_async_runs(display_async_runs),
@@ -3485,7 +3975,7 @@ def _render_platform_console_html(
   </div>
 
   <div class="section-grid">
-    <div class="section">
+    <div class="section" id="operations-summary">
       <h2>Operations Report Summary</h2>
       {_table(
         ["metric", "value"],
@@ -3494,7 +3984,7 @@ def _render_platform_console_html(
       )}
     </div>
 
-    <div class="section">
+    <div class="section" id="approval-summary">
       <h2>Operation Approval Summary</h2>
       {_table(
         ["metric", "value"],
@@ -3504,7 +3994,7 @@ def _render_platform_console_html(
     </div>
   </div>
 
-  <div class="section">
+  <div class="section" id="operations-run-rows">
     <h2>Operations Run Rows</h2>
     {_table(
         [
@@ -3521,7 +4011,7 @@ def _render_platform_console_html(
     )}
   </div>
 
-  <div class="section">
+  <div class="section" id="reconciliation">
     <h2>Ledger Reconciliation Findings</h2>
     {_table(
         [
@@ -3536,7 +4026,7 @@ def _render_platform_console_html(
     )}
   </div>
 
-  <div class="section">
+  <div class="section" id="approvals">
     <h2>Pending Operation Approvals</h2>
     <div class="risk-note">
       High-impact approval actions can change retry eligibility. Review the async status, request reason, and confirmation text before deciding.
@@ -3560,7 +4050,7 @@ def _render_platform_console_html(
     )}
   </div>
 
-  <div class="section">
+  <div class="section" id="approval-records">
     <h2>Approval Records</h2>
     {_html_table(
         [
@@ -3577,7 +4067,7 @@ def _render_platform_console_html(
     )}
   </div>
 
-  <div class="section">
+  <div class="section" id="audit-cases">
     <h2>API Access Anomalies</h2>
     {_table(
         [
@@ -3605,7 +4095,7 @@ def _render_platform_console_html(
     )}
   </div>
 
-  <div class="section">
+  <div class="section" id="investigation-cases">
     <h2>Investigation Cases</h2>
     {_table(
         [
@@ -3633,7 +4123,7 @@ def _render_platform_console_html(
     )}
   </div>
 
-  <div class="section">
+  <div class="section" id="access-events">
     <h2>Recent API Access Events</h2>
     {_table(
         [
@@ -3658,6 +4148,7 @@ def _render_platform_console_html(
         empty_message="No API access events have been recorded yet.",
     )}
   </div>
+  </main>
 </body>
 </html>
 """

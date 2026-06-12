@@ -244,6 +244,7 @@ investigation_case
 42. 已完成阶段 38 第一版：新增教学版 evidence package，把 settlement reconciliation findings、access anomaly findings、operation approval records 和 denied access events 汇总成可导出的证据包。
 43. 已完成阶段 39 第一版：新增教学版 operability readiness、metrics 和 test matrix API，用于本地交付、观测和验收。
 44. 已完成阶段 40 第一版：形成最终验收与学习作品集总结，明确当前能力、验收命令和仍不覆盖的生产级边界。
+45. 已完成阶段 40 后的前端体验改造第一版：`FinTech Platform Console` 新增统一顶部导航、页面区块锚点和响应式工作台样式；新增 `GET /platform/manual` 用户手册页，说明平台功能、主要流程、权限边界、证据包、operability 和教学边界。
 
 ## 运行示例
 
@@ -301,6 +302,8 @@ demo 现在也会输出 `Exported platform evidence package`，用于观察 sett
 
 demo 现在也会输出 `Platform operability snapshot`，用于观察本地 readiness、关键 metrics 和测试矩阵行数。readiness 会检查各个 SQLite store 是否可打开；metrics 会汇总 payment runs、async runs、operation approvals 和 denied access 等教学版计数。
 
+运行 API 服务后，`GET /platform/view` 是运营控制台入口，`GET /platform/manual` 是面向使用者的手册页。控制台顶部导航会把 Dashboard、Payment Runs、Async Runs、Approvals、Reconciliation、Audit & Cases、Evidence、Operability 和 Manual 聚合在同一套页面结构中；详情页也复用这套导航。手册页只解释本教学平台的功能和流程，不代表生产级支付、清结算、监管合规、法律留存或企业 IAM。
+
 demo 还会写入并重新读取：
 
 ```text
@@ -321,7 +324,7 @@ labs/fintech-platform/.test-data/demo_platform_api_investigation_cases.db
 
 ## 当前状态
 
-这个目录已经包含第一版综合平台设计、最小 orchestration、demo、综合报表导出、SQLite 持久化、历史运行报表、risk review 后续处理、教学版一致性检查、平台报表访问控制与访问审计、平台访问异常检测、平台访问异常调查工单、异步任务、运营控制台、retry 审批边界、运行报告与对账视角、operation approval record、operation approval report、console report views、ledger reconciliation report、operation approval state flow、operation approval HTTP endpoints、create operation approval HTTP endpoint、retry approval before execution、operation approval console view、operation approval pagination and sorting、operation approval detail view、operation approval lifecycle、console approval actions、approval lifecycle timeline、async run detail view、platform result detail view、operation approval pagination metadata、console cancel / expire approval actions、console filter controls、payment detail reconciliation context、剩余章节路线图、console workflow controls、identity / permission / form security boundary、consistency / concurrency / recovery boundary、external settlement reconciliation、evidence package、operability readiness / metrics / test matrix，以及测试。阶段 8 以来的目标仍然是把已有实验组合成一个清晰的学习平台，而不是立即扩成生产级系统。
+这个目录已经包含第一版综合平台设计、最小 orchestration、demo、综合报表导出、SQLite 持久化、历史运行报表、risk review 后续处理、教学版一致性检查、平台报表访问控制与访问审计、平台访问异常检测、平台访问异常调查工单、异步任务、运营控制台、retry 审批边界、运行报告与对账视角、operation approval record、operation approval report、console report views、ledger reconciliation report、operation approval state flow、operation approval HTTP endpoints、create operation approval HTTP endpoint、retry approval before execution、operation approval console view、operation approval pagination and sorting、operation approval detail view、operation approval lifecycle、console approval actions、approval lifecycle timeline、async run detail view、platform result detail view、operation approval pagination metadata、console cancel / expire approval actions、console filter controls、payment detail reconciliation context、剩余章节路线图、console workflow controls、identity / permission / form security boundary、consistency / concurrency / recovery boundary、external settlement reconciliation、evidence package、operability readiness / metrics / test matrix、前端工作台导航和平台用户手册页，以及测试。阶段 8 以来的目标仍然是把已有实验组合成一个清晰的学习平台，而不是立即扩成生产级系统。
 
 阶段 9 已经开始在这个目录上做 API 服务化的第一步：
 
