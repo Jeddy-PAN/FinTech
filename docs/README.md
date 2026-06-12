@@ -1,6 +1,6 @@
 # docs 文档入口
 
-这个目录保存 FinTech 学习笔记、阶段计划和阶段总结。当前文档已经比较多，阅读时不建议从文件名 01 一路顺读到 51，而应按目标选择路径。
+这个目录保存 FinTech 学习笔记、阶段计划和阶段总结。当前文档已经比较多，阅读时不建议从文件名 01 一路顺读到 52，而应按目标选择路径。
 
 ## 推荐阅读路径
 
@@ -50,6 +50,7 @@
 30. [49-stage-36-consistency-concurrency-recovery.md](49-stage-36-consistency-concurrency-recovery.md)：一致性、并发和恢复边界。
 31. [50-stage-37-external-settlement-reconciliation.md](50-stage-37-external-settlement-reconciliation.md)：外部支付、清结算和真实对账模型。
 32. [51-stage-38-evidence-retention-governance.md](51-stage-38-evidence-retention-governance.md)：合规证据、调查工单和留存治理。
+33. [52-stage-39-operability-observability-test-matrix.md](52-stage-39-operability-observability-test-matrix.md)：可运行交付、观测和测试矩阵。
 
 ### 路径 C：只看阶段计划和历史
 
@@ -92,6 +93,7 @@
 | [49-stage-36-consistency-concurrency-recovery.md](49-stage-36-consistency-concurrency-recovery.md) | consistency, concurrency and recovery boundary |
 | [50-stage-37-external-settlement-reconciliation.md](50-stage-37-external-settlement-reconciliation.md) | external settlement reconciliation |
 | [51-stage-38-evidence-retention-governance.md](51-stage-38-evidence-retention-governance.md) | evidence package and retention governance |
+| [52-stage-39-operability-observability-test-matrix.md](52-stage-39-operability-observability-test-matrix.md) | operability, observability and test matrix |
 
 ## 当前平台能力地图
 
@@ -266,6 +268,18 @@ denied access audit event
 
 这个流程回答：当平台产生对账差异、访问异常、审批记录和拒绝访问审计时，如何把它们整理成一个围绕 case 的证据包。当前仍不代表真实监管证据清单、真实 legal hold 审批、真实留存期限、不可篡改存储、电子签名或证据链 custody 流程。
 
+### 可运行交付和观测边界
+
+```text
+GET /platform/operability/readiness
+GET /platform/operability/metrics
+GET /platform/operability/test-matrix
+-> access audit granted / denied
+-> demo: Platform operability snapshot
+```
+
+这个流程回答：本地平台如何判断 SQLite store 边界是否可打开，如何用结构化计数观察 payment runs、async runs、operation approvals、access events 和 investigation cases，以及交付前应该执行哪些测试命令。当前仍不代表真实部署、真实监控、生产 readiness probe、SLO/SLA、告警或 secret 管理。
+
 ### Console 报表视图
 
 ```text
@@ -311,11 +325,11 @@ platform / wallet balance snapshot
 
 ## 下一步候选方向
 
-阶段 38 已完成合规证据、调查工单和留存治理第一版。
+阶段 39 已完成可运行交付、观测和测试矩阵第一版。
 
-建议下一步进入阶段 39：可运行交付、观测和测试矩阵。
+建议下一步进入阶段 40：最终验收与学习作品集总结。
 
-1. 整理本地运行、测试、demo、报告输出和 API 错误边界。
-2. 增加教学版 structured logging、health/readiness 或 metrics 边界说明。
-3. 汇总端到端测试矩阵和验收清单。
-4. 保持不引入真实部署平台和真实 secret 管理，先把本地交付路径讲清楚。
+1. 汇总当前平台已能完整演示的主流程、运营流程、对账流程、证据包和 operability。
+2. 整理最终验收命令、通过数字和仍不覆盖的生产级边界。
+3. 形成作品集式总结，说明这个仓库能展示哪些 FinTech 工程能力。
+4. 保持不提供投资、法律、税务、会计或合规建议。

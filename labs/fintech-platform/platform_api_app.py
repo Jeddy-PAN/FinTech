@@ -66,6 +66,11 @@ from platform_ledger_reconciliation_report import (  # noqa: E402
     evaluate_platform_ledger_reconciliation,
 )
 from platform_operations_report import build_platform_operations_report  # noqa: E402
+from platform_operability import (  # noqa: E402
+    build_platform_metrics_snapshot,
+    build_platform_readiness_report,
+    build_platform_test_matrix,
+)
 from sqlite_access_audit_store import SQLiteAccessAuditStore  # noqa: E402
 from sqlite_investigation_case_store import SQLiteInvestigationCaseStore  # noqa: E402
 from sqlite_platform_store import (  # noqa: E402
@@ -105,8 +110,14 @@ VIEW_PLATFORM_OPERATION_APPROVALS = "view_platform_operation_approvals"
 UPDATE_PLATFORM_OPERATION_APPROVALS = "update_platform_operation_approvals"
 VIEW_PLATFORM_CONSOLE = "view_platform_console"
 CHECK_PLATFORM_API_HEALTH = "check_platform_api_health"
+CHECK_PLATFORM_OPERABILITY_READINESS = "check_platform_operability_readiness"
+VIEW_PLATFORM_OPERABILITY_METRICS = "view_platform_operability_metrics"
+VIEW_PLATFORM_TEST_MATRIX = "view_platform_test_matrix"
 
 PLATFORM_API_HEALTH_TARGET = "fintech_platform_api_health"
+PLATFORM_OPERABILITY_READINESS_TARGET = "fintech_platform_operability_readiness"
+PLATFORM_OPERABILITY_METRICS_TARGET = "fintech_platform_operability_metrics"
+PLATFORM_TEST_MATRIX_TARGET = "fintech_platform_test_matrix"
 PLATFORM_API_PAYMENT_RUNS_TARGET = "fintech_platform_api_payment_runs"
 PLATFORM_API_ASYNC_PAYMENT_RUNS_TARGET = "fintech_platform_api_async_payment_runs"
 PLATFORM_API_ASYNC_WORKER_TARGET = "fintech_platform_api_async_worker"
@@ -178,6 +189,9 @@ PERMISSIONS_BY_ROLE = {
     ROLE_AUDIT_READER: {
         VIEW_PLATFORM_API_ACCESS_EVENTS,
         VIEW_PLATFORM_API_ACCESS_ANOMALY_FINDINGS,
+        CHECK_PLATFORM_OPERABILITY_READINESS,
+        VIEW_PLATFORM_OPERABILITY_METRICS,
+        VIEW_PLATFORM_TEST_MATRIX,
         VIEW_PLATFORM_CONSOLE,
     },
     ROLE_COMPLIANCE_LEAD: {
@@ -186,6 +200,9 @@ PERMISSIONS_BY_ROLE = {
         CREATE_PLATFORM_API_INVESTIGATION_CASES,
         VIEW_PLATFORM_API_INVESTIGATION_CASES,
         UPDATE_PLATFORM_API_INVESTIGATION_CASES,
+        CHECK_PLATFORM_OPERABILITY_READINESS,
+        VIEW_PLATFORM_OPERABILITY_METRICS,
+        VIEW_PLATFORM_TEST_MATRIX,
         VIEW_PLATFORM_CONSOLE,
     },
     ROLE_INVESTIGATOR: {
@@ -198,6 +215,9 @@ PERMISSIONS_BY_ROLE = {
         VIEW_PLATFORM_OPERATION_APPROVALS,
         UPDATE_PLATFORM_OPERATION_APPROVALS,
         RETRY_PLATFORM_ASYNC_PAYMENT_RUN,
+        CHECK_PLATFORM_OPERABILITY_READINESS,
+        VIEW_PLATFORM_OPERABILITY_METRICS,
+        VIEW_PLATFORM_TEST_MATRIX,
         VIEW_PLATFORM_ASYNC_PAYMENT_RUN,
         LIST_PLATFORM_ASYNC_PAYMENT_RUNS,
         VIEW_PLATFORM_PAYMENT_RUN,
@@ -364,6 +384,85 @@ def create_app(
             outcome="granted",
         )
         return {"status": "ok"}
+
+    @app.get("/platform/operability/readiness")
+    def platform_operability_readiness(
+        x_actor_id: str | None = Header(default=None),
+        x_actor_role: str | None = Header(default=None),
+    ) -> dict:
+        identity = _identity_context(x_actor_id, x_actor_role)
+        _require_permission(
+            app,
+            identity,
+            permission=CHECK_PLATFORM_OPERABILITY_READINESS,
+            target=PLATFORM_OPERABILITY_READINESS_TARGET,
+        )
+        report = build_platform_readiness_report(
+            database_path=app.state.database_path,
+            access_audit_database_path=app.state.access_audit_database_path,
+            async_database_path=app.state.async_database_path,
+            investigation_database_path=app.state.investigation_database_path,
+            operation_approval_database_path=app.state.operation_approval_database_path,
+        )
+        _record_api_access(
+            app,
+            actor=identity.actor,
+            permission=CHECK_PLATFORM_OPERABILITY_READINESS,
+            target=PLATFORM_OPERABILITY_READINESS_TARGET,
+            outcome="granted",
+            reason=report.status,
+        )
+        return report.to_dict()
+
+    @app.get("/platform/operability/metrics")
+    def platform_operability_metrics(
+        x_actor_id: str | None = Header(default=None),
+        x_actor_role: str | None = Header(default=None),
+    ) -> dict:
+        identity = _identity_context(x_actor_id, x_actor_role)
+        _require_permission(
+            app,
+            identity,
+            permission=VIEW_PLATFORM_OPERABILITY_METRICS,
+            target=PLATFORM_OPERABILITY_METRICS_TARGET,
+        )
+        snapshot = build_platform_metrics_snapshot(
+            database_path=app.state.database_path,
+            access_audit_database_path=app.state.access_audit_database_path,
+            async_database_path=app.state.async_database_path,
+            investigation_database_path=app.state.investigation_database_path,
+            operation_approval_database_path=app.state.operation_approval_database_path,
+        )
+        _record_api_access(
+            app,
+            actor=identity.actor,
+            permission=VIEW_PLATFORM_OPERABILITY_METRICS,
+            target=PLATFORM_OPERABILITY_METRICS_TARGET,
+            outcome="granted",
+        )
+        return snapshot.to_dict()
+
+    @app.get("/platform/operability/test-matrix")
+    def platform_operability_test_matrix(
+        x_actor_id: str | None = Header(default=None),
+        x_actor_role: str | None = Header(default=None),
+    ) -> dict:
+        identity = _identity_context(x_actor_id, x_actor_role)
+        _require_permission(
+            app,
+            identity,
+            permission=VIEW_PLATFORM_TEST_MATRIX,
+            target=PLATFORM_TEST_MATRIX_TARGET,
+        )
+        rows = build_platform_test_matrix()
+        _record_api_access(
+            app,
+            actor=identity.actor,
+            permission=VIEW_PLATFORM_TEST_MATRIX,
+            target=PLATFORM_TEST_MATRIX_TARGET,
+            outcome="granted",
+        )
+        return {"rows": [row.to_dict() for row in rows]}
 
     @app.post(
         "/platform/payment-runs",

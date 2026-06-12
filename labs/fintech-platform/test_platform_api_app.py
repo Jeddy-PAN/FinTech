@@ -8,6 +8,7 @@ from uuid import uuid4
 from fastapi.testclient import TestClient
 
 from platform_api_app import (
+    CHECK_PLATFORM_OPERABILITY_READINESS,
     CREATE_PLATFORM_ASYNC_PAYMENT_RUN,
     CREATE_PLATFORM_PAYMENT_RUN,
     LIST_PLATFORM_PAYMENT_RUNS,
@@ -16,8 +17,10 @@ from platform_api_app import (
     CREATE_PLATFORM_OPERATION_APPROVALS,
     UPDATE_PLATFORM_OPERATION_APPROVALS,
     VIEW_PLATFORM_ASYNC_PAYMENT_RUN,
+    VIEW_PLATFORM_OPERABILITY_METRICS,
     VIEW_PLATFORM_OPERATION_APPROVALS,
     VIEW_PLATFORM_PAYMENT_RUN,
+    VIEW_PLATFORM_TEST_MATRIX,
     create_app,
 )
 from platform_async_service import PlatformAsyncWorker, SQLitePlatformAsyncRunStore
@@ -51,6 +54,84 @@ def test_platform_api_health() -> None:
         client.close()
         _remove_database(database_path)
         _remove_database(access_audit_database_path)
+
+
+def test_platform_operability_readiness_metrics_and_test_matrix() -> None:
+    (
+        client,
+        database_path,
+        access_audit_database_path,
+        async_database_path,
+        investigation_database_path,
+        operation_approval_database_path,
+    ) = _client_with_operability()
+    try:
+        created = client.post("/platform/payment-runs", json=_payload())
+        readiness = client.get(
+            "/platform/operability/readiness",
+            headers={"x-actor-id": "audit_reader_001"},
+        )
+        denied_readiness = client.get(
+            "/platform/operability/readiness",
+            headers={"x-actor-id": "api_viewer_001"},
+        )
+        metrics = client.get(
+            "/platform/operability/metrics",
+            headers={"x-actor-id": "audit_reader_001"},
+        )
+        test_matrix = client.get(
+            "/platform/operability/test-matrix",
+            headers={"x-actor-id": "audit_reader_001"},
+        )
+
+        assert created.status_code == 201
+        assert readiness.status_code == 200
+        readiness_body = readiness.json()
+        assert readiness_body["status"] == "ready"
+        assert {check["name"] for check in readiness_body["checks"]} == {
+            "platform_store",
+            "access_audit_store",
+            "async_run_store",
+            "investigation_case_store",
+            "operation_approval_store",
+        }
+        assert {check["status"] for check in readiness_body["checks"]} == {"passed"}
+        assert denied_readiness.status_code == 403
+
+        assert metrics.status_code == 200
+        metric_values = {
+            metric["name"]: metric["value"]
+            for metric in metrics.json()["metrics"]
+        }
+        assert metric_values["platform.payment_runs.total"] == 1
+        assert metric_values["platform.payment_runs.completed"] == 1
+        assert metric_values["platform.access_events.denied"] == 1
+        assert metric_values["platform.operation_approvals.pending"] == 0
+
+        assert test_matrix.status_code == 200
+        rows = test_matrix.json()["rows"]
+        assert [row["area"] for row in rows] == [
+            "syntax",
+            "platform tests",
+            "demo",
+            "full labs",
+        ]
+        assert rows[1]["command"].endswith(
+            "-m pytest -p no:cacheprovider .\\labs\\fintech-platform -q"
+        )
+
+        events = _access_events(access_audit_database_path)
+        permissions = [event.permission for event in events]
+        assert CHECK_PLATFORM_OPERABILITY_READINESS in permissions
+        assert VIEW_PLATFORM_OPERABILITY_METRICS in permissions
+        assert VIEW_PLATFORM_TEST_MATRIX in permissions
+    finally:
+        client.close()
+        _remove_database(database_path)
+        _remove_database(access_audit_database_path)
+        _remove_database(async_database_path)
+        _remove_database(investigation_database_path)
+        _remove_database(operation_approval_database_path)
 
 
 def test_platform_api_creates_and_gets_payment_run() -> None:
@@ -2810,6 +2891,30 @@ def _client_with_async_and_operation_approval():
         database_path,
         access_audit_database_path,
         async_database_path,
+        operation_approval_database_path,
+    )
+
+
+def _client_with_operability():
+    database_path = _database_path()
+    access_audit_database_path = _access_audit_database_path()
+    async_database_path = _async_database_path()
+    investigation_database_path = _investigation_database_path()
+    operation_approval_database_path = _operation_approval_database_path()
+    return (
+        TestClient(
+            create_app(
+                database_path=database_path,
+                access_audit_database_path=access_audit_database_path,
+                async_database_path=async_database_path,
+                investigation_database_path=investigation_database_path,
+                operation_approval_database_path=operation_approval_database_path,
+            )
+        ),
+        database_path,
+        access_audit_database_path,
+        async_database_path,
+        investigation_database_path,
         operation_approval_database_path,
     )
 

@@ -389,6 +389,18 @@ def main() -> None:
             },
             headers={"x-actor-id": "system_scheduler"},
         ).json()
+        readiness_body = client.get(
+            "/platform/operability/readiness",
+            headers={"x-actor-id": "audit_reader_001"},
+        ).json()
+        metrics_body = client.get(
+            "/platform/operability/metrics",
+            headers={"x-actor-id": "audit_reader_001"},
+        ).json()
+        test_matrix_body = client.get(
+            "/platform/operability/test-matrix",
+            headers={"x-actor-id": "audit_reader_001"},
+        ).json()
 
     print("\nAsync payment run via FastAPI")
     print(f"- Create HTTP style: {accepted_body['http_status']}")
@@ -429,6 +441,21 @@ def main() -> None:
         f"approval_status={approved_retry_body['record']['status']} "
         f"async_status={approved_retry_body['run']['status']}"
     )
+
+    metric_values = {
+        metric["name"]: metric["value"]
+        for metric in metrics_body["metrics"]
+    }
+    print("\nPlatform operability snapshot")
+    print(f"- Readiness: {readiness_body['status']}")
+    print(
+        "- Key metrics: "
+        f"payment_runs={metric_values['platform.payment_runs.total']} "
+        f"async_runs={metric_values['platform.async_runs.total']} "
+        f"pending_approvals={metric_values['platform.operation_approvals.pending']} "
+        f"denied_access={metric_values['platform.access_events.denied']}"
+    )
+    print(f"- Test matrix rows: {len(test_matrix_body['rows'])}")
 
     async_access_store = SQLiteAccessAuditStore(api_access_audit_database_path)
     async_store = SQLitePlatformAsyncRunStore(async_database_path)

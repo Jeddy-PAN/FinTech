@@ -242,6 +242,7 @@ investigation_case
 40. 已完成阶段 36 第一版：async worker 使用 `claim_next_accepted()` 原子认领 accepted run，operation approval 终态决策使用 pending 状态条件更新，并补充重复 claim / 重复 approve-retry 冲突测试。
 41. 已完成阶段 37 第一版：新增教学版 `ProviderSettlementRow` 和 settlement reconciliation report，用外部 provider settlement row 检查内部 completed run、金额、币种和孤立外部记录。
 42. 已完成阶段 38 第一版：新增教学版 evidence package，把 settlement reconciliation findings、access anomaly findings、operation approval records 和 denied access events 汇总成可导出的证据包。
+43. 已完成阶段 39 第一版：新增教学版 operability readiness、metrics 和 test matrix API，用于本地交付、观测和验收。
 
 ## 运行示例
 
@@ -297,6 +298,8 @@ demo 现在也会输出 `Exported platform settlement reconciliation reports`，
 
 demo 现在也会输出 `Exported platform evidence package`，用于观察 settlement reconciliation、access anomaly、operation approval 和 denied access event 如何被组织成同一个教学版 evidence package。这个包会导出 evidence items、summary 和 HTML 报告，但不代表真实法律保全、真实监管证据清单或真实留存期限。
 
+demo 现在也会输出 `Platform operability snapshot`，用于观察本地 readiness、关键 metrics 和测试矩阵行数。readiness 会检查各个 SQLite store 是否可打开；metrics 会汇总 payment runs、async runs、operation approvals 和 denied access 等教学版计数。
+
 demo 还会写入并重新读取：
 
 ```text
@@ -317,7 +320,7 @@ labs/fintech-platform/.test-data/demo_platform_api_investigation_cases.db
 
 ## 当前状态
 
-这个目录已经包含第一版综合平台设计、最小 orchestration、demo、综合报表导出、SQLite 持久化、历史运行报表、risk review 后续处理、教学版一致性检查、平台报表访问控制与访问审计、平台访问异常检测、平台访问异常调查工单、异步任务、运营控制台、retry 审批边界、运行报告与对账视角、operation approval record、operation approval report、console report views、ledger reconciliation report、operation approval state flow、operation approval HTTP endpoints、create operation approval HTTP endpoint、retry approval before execution、operation approval console view、operation approval pagination and sorting、operation approval detail view、operation approval lifecycle、console approval actions、approval lifecycle timeline、async run detail view、platform result detail view、operation approval pagination metadata、console cancel / expire approval actions、console filter controls、payment detail reconciliation context、剩余章节路线图、console workflow controls、identity / permission / form security boundary、consistency / concurrency / recovery boundary、external settlement reconciliation、evidence package，以及测试。阶段 8 以来的目标仍然是把已有实验组合成一个清晰的学习平台，而不是立即扩成生产级系统。
+这个目录已经包含第一版综合平台设计、最小 orchestration、demo、综合报表导出、SQLite 持久化、历史运行报表、risk review 后续处理、教学版一致性检查、平台报表访问控制与访问审计、平台访问异常检测、平台访问异常调查工单、异步任务、运营控制台、retry 审批边界、运行报告与对账视角、operation approval record、operation approval report、console report views、ledger reconciliation report、operation approval state flow、operation approval HTTP endpoints、create operation approval HTTP endpoint、retry approval before execution、operation approval console view、operation approval pagination and sorting、operation approval detail view、operation approval lifecycle、console approval actions、approval lifecycle timeline、async run detail view、platform result detail view、operation approval pagination metadata、console cancel / expire approval actions、console filter controls、payment detail reconciliation context、剩余章节路线图、console workflow controls、identity / permission / form security boundary、consistency / concurrency / recovery boundary、external settlement reconciliation、evidence package、operability readiness / metrics / test matrix，以及测试。阶段 8 以来的目标仍然是把已有实验组合成一个清晰的学习平台，而不是立即扩成生产级系统。
 
 阶段 9 已经开始在这个目录上做 API 服务化的第一步：
 
@@ -726,4 +729,17 @@ test_platform_evidence_package.py
 demo.py
 ```
 
-阶段 38 新增教学版 evidence package：`build_platform_evidence_package()` 会把 failed settlement reconciliation findings、access anomaly findings、operation approval records 和 denied access events 汇总为统一 `PlatformEvidenceItem`，并用 `case_id`、`generated_by`、`legal_hold` 和 `retention_policy_id` 作为包级元数据。`export_platform_evidence_package()` 可导出 evidence items CSV、summary CSV 和 HTML；demo 已接入 `Exported platform evidence package`。当前仍不做真实法律保全、真实留存期限、WORM 存储、电子签名、附件哈希或 custody 流程；下一步建议进入阶段 39：可运行交付、观测和测试矩阵。
+阶段 38 新增教学版 evidence package：`build_platform_evidence_package()` 会把 failed settlement reconciliation findings、access anomaly findings、operation approval records 和 denied access events 汇总为统一 `PlatformEvidenceItem`，并用 `case_id`、`generated_by`、`legal_hold` 和 `retention_policy_id` 作为包级元数据。`export_platform_evidence_package()` 可导出 evidence items CSV、summary CSV 和 HTML；demo 已接入 `Exported platform evidence package`。当前仍不做真实法律保全、真实留存期限、WORM 存储、电子签名、附件哈希或 custody 流程；随后阶段 39 已进入可运行交付、观测和测试矩阵。
+
+阶段 39 第一版已完成：
+
+```text
+docs/52-stage-39-operability-observability-test-matrix.md
+platform_operability.py
+test_platform_operability.py
+platform_api_app.py
+test_platform_api_app.py
+demo.py
+```
+
+阶段 39 新增教学版 operability 边界：`build_platform_readiness_report()` 会检查 platform store、access audit store、async run store、investigation case store 和 operation approval store 是否可打开；`build_platform_metrics_snapshot()` 会汇总 payment runs、async runs、operation approvals、access events 和 investigation cases 的结构化计数；`build_platform_test_matrix()` 会列出本地 py_compile、平台测试、demo 和全量 labs 测试矩阵。FastAPI 已新增 `/platform/operability/readiness`、`/platform/operability/metrics` 和 `/platform/operability/test-matrix`，并写入 granted / denied access audit；demo 已接入 `Platform operability snapshot`。当前仍不做真实部署平台、生产监控、Prometheus/OpenTelemetry、SLO/SLA、告警或 secret 管理；下一步建议进入阶段 40：最终验收与学习作品集总结。
