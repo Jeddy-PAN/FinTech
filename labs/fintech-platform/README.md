@@ -241,6 +241,7 @@ investigation_case
 39. 已完成阶段 35 第一版：新增教学版 `PlatformIdentityContext`、role / permission policy，并对 access audit 查询、operation approval 查询和更新路径增加权限校验与身份一致性校验。
 40. 已完成阶段 36 第一版：async worker 使用 `claim_next_accepted()` 原子认领 accepted run，operation approval 终态决策使用 pending 状态条件更新，并补充重复 claim / 重复 approve-retry 冲突测试。
 41. 已完成阶段 37 第一版：新增教学版 `ProviderSettlementRow` 和 settlement reconciliation report，用外部 provider settlement row 检查内部 completed run、金额、币种和孤立外部记录。
+42. 已完成阶段 38 第一版：新增教学版 evidence package，把 settlement reconciliation findings、access anomaly findings、operation approval records 和 denied access events 汇总成可导出的证据包。
 
 ## 运行示例
 
@@ -277,6 +278,9 @@ labs/fintech-platform/reports/platform_ledger_reconciliation_findings.csv
 labs/fintech-platform/reports/platform_ledger_reconciliation_report.html
 labs/fintech-platform/reports/platform_settlement_reconciliation_findings.csv
 labs/fintech-platform/reports/platform_settlement_reconciliation_report.html
+labs/fintech-platform/reports/platform_evidence_package_items.csv
+labs/fintech-platform/reports/platform_evidence_package_summary.csv
+labs/fintech-platform/reports/platform_evidence_package_report.html
 ```
 
 demo 还会输出 `Risk review completion`，用于观察 `risk_review_required -> completed` 的人工复核通过闭环。它也会输出 `Async payment run via FastAPI`，用 in-process FastAPI client 展示创建 async run、触发教学版 worker、查询最终 platform result 和 API access audit。随后 demo 会输出 `Failed async run sample for console`，通过真实 API 流程构造一个 request fingerprint 冲突导致的 failed async run，用来观察 console 里的 failed async run、attempt count 和 last error。
@@ -290,6 +294,8 @@ demo 现在也会输出 `Pending operation approval flow`，用于观察 retry a
 demo 现在也会输出 `Exported platform ledger reconciliation reports`，用于观察 completed run 的 payment order amount、ledger amount、platform bank balance 和 user wallet balance 是否一致。运行 API 服务后，`FinTech Platform Console` 也会显示 `Ledger Reconciliation Findings` 只读区块；单个 payment run 详情页也会显示该 run 的 ledger reconciliation context。
 
 demo 现在也会输出 `Exported platform settlement reconciliation reports`，用于观察内部 completed platform run 和教学版外部 provider settlement row 是否能对上；该报告会检查外部 settled row 是否存在、金额和币种是否匹配、非 completed 内部 run 是否错误出现在外部 settlement file 中，以及外部 row 是否能映射回内部 run。
+
+demo 现在也会输出 `Exported platform evidence package`，用于观察 settlement reconciliation、access anomaly、operation approval 和 denied access event 如何被组织成同一个教学版 evidence package。这个包会导出 evidence items、summary 和 HTML 报告，但不代表真实法律保全、真实监管证据清单或真实留存期限。
 
 demo 还会写入并重新读取：
 
@@ -311,7 +317,7 @@ labs/fintech-platform/.test-data/demo_platform_api_investigation_cases.db
 
 ## 当前状态
 
-这个目录已经包含第一版综合平台设计、最小 orchestration、demo、综合报表导出、SQLite 持久化、历史运行报表、risk review 后续处理、教学版一致性检查、平台报表访问控制与访问审计、平台访问异常检测、平台访问异常调查工单、异步任务、运营控制台、retry 审批边界、运行报告与对账视角、operation approval record、operation approval report、console report views、ledger reconciliation report、operation approval state flow、operation approval HTTP endpoints、create operation approval HTTP endpoint、retry approval before execution、operation approval console view、operation approval pagination and sorting、operation approval detail view、operation approval lifecycle、console approval actions、approval lifecycle timeline、async run detail view、platform result detail view、operation approval pagination metadata、console cancel / expire approval actions、console filter controls、payment detail reconciliation context、剩余章节路线图、console workflow controls、identity / permission / form security boundary、consistency / concurrency / recovery boundary、external settlement reconciliation，以及测试。阶段 8 以来的目标仍然是把已有实验组合成一个清晰的学习平台，而不是立即扩成生产级系统。
+这个目录已经包含第一版综合平台设计、最小 orchestration、demo、综合报表导出、SQLite 持久化、历史运行报表、risk review 后续处理、教学版一致性检查、平台报表访问控制与访问审计、平台访问异常检测、平台访问异常调查工单、异步任务、运营控制台、retry 审批边界、运行报告与对账视角、operation approval record、operation approval report、console report views、ledger reconciliation report、operation approval state flow、operation approval HTTP endpoints、create operation approval HTTP endpoint、retry approval before execution、operation approval console view、operation approval pagination and sorting、operation approval detail view、operation approval lifecycle、console approval actions、approval lifecycle timeline、async run detail view、platform result detail view、operation approval pagination metadata、console cancel / expire approval actions、console filter controls、payment detail reconciliation context、剩余章节路线图、console workflow controls、identity / permission / form security boundary、consistency / concurrency / recovery boundary、external settlement reconciliation、evidence package，以及测试。阶段 8 以来的目标仍然是把已有实验组合成一个清晰的学习平台，而不是立即扩成生产级系统。
 
 阶段 9 已经开始在这个目录上做 API 服务化的第一步：
 
@@ -709,4 +715,15 @@ test_platform_settlement_reconciliation_report.py
 demo.py
 ```
 
-阶段 37 新增教学版外部 settlement reconciliation：`ProviderSettlementRow` 表示外部 provider settlement file 的一行，`evaluate_platform_settlement_reconciliation()` 会检查内部 completed run 是否有外部 settled row、外部金额和币种是否匹配内部 payment audit payload、非 completed 内部 run 是否错误出现在外部 settlement file 中，以及外部 row 是否能映射回内部 run。`export_platform_settlement_reconciliation_report()` 可导出 CSV/HTML；demo 已接入 `Exported platform settlement reconciliation reports`。当前仍不接真实 payment provider、webhook、卡组织清算、银行流水、多币种 FX 或任何监管结论；下一步建议进入阶段 38：合规证据、调查工单和留存治理。
+阶段 37 新增教学版外部 settlement reconciliation：`ProviderSettlementRow` 表示外部 provider settlement file 的一行，`evaluate_platform_settlement_reconciliation()` 会检查内部 completed run 是否有外部 settled row、外部金额和币种是否匹配内部 payment audit payload、非 completed 内部 run 是否错误出现在外部 settlement file 中，以及外部 row 是否能映射回内部 run。`export_platform_settlement_reconciliation_report()` 可导出 CSV/HTML；demo 已接入 `Exported platform settlement reconciliation reports`。当前仍不接真实 payment provider、webhook、卡组织清算、银行流水、多币种 FX 或任何监管结论。
+
+阶段 38 第一版已完成：
+
+```text
+docs/51-stage-38-evidence-retention-governance.md
+platform_evidence_package.py
+test_platform_evidence_package.py
+demo.py
+```
+
+阶段 38 新增教学版 evidence package：`build_platform_evidence_package()` 会把 failed settlement reconciliation findings、access anomaly findings、operation approval records 和 denied access events 汇总为统一 `PlatformEvidenceItem`，并用 `case_id`、`generated_by`、`legal_hold` 和 `retention_policy_id` 作为包级元数据。`export_platform_evidence_package()` 可导出 evidence items CSV、summary CSV 和 HTML；demo 已接入 `Exported platform evidence package`。当前仍不做真实法律保全、真实留存期限、WORM 存储、电子签名、附件哈希或 custody 流程；下一步建议进入阶段 39：可运行交付、观测和测试矩阵。

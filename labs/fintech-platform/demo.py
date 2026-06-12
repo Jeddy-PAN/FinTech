@@ -28,12 +28,17 @@ from platform_api_investigation_cases import (
     open_platform_api_access_investigation_cases,
 )
 from platform_api_app import create_app
+from platform_evidence_package import (
+    build_platform_evidence_package,
+    export_platform_evidence_package,
+)
 from platform_ledger_reconciliation_report import (
     export_platform_ledger_reconciliation_report,
 )
 from platform_settlement_reconciliation_report import (
     PROVIDER_SETTLEMENT_SETTLED,
     ProviderSettlementRow,
+    evaluate_platform_settlement_reconciliation,
     export_platform_settlement_reconciliation_report,
 )
 from platform_investigation_cases import (
@@ -239,6 +244,8 @@ def main() -> None:
     operation_approval_database_path = (
         LAB_DIR / ".test-data" / "demo_platform_operation_approvals.db"
     )
+    settlement_findings_for_evidence = ()
+    approval_records_for_evidence = ()
     for path in (
         async_database_path,
         api_access_audit_database_path,
@@ -460,11 +467,16 @@ def main() -> None:
         print(f"- {ledger_reconciliation_paths.findings_csv}")
         print(f"- {ledger_reconciliation_paths.html_report}")
 
+        provider_settlement_rows = _provider_settlement_rows(operations_snapshots)
+        settlement_findings_for_evidence = evaluate_platform_settlement_reconciliation(
+            operations_snapshots,
+            provider_rows=provider_settlement_rows,
+        )
         settlement_reconciliation_paths = (
             export_platform_settlement_reconciliation_report(
                 LAB_DIR / "reports",
                 snapshots=operations_snapshots,
-                provider_rows=_provider_settlement_rows(operations_snapshots),
+                provider_rows=provider_settlement_rows,
             )
         )
         print("\nExported platform settlement reconciliation reports:")
@@ -489,7 +501,8 @@ def main() -> None:
         )
 
         print("\nOperation approval records")
-        for record in operation_approval_store.records:
+        approval_records_for_evidence = operation_approval_store.records
+        for record in approval_records_for_evidence:
             print(
                 f"- {record.operation_type} "
                 f"run_id={record.operation_id} "
@@ -500,7 +513,7 @@ def main() -> None:
 
         operation_approval_paths = export_operation_approval_report(
             LAB_DIR / "reports",
-            records=operation_approval_store.records,
+            records=approval_records_for_evidence,
         )
         print("\nExported operation approval reports:")
         print(f"- {operation_approval_paths.records_csv}")
@@ -564,6 +577,26 @@ def main() -> None:
         print("Exported platform API access anomaly reports:")
         print(f"- {platform_api_anomaly_paths.findings_csv}")
         print(f"- {platform_api_anomaly_paths.html_report}")
+
+        evidence_package = build_platform_evidence_package(
+            case_id="platform_demo_evidence_package",
+            generated_by="platform_compliance_lead_001",
+            generated_at=datetime(2026, 5, 18, 15, 0, tzinfo=timezone.utc),
+            settlement_findings=settlement_findings_for_evidence,
+            access_findings=(*platform_findings, *platform_api_findings),
+            approval_records=approval_records_for_evidence,
+            access_events=access_audit_store.access_events,
+            legal_hold=True,
+            retention_policy_id="platform-evidence-demo-hold",
+        )
+        evidence_paths = export_platform_evidence_package(
+            LAB_DIR / "reports",
+            package=evidence_package,
+        )
+        print("\nExported platform evidence package")
+        print(f"- {evidence_paths.items_csv}")
+        print(f"- {evidence_paths.summary_csv}")
+        print(f"- {evidence_paths.html_report}")
 
         api_investigation_service = AccessAnomalyInvestigationService()
         api_investigation_cases = open_platform_api_access_investigation_cases(

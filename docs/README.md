@@ -1,6 +1,6 @@
 # docs 文档入口
 
-这个目录保存 FinTech 学习笔记、阶段计划和阶段总结。当前文档已经比较多，阅读时不建议从文件名 01 一路顺读到 50，而应按目标选择路径。
+这个目录保存 FinTech 学习笔记、阶段计划和阶段总结。当前文档已经比较多，阅读时不建议从文件名 01 一路顺读到 51，而应按目标选择路径。
 
 ## 推荐阅读路径
 
@@ -49,6 +49,7 @@
 29. [48-stage-35-identity-permission-form-security.md](48-stage-35-identity-permission-form-security.md)：identity context、permission policy 和表单安全边界。
 30. [49-stage-36-consistency-concurrency-recovery.md](49-stage-36-consistency-concurrency-recovery.md)：一致性、并发和恢复边界。
 31. [50-stage-37-external-settlement-reconciliation.md](50-stage-37-external-settlement-reconciliation.md)：外部支付、清结算和真实对账模型。
+32. [51-stage-38-evidence-retention-governance.md](51-stage-38-evidence-retention-governance.md)：合规证据、调查工单和留存治理。
 
 ### 路径 C：只看阶段计划和历史
 
@@ -90,6 +91,7 @@
 | [48-stage-35-identity-permission-form-security.md](48-stage-35-identity-permission-form-security.md) | identity, permission and form security boundary |
 | [49-stage-36-consistency-concurrency-recovery.md](49-stage-36-consistency-concurrency-recovery.md) | consistency, concurrency and recovery boundary |
 | [50-stage-37-external-settlement-reconciliation.md](50-stage-37-external-settlement-reconciliation.md) | external settlement reconciliation |
+| [51-stage-38-evidence-retention-governance.md](51-stage-38-evidence-retention-governance.md) | evidence package and retention governance |
 
 ## 当前平台能力地图
 
@@ -151,9 +153,10 @@ API / report access audit
 -> investigation case
 -> open / investigating / resolved / false_positive
 -> case action audit events
+-> evidence package
 ```
 
-这个流程回答：访问审计如何从日志变成可处理的调查工单。
+这个流程回答：访问审计如何从日志变成可处理的调查工单，并进一步组织成可复核的教学版 evidence package。
 
 ### 运行报告与对账流程
 
@@ -248,6 +251,21 @@ ProviderSettlementRow
 
 这个流程回答：内部平台显示 completed 之后，为什么还要看外部 payment provider 的 settlement file；以及外部已结算但内部没有 run、内部已完成但外部没结算、金额或币种不一致时，如何形成 reconciliation finding。当前仍不代表真实 provider adapter、webhook 验签、卡组织清算、银行流水解析、多币种 FX 或任何监管结论。
 
+### Evidence Package 治理边界
+
+```text
+settlement reconciliation finding
+access anomaly finding
+operation approval record
+denied access audit event
+-> PlatformEvidencePackage
+-> evidence items CSV
+-> evidence summary CSV
+-> evidence package HTML
+```
+
+这个流程回答：当平台产生对账差异、访问异常、审批记录和拒绝访问审计时，如何把它们整理成一个围绕 case 的证据包。当前仍不代表真实监管证据清单、真实 legal hold 审批、真实留存期限、不可篡改存储、电子签名或证据链 custody 流程。
+
 ### Console 报表视图
 
 ```text
@@ -293,11 +311,11 @@ platform / wallet balance snapshot
 
 ## 下一步候选方向
 
-阶段 37 已完成外部支付、清结算和真实对账模型第一版。
+阶段 38 已完成合规证据、调查工单和留存治理第一版。
 
-建议下一步进入阶段 38：合规证据、调查工单和留存治理。
+建议下一步进入阶段 39：可运行交付、观测和测试矩阵。
 
-1. 增强 investigation case 的 comment、assignee、priority、SLA 和 evidence package 视角。
-2. 把 settlement reconciliation findings、access anomaly findings 和 approval records 组织成合规证据链。
-3. 梳理 legal hold、retention decision 和 export approval 的教学边界。
-4. 任何真实监管、留存期限或报送要求都必须先查证官方或专业来源。
+1. 整理本地运行、测试、demo、报告输出和 API 错误边界。
+2. 增加教学版 structured logging、health/readiness 或 metrics 边界说明。
+3. 汇总端到端测试矩阵和验收清单。
+4. 保持不引入真实部署平台和真实 secret 管理，先把本地交付路径讲清楚。
