@@ -1078,6 +1078,8 @@ def test_platform_api_console_page_renders_empty_state() -> None:
         body = console.text
         assert "FinTech Platform Console" in body
         assert 'href="/platform/manual"' in body
+        assert "Console Sections" in body
+        assert 'href="#payment-runs"' in body
         assert "No payment runs have been recorded yet." in body
         assert "No async runs have been recorded yet." in body
         assert "No failed async runs have been recorded yet." in body
@@ -1106,10 +1108,15 @@ def test_platform_manual_page_renders_workflows_and_records_access() -> None:
         assert manual.headers["content-type"].startswith("text/html")
         body = manual.text
         assert "Platform User Manual" in body
+        assert "Manual Sections" in body
         assert "What This Platform Does" in body
+        assert "Platform Capabilities" in body
         assert "Payment Workflow" in body
         assert "Async Workflow" in body
         assert "Approval Workflow" in body
+        assert "Detailed Event Flow" in body
+        assert "Request intake" in body
+        assert 'href="/platform/manual?lang=cn"' in body
         assert "Evidence Packages" in body
         assert "Educational Boundary" in body
         assert 'href="/platform/view"' in body
@@ -1120,6 +1127,29 @@ def test_platform_manual_page_renders_workflows_and_records_access() -> None:
         assert events[0].permission == "view_platform_console"
         assert events[0].target == "fintech_platform_manual"
         assert events[0].outcome == "granted"
+        assert events[0].reason == "view manual"
+    finally:
+        client.close()
+        _remove_database(database_path)
+        _remove_database(access_audit_database_path)
+
+
+def test_platform_manual_page_supports_chinese_language_view() -> None:
+    client, database_path, access_audit_database_path = _client()
+    try:
+        manual = client.get("/platform/manual?lang=cn")
+
+        assert manual.status_code == 200
+        body = manual.text
+        assert "平台用户手册" in body
+        assert "手册目录" in body
+        assert "详细流程图" in body
+        assert "请求进入平台" in body
+        assert 'href="/platform/manual?lang=en"' in body
+
+        events = _access_events(access_audit_database_path)
+        assert len(events) == 1
+        assert events[0].target == "fintech_platform_manual"
         assert events[0].reason == "view manual"
     finally:
         client.close()

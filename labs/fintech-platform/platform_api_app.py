@@ -376,7 +376,10 @@ def create_app(
         return HTMLResponse(content=html_body)
 
     @app.get("/platform/manual", response_class=HTMLResponse)
-    def platform_manual(x_actor_id: str | None = Header(default=None)) -> HTMLResponse:
+    def platform_manual(
+        lang: str | None = None,
+        x_actor_id: str | None = Header(default=None),
+    ) -> HTMLResponse:
         actor = _api_actor(x_actor_id)
         _record_api_access(
             app,
@@ -386,7 +389,7 @@ def create_app(
             outcome="granted",
             reason="view manual",
         )
-        return HTMLResponse(content=_render_platform_manual_html())
+        return HTMLResponse(content=_render_platform_manual_html(lang=lang))
 
     @app.get("/health")
     def health(x_actor_id: str | None = Header(default=None)) -> dict:
@@ -2783,9 +2786,10 @@ def _platform_page_shell(
     subtitle: str,
     active_nav: str,
     content_html: str,
+    lang: str = "en",
 ) -> str:
     return f"""<!doctype html>
-<html lang="en">
+<html lang="{html.escape(lang, quote=True)}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -2798,77 +2802,157 @@ def _platform_page_shell(
 <body class="platform-shell">
   {_platform_topbar_html(active_nav)}
   <main class="platform-main">
-    {_platform_page_header_html(title, subtitle)}
-    {content_html}
+    <div class="platform-workspace">
+      {_platform_side_nav_html(active_nav, lang=lang)}
+      <div class="platform-content">
+        {_platform_page_header_html(title, subtitle, active_nav=active_nav, lang=lang)}
+        {content_html}
+      </div>
+    </div>
   </main>
 </body>
 </html>"""
 
 
 def _platform_topbar_html(active_nav: str) -> str:
+    active_area = "manual" if active_nav == "manual" else "console"
     return f"""
   <header class="platform-topbar">
-    <div>
+    <div class="platform-brand-block">
       <div class="platform-brand">FinTech Platform</div>
-      <div class="platform-caption">Learning operations workbench</div>
+      <div class="platform-caption">Educational operations lab</div>
     </div>
-    {_platform_nav_html(active_nav)}
+    {_platform_nav_html(active_area)}
   </header>
 """
 
 
-def _platform_nav_html(active_nav: str) -> str:
+def _platform_nav_html(active_area: str) -> str:
     nav_items = (
-        ("dashboard", "Dashboard", "/platform/view"),
-        ("payments", "Payment Runs", "/platform/view#payment-runs"),
-        ("async", "Async Runs", "/platform/view#async-runs"),
-        ("approvals", "Approvals", "/platform/view#approvals"),
-        ("reconciliation", "Reconciliation", "/platform/view#reconciliation"),
-        ("audit", "Audit & Cases", "/platform/view#audit-cases"),
-        ("evidence", "Evidence", "/platform/manual#evidence-packages"),
-        ("operability", "Operability", "/platform/manual#operability"),
+        ("console", "Console", "/platform/view"),
         ("manual", "Manual", "/platform/manual"),
     )
     links = []
     for key, label, href in nav_items:
-        current_attr = ' aria-current="page"' if key == active_nav else ""
+        current_attr = ' aria-current="page"' if key == active_area else ""
         links.append(
             f'<a href="{html.escape(href, quote=True)}"{current_attr}>'
             f"{html.escape(label)}</a>"
         )
-    return f'<nav class="platform-nav" aria-label="Platform navigation">{"".join(links)}</nav>'
+    return f'<nav class="platform-nav" aria-label="Primary navigation">{"".join(links)}</nav>'
 
 
-def _platform_page_header_html(title: str, subtitle: str) -> str:
+def _platform_side_nav_html(active_nav: str, *, lang: str = "en") -> str:
+    if active_nav == "manual":
+        if lang == "cn":
+            heading = "手册目录"
+            nav_items = (
+                ("#overview", "平台概览"),
+                ("#capabilities", "能力清单"),
+                ("#workflows", "主要流程"),
+                ("#flow-diagram", "详细流程图"),
+                ("#audit-cases", "审计与工单"),
+                ("#evidence-packages", "证据包"),
+                ("#operability", "可运行性"),
+                ("#roles-permissions", "角色权限"),
+                ("#local-commands", "本地命令"),
+                ("#boundary", "教学边界"),
+            )
+        else:
+            heading = "Manual Sections"
+            nav_items = (
+                ("#overview", "Overview"),
+                ("#capabilities", "Capabilities"),
+                ("#workflows", "Workflows"),
+                ("#flow-diagram", "Flow Diagram"),
+                ("#audit-cases", "Audit & Cases"),
+                ("#evidence-packages", "Evidence"),
+                ("#operability", "Operability"),
+                ("#roles-permissions", "Roles"),
+                ("#local-commands", "Commands"),
+                ("#boundary", "Boundary"),
+            )
+    else:
+        heading = "Console Sections"
+        nav_items = (
+            ("#dashboard", "Dashboard"),
+            ("#payment-runs", "Payment Runs"),
+            ("#async-runs", "Async Runs"),
+            ("#approvals", "Approvals"),
+            ("#reconciliation", "Reconciliation"),
+            ("#audit-cases", "Audit & Cases"),
+            ("/platform/manual#flow-diagram", "Flow Diagram"),
+            ("/platform/manual", "Manual"),
+        )
+    links = "".join(
+        f'<a href="{html.escape(href, quote=True)}">{html.escape(label)}</a>'
+        for href, label in nav_items
+    )
+    return f"""
+      <aside class="platform-side-nav" aria-label="{html.escape(heading, quote=True)}">
+        <div class="platform-side-title">{html.escape(heading)}</div>
+        {links}
+      </aside>
+"""
+
+
+def _platform_page_header_html(
+    title: str,
+    subtitle: str,
+    *,
+    active_nav: str,
+    lang: str = "en",
+    actions_html: str | None = None,
+) -> str:
+    kicker = "User Manual" if active_nav == "manual" else "Operations Console"
+    if active_nav == "manual" and lang == "cn":
+        kicker = "用户手册"
+    if actions_html is None:
+        actions_html = _platform_default_header_actions_html(active_nav, lang=lang)
     return f"""
     <section class="platform-page-header">
       <div>
-        <p class="platform-kicker">Operations Console</p>
+        <p class="platform-kicker">{html.escape(kicker)}</p>
         <h1>{html.escape(title)}</h1>
         <p>{html.escape(subtitle)}</p>
       </div>
       <div class="platform-header-actions">
-        <a href="/platform/view">Console</a>
-        <a href="/platform/manual">Manual</a>
+        {actions_html}
       </div>
     </section>
 """
+
+
+def _platform_default_header_actions_html(active_nav: str, *, lang: str = "en") -> str:
+    if active_nav == "manual":
+        cn_current = ' aria-current="page"' if lang == "cn" else ""
+        en_current = ' aria-current="page"' if lang != "cn" else ""
+        return (
+            f'<a href="/platform/manual?lang=en"{en_current}>EN</a>'
+            f'<a href="/platform/manual?lang=cn"{cn_current}>CN</a>'
+            '<a href="/platform/manual#flow-diagram">Flow Diagram</a>'
+        )
+    return '<a href="/platform/view">Refresh Console</a><a href="/platform/manual">Manual</a>'
 
 
 def _platform_chrome_css() -> str:
     return """
     :root {
       color-scheme: light;
-      --platform-bg: #f7f8f5;
+      --platform-bg: #f3f0e8;
       --platform-panel: #ffffff;
-      --platform-ink: #18201b;
-      --platform-muted: #617066;
-      --platform-line: #d7ded4;
-      --platform-strong: #17251f;
-      --platform-accent: #0f766e;
-      --platform-accent-soft: #e4f3f0;
-      --platform-warn: #8a5a00;
-      --platform-warn-soft: #fff6d8;
+      --platform-panel-subtle: #fbfaf6;
+      --platform-ink: #1c211d;
+      --platform-muted: #68706a;
+      --platform-line: #d8d4c8;
+      --platform-strong: #13251f;
+      --platform-accent: #0d766b;
+      --platform-accent-soft: #e1f2ee;
+      --platform-copper: #a35b2b;
+      --platform-copper-soft: #f7eadf;
+      --platform-warn: #805700;
+      --platform-warn-soft: #fff4d2;
+      --platform-shadow: 0 14px 34px rgba(28, 33, 29, 0.08);
     }
     * {
       box-sizing: border-box;
@@ -2894,9 +2978,14 @@ def _platform_chrome_css() -> str:
       flex-direction: column;
       gap: 1rem;
       padding: 1rem;
+      position: relative;
+      z-index: 2;
+    }
+    .platform-brand-block {
+      min-width: 12rem;
     }
     .platform-brand {
-      font-size: 1.05rem;
+      font-size: 1.125rem;
       font-weight: 700;
     }
     .platform-caption {
@@ -2919,10 +3008,12 @@ def _platform_chrome_css() -> str:
       text-decoration: none;
     }
     .platform-nav a {
-      border: 1px solid rgba(255, 255, 255, 0.2);
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.22);
       color: #eef5f0;
-      font-size: 0.875rem;
-      padding: 0.5rem 0.625rem;
+      font-size: 0.95rem;
+      font-weight: 650;
+      padding: 0.625rem 0.875rem;
     }
     .platform-nav a[aria-current="page"] {
       background: #ffffff;
@@ -2932,17 +3023,66 @@ def _platform_chrome_css() -> str:
     }
     .platform-main {
       margin: 0 auto;
-      max-width: 82.5rem;
+      max-width: 90rem;
       padding: 1rem;
       width: 100%;
     }
+    .platform-workspace {
+      display: grid;
+      gap: 1rem;
+      grid-template-columns: 1fr;
+    }
+    .platform-content {
+      min-width: 0;
+    }
+    .platform-side-nav {
+      background: rgba(255, 255, 255, 0.78);
+      border: 1px solid var(--platform-line);
+      border-radius: 0.5rem;
+      box-shadow: var(--platform-shadow);
+      display: flex;
+      gap: 0.5rem;
+      overflow-x: auto;
+      padding: 0.625rem;
+    }
+    .platform-side-title {
+      align-items: center;
+      color: var(--platform-muted);
+      display: inline-flex;
+      flex: 0 0 auto;
+      font-size: 0.75rem;
+      font-weight: 700;
+      padding: 0 0.375rem;
+      text-transform: uppercase;
+    }
+    .platform-side-nav a {
+      align-items: center;
+      border: 1px solid transparent;
+      border-radius: 0.375rem;
+      color: var(--platform-strong);
+      display: inline-flex;
+      flex: 0 0 auto;
+      font-size: 0.875rem;
+      min-height: 44px;
+      padding: 0.5rem 0.625rem;
+      text-decoration: none;
+    }
+    .platform-side-nav a:hover,
+    .platform-header-actions a:hover,
+    .platform-nav a:hover {
+      border-color: var(--platform-accent);
+    }
     .platform-page-header {
       align-items: flex-start;
+      background: var(--platform-panel);
+      border: 1px solid var(--platform-line);
+      border-radius: 0.5rem;
+      box-shadow: var(--platform-shadow);
       display: flex;
       flex-direction: column;
       gap: 1rem;
       margin-bottom: 1rem;
-      padding: 0.5rem 0 0.75rem;
+      padding: 1rem;
     }
     .platform-page-header h1 {
       font-size: 2rem;
@@ -2971,6 +3111,12 @@ def _platform_chrome_css() -> str:
       color: var(--platform-strong);
       padding: 0.5rem 0.75rem;
     }
+    .platform-header-actions a[aria-current="page"] {
+      background: var(--platform-accent-soft);
+      border-color: var(--platform-accent);
+      color: #065f57;
+      font-weight: 700;
+    }
     @media (min-width: 768px) {
       .platform-topbar {
         padding: 1rem 1.5rem;
@@ -2994,6 +3140,25 @@ def _platform_chrome_css() -> str:
         flex-direction: row;
         justify-content: space-between;
       }
+      .platform-workspace {
+        align-items: start;
+        grid-template-columns: 15.5rem minmax(0, 1fr);
+      }
+      .platform-side-nav {
+        align-self: start;
+        display: grid;
+        gap: 0.25rem;
+        overflow: visible;
+        padding: 0.875rem;
+        position: sticky;
+        top: 1rem;
+      }
+      .platform-side-title {
+        padding: 0.375rem 0.5rem;
+      }
+      .platform-side-nav a {
+        width: 100%;
+      }
     }
     """
 
@@ -3008,6 +3173,7 @@ def _platform_content_css() -> str:
       background: var(--platform-panel);
       border: 1px solid var(--platform-line);
       border-radius: 0.5rem;
+      box-shadow: 0 10px 24px rgba(28, 33, 29, 0.05);
       margin-top: 1rem;
       overflow-x: auto;
       padding: 1rem;
@@ -3031,7 +3197,7 @@ def _platform_content_css() -> str:
       margin-top: 1rem;
     }
     .metric {
-      background: var(--platform-panel);
+      background: var(--platform-panel-subtle);
       border: 1px solid var(--platform-line);
       border-radius: 0.5rem;
       padding: 0.875rem;
@@ -3170,6 +3336,48 @@ def _platform_content_css() -> str:
       overflow-x: auto;
       padding: 1rem;
     }
+    .manual-callout {
+      background: var(--platform-copper-soft);
+      border: 1px solid #e2b88f;
+      border-radius: 0.5rem;
+      color: #6f3519;
+      margin-top: 1rem;
+      padding: 0.875rem;
+    }
+    .flow-diagram {
+      display: grid;
+      gap: 0.75rem;
+      margin-top: 1rem;
+    }
+    .flow-step {
+      background: var(--platform-panel-subtle);
+      border: 1px solid var(--platform-line);
+      border-left: 0.25rem solid var(--platform-accent);
+      border-radius: 0.5rem;
+      padding: 0.875rem;
+    }
+    .flow-step strong {
+      color: var(--platform-strong);
+      display: block;
+      margin-bottom: 0.25rem;
+    }
+    .flow-arrow {
+      color: var(--platform-muted);
+      font-size: 0.875rem;
+      font-weight: 700;
+      padding-left: 0.875rem;
+    }
+    .flow-branch {
+      display: grid;
+      gap: 0.75rem;
+      grid-template-columns: 1fr;
+    }
+    .flow-step-warning {
+      border-left-color: var(--platform-copper);
+    }
+    .flow-step-muted {
+      border-left-color: var(--platform-muted);
+    }
     .manual-list {
       margin: 0;
       padding-left: 1.25rem;
@@ -3181,6 +3389,9 @@ def _platform_content_css() -> str:
       .filter-fields,
       .manual-grid {
         grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+      .flow-branch {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
       }
     }
     @media (min-width: 1024px) {
@@ -3194,9 +3405,35 @@ def _platform_content_css() -> str:
     """
 
 
-def _render_platform_manual_html() -> str:
-    content = """
-    <section class="platform-section">
+def _render_platform_manual_html(*, lang: str | None = None) -> str:
+    normalized_lang = "cn" if _normalize_manual_lang(lang) == "cn" else "en"
+    if normalized_lang == "cn":
+        title = "平台用户手册"
+        subtitle = "面向使用者的 FinTech 学习平台功能、流程和操作边界说明。"
+        content = _platform_manual_content_cn()
+    else:
+        title = "Platform User Manual"
+        subtitle = "A workflow guide for using the FinTech learning platform console."
+        content = _platform_manual_content_en()
+    return _platform_page_shell(
+        title=title,
+        subtitle=subtitle,
+        active_nav="manual",
+        content_html=content,
+        lang=normalized_lang,
+    )
+
+
+def _normalize_manual_lang(lang: str | None) -> str:
+    if lang is None:
+        return "en"
+    normalized = lang.strip().lower()
+    return "cn" if normalized in {"cn", "zh", "zh-cn"} else "en"
+
+
+def _platform_manual_content_en() -> str:
+    return f"""
+    <section class="platform-section" id="overview">
       <h2>What This Platform Does</h2>
       <p class="muted">
         This is an educational FinTech operations platform. It shows how onboarding,
@@ -3204,9 +3441,21 @@ def _render_platform_manual_html() -> str:
         reconciliation, evidence exports, and operability checks connect in one
         small system.
       </p>
+      <div class="manual-callout">
+        Need the end-to-end picture first? Open the <a href="#flow-diagram">Detailed Event Flow</a>.
+      </div>
     </section>
 
-    <div class="manual-grid">
+    <section class="platform-section" id="capabilities">
+      <h2>Platform Capabilities</h2>
+      <ul class="manual-list">
+        <li>Payment run creation, idempotency, KYC/AML decisioning, risk decisioning, and ledger posting.</li>
+        <li>Async payment runs, worker processing, failed-run retry requests, and maker-checker approvals.</li>
+        <li>Operations reports, ledger reconciliation, settlement reconciliation, evidence packages, audit events, and investigation cases.</li>
+      </ul>
+    </section>
+
+    <div class="manual-grid" id="workflows">
       <section class="platform-section" id="payment-workflow">
         <h2>Payment Workflow</h2>
         <ol class="manual-list">
@@ -3243,6 +3492,12 @@ def _render_platform_manual_html() -> str:
         </p>
       </section>
     </div>
+
+    <section class="platform-section" id="flow-diagram">
+      <h2>Detailed Event Flow</h2>
+      <p class="muted">A single order can be followed from request intake to final evidence and operability review.</p>
+      {_platform_flow_diagram_en()}
+    </section>
 
     <section class="platform-section" id="audit-cases">
       <h2>Audit And Cases</h2>
@@ -3298,12 +3553,173 @@ python -m uvicorn platform_api_app:app --host 127.0.0.1 --port 8000</code></pre>
       </p>
     </section>
 """
-    return _platform_page_shell(
-        title="Platform User Manual",
-        subtitle="A workflow guide for using the FinTech learning platform console.",
-        active_nav="manual",
-        content_html=content,
-    )
+
+
+def _platform_manual_content_cn() -> str:
+    return f"""
+    <section class="platform-section" id="overview">
+      <h2>平台概览</h2>
+      <p class="muted">
+        这是一个教学版 FinTech 运营平台，用来观察开户、支付处理、风控复核、
+        账本入账、审计轨迹、操作审批、对账、证据包和可运行性检查如何在一个小系统中串起来。
+      </p>
+      <div class="manual-callout">
+        如果想先看一笔订单从发起到结束的完整路径，可以打开 <a href="#flow-diagram">详细流程图</a>。
+      </div>
+    </section>
+
+    <section class="platform-section" id="capabilities">
+      <h2>平台能力清单</h2>
+      <ul class="manual-list">
+        <li>创建 payment run，演示幂等、KYC/AML 决策、风控决策和账本入账。</li>
+        <li>创建 async payment run，由 worker 后台处理，失败后通过 retry request 和 maker-checker approval 恢复。</li>
+        <li>查看 operations report、ledger reconciliation、settlement reconciliation、evidence package、access audit 和 investigation case。</li>
+      </ul>
+    </section>
+
+    <div class="manual-grid" id="workflows">
+      <section class="platform-section" id="payment-workflow">
+        <h2>支付流程</h2>
+        <ol class="manual-list">
+          <li>通过 <code>POST /platform/payment-runs</code> 创建支付运行。</li>
+          <li>平台依次评估 KYC/AML、创建 payment order、执行 risk decision，完成后写入 ledger posting。</li>
+          <li>在 Console 的 payment 表格打开详情页，查看 platform result、ledger context 和 audit timeline。</li>
+        </ol>
+      </section>
+
+      <section class="platform-section" id="async-workflow">
+        <h2>异步流程</h2>
+        <ol class="manual-list">
+          <li>通过 <code>POST /platform/async-payment-runs</code> 创建 async run。</li>
+          <li>通过 worker endpoint 或 demo 触发后台处理。</li>
+          <li>失败的 async run 会出现在 Console，并可提交 retry approval request。</li>
+        </ol>
+      </section>
+
+      <section class="platform-section" id="approval-workflow">
+        <h2>审批流程</h2>
+        <ol class="manual-list">
+          <li>retry request 会创建 pending operation approval。</li>
+          <li>授权操作人员检查申请原因、async 状态和确认文本。</li>
+          <li>approval 可以流转为 approved、rejected、cancelled 或 expired，详情页展示 lifecycle timeline。</li>
+        </ol>
+      </section>
+
+      <section class="platform-section" id="reconciliation">
+        <h2>对账视角</h2>
+        <p class="muted">
+          Console 会展示 ledger reconciliation findings，用于教学性检查 platform status、payment order status、
+          ledger posting 和 customer audit events 是否互相吻合。它不是生产级清结算控制。
+        </p>
+      </section>
+    </div>
+
+    <section class="platform-section" id="flow-diagram">
+      <h2>详细流程图</h2>
+      <p class="muted">下面用一笔订单说明事件如何从请求进入平台，一直到最终审计、对账和证据输出。</p>
+      {_platform_flow_diagram_cn()}
+    </section>
+
+    <section class="platform-section" id="audit-cases">
+      <h2>审计与工单</h2>
+      <ul class="manual-list">
+        <li>每次 API 和 Console 查看都会写入 access audit event。</li>
+        <li>access anomaly detection 会汇总重复拒绝访问和可疑 API 访问模式。</li>
+        <li>investigation case 可以从 anomaly finding 打开，并按教学版生命周期推进。</li>
+      </ul>
+    </section>
+
+    <section class="platform-section" id="evidence-packages">
+      <h2>证据包</h2>
+      <p class="muted">
+        demo 可以导出教学版 evidence package，把平台报表、对账输出、审批记录、审计记录和 operability 输出组织到一起。
+      </p>
+    </section>
+
+    <section class="platform-section" id="operability">
+      <h2>可运行性</h2>
+      <ul class="manual-list">
+        <li><code>GET /platform/operability/readiness</code> 检查本地 store 是否可打开。</li>
+        <li><code>GET /platform/operability/metrics</code> 返回 payment、async、access、approval 和 case 的教学版指标。</li>
+        <li><code>GET /platform/operability/test-matrix</code> 返回本实验使用的本地验证命令。</li>
+      </ul>
+    </section>
+
+    <section class="platform-section" id="roles-permissions">
+      <h2>角色与权限</h2>
+      <p class="muted">
+        本实验使用基于 actor 名称和可选 <code>x-actor-role</code> header 的教学版 identity model。
+        它用于演示权限校验和 denied access audit，不是企业 IAM、SSO 或法律授权模型。
+      </p>
+    </section>
+
+    <section class="platform-section" id="local-commands">
+      <h2>本地命令</h2>
+      <pre><code>python -m pytest -p no:cacheprovider labs/fintech-platform -q
+python labs/fintech-platform/demo.py
+python -m uvicorn platform_api_app:app --host 127.0.0.1 --port 8000</code></pre>
+    </section>
+
+    <section class="platform-section" id="boundary">
+      <h2>教学边界</h2>
+      <p class="muted">
+        该平台不连接真实支付通道、外部 KYC 供应商、实时市场数据、法律留存系统、生产级清结算或持牌合规流程。
+        它只用于工程学习和作品集展示。
+      </p>
+    </section>
+"""
+
+
+def _platform_flow_diagram_en() -> str:
+    return """
+      <div class="flow-diagram" aria-label="Detailed order event flow">
+        <div class="flow-step"><strong>1. Request intake</strong>Client submits a payment or async payment request with actor, order, customer, amount, and idempotency inputs.</div>
+        <div class="flow-arrow">then</div>
+        <div class="flow-step"><strong>2. API access audit</strong>The platform records who tried to create or view the resource and whether access was granted or denied.</div>
+        <div class="flow-arrow">then</div>
+        <div class="flow-step"><strong>3. Idempotency check</strong>The service compares run id and request fingerprint to replay the same request or reject conflicting input.</div>
+        <div class="flow-arrow">then</div>
+        <div class="flow-step"><strong>4. KYC/AML and risk decisions</strong>The orchestration layer evaluates onboarding context, creates the payment order, and applies risk rules.</div>
+        <div class="flow-arrow">branch</div>
+        <div class="flow-branch">
+          <div class="flow-step"><strong>Approved</strong>Payment succeeds, ledger entries are posted, balances are captured, and customer audit events are appended.</div>
+          <div class="flow-step flow-step-warning"><strong>Review required</strong>The order waits for a human review path before it can complete or fail.</div>
+          <div class="flow-step flow-step-muted"><strong>Blocked or failed</strong>The payment order fails, ledger posting is skipped, and the reason remains visible in audit context.</div>
+        </div>
+        <div class="flow-arrow">then</div>
+        <div class="flow-step"><strong>5. Async retry approval</strong>If an async run fails, retry starts as a pending operation approval. Approval execution can move the run back to accepted.</div>
+        <div class="flow-arrow">then</div>
+        <div class="flow-step"><strong>6. Reconciliation and evidence</strong>Ledger and settlement reconciliation reports inspect consistency. Evidence packages collect failed findings, approvals, denied access, and audit facts.</div>
+        <div class="flow-arrow">finally</div>
+        <div class="flow-step"><strong>7. Operability review</strong>Readiness, metrics, and the test matrix show whether local stores and verification commands are healthy.</div>
+      </div>
+"""
+
+
+def _platform_flow_diagram_cn() -> str:
+    return """
+      <div class="flow-diagram" aria-label="订单端到端事件流程">
+        <div class="flow-step"><strong>1. 请求进入平台</strong>客户端提交 payment 或 async payment request，包含 actor、order、customer、amount 和幂等相关输入。</div>
+        <div class="flow-arrow">然后</div>
+        <div class="flow-step"><strong>2. API 访问审计</strong>平台记录是谁尝试创建或查看资源，以及本次访问是 granted 还是 denied。</div>
+        <div class="flow-arrow">然后</div>
+        <div class="flow-step"><strong>3. 幂等检查</strong>service 使用 run id 和 request fingerprint 判断是重放同一请求，还是拒绝冲突输入。</div>
+        <div class="flow-arrow">然后</div>
+        <div class="flow-step"><strong>4. KYC/AML 与风控决策</strong>orchestration 层评估开户上下文，创建 payment order，并执行 risk rules。</div>
+        <div class="flow-arrow">分支</div>
+        <div class="flow-branch">
+          <div class="flow-step"><strong>通过</strong>支付成功，写入 ledger entries，记录余额快照，并追加 customer audit events。</div>
+          <div class="flow-step flow-step-warning"><strong>需要复核</strong>订单进入人工复核路径，之后才能完成或失败。</div>
+          <div class="flow-step flow-step-muted"><strong>阻断或失败</strong>payment order 失败，不写入 ledger posting，失败原因保留在 audit context 中。</div>
+        </div>
+        <div class="flow-arrow">然后</div>
+        <div class="flow-step"><strong>5. 异步 retry 审批</strong>如果 async run 失败，retry 会先创建 pending operation approval；审批通过后才把 run 放回 accepted。</div>
+        <div class="flow-arrow">然后</div>
+        <div class="flow-step"><strong>6. 对账与证据</strong>ledger 和 settlement reconciliation 检查一致性；evidence package 汇总失败 finding、审批记录、拒绝访问和审计事实。</div>
+        <div class="flow-arrow">最后</div>
+        <div class="flow-step"><strong>7. 可运行性检查</strong>readiness、metrics 和 test matrix 用来观察本地 store 和验证命令是否健康。</div>
+      </div>
+"""
 
 
 def _render_operation_approval_detail_html(
@@ -3333,7 +3749,10 @@ def _render_operation_approval_detail_html(
 <body class="platform-shell">
   {_platform_topbar_html("approvals")}
   <main class="platform-main">
-  {_platform_page_header_html("Operation Approval Detail", "Read-only approval context and lifecycle timeline.")}
+    <div class="platform-workspace">
+      {_platform_side_nav_html("approvals")}
+      <div class="platform-content">
+  {_platform_page_header_html("Operation Approval Detail", "Read-only approval context and lifecycle timeline.", active_nav="approvals")}
   <div class="meta">
     Read-only approval context. Back to <a href="/platform/view">FinTech Platform Console</a>.
   </div>
@@ -3380,6 +3799,8 @@ def _render_operation_approval_detail_html(
         empty_message="No completed platform result is available.",
     )}
   </div>
+      </div>
+    </div>
   </main>
 </body>
 </html>"""
@@ -3404,7 +3825,10 @@ def _render_async_run_detail_html(
 <body class="platform-shell">
   {_platform_topbar_html("async")}
   <main class="platform-main">
-  {_platform_page_header_html("Async Run Detail", "Read-only async request, worker status, and platform result context.")}
+    <div class="platform-workspace">
+      {_platform_side_nav_html("async")}
+      <div class="platform-content">
+  {_platform_page_header_html("Async Run Detail", "Read-only async request, worker status, and platform result context.", active_nav="async")}
   <div class="meta">
     Read-only async run context. Back to <a href="/platform/view">FinTech Platform Console</a>.
   </div>
@@ -3442,6 +3866,8 @@ def _render_async_run_detail_html(
         empty_message="No completed platform result is available.",
     )}
   </div>
+      </div>
+    </div>
   </main>
 </body>
 </html>"""
@@ -3466,7 +3892,10 @@ def _render_payment_run_detail_html(
 <body class="platform-shell">
   {_platform_topbar_html("payments")}
   <main class="platform-main">
-  {_platform_page_header_html("Payment Run Detail", "Read-only platform result, ledger context, and audit timeline.")}
+    <div class="platform-workspace">
+      {_platform_side_nav_html("payments")}
+      <div class="platform-content">
+  {_platform_page_header_html("Payment Run Detail", "Read-only platform result, ledger context, and audit timeline.", active_nav="payments")}
   <div class="meta">
     Read-only platform result context. Back to <a href="/platform/view">FinTech Platform Console</a>.
   </div>
@@ -3521,6 +3950,8 @@ def _render_payment_run_detail_html(
         empty_message="No customer audit events are available.",
     )}
   </div>
+      </div>
+    </div>
   </main>
 </body>
 </html>"""
@@ -3916,9 +4347,13 @@ def _render_platform_console_html(
 <body class="platform-shell">
   {_platform_topbar_html("dashboard")}
   <main class="platform-main">
+    <div class="platform-workspace">
+      {_platform_side_nav_html("dashboard")}
+      <div class="platform-content" id="dashboard">
   {_platform_page_header_html(
         "FinTech Platform Console",
         "Minimal operations workbench for the learning platform. API docs remain available at /docs.",
+        active_nav="dashboard",
     )}
   {_retry_feedback_html(retry_status=retry_status, retry_error=retry_error)}
   {_approval_feedback_html(
@@ -4148,6 +4583,8 @@ def _render_platform_console_html(
         empty_message="No API access events have been recorded yet.",
     )}
   </div>
+      </div>
+    </div>
   </main>
 </body>
 </html>
