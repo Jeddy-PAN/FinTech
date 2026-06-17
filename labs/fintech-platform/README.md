@@ -246,6 +246,7 @@ investigation_case
 44. 已完成阶段 40 第一版：形成最终验收与学习作品集总结，明确当前能力、验收命令和仍不覆盖的生产级边界。
 45. 已完成阶段 40 后的前端体验改造第一版：`FinTech Platform Console` 新增统一顶部导航、页面区块锚点和响应式工作台样式；新增 `GET /platform/manual` 用户手册页，说明平台功能、主要流程、权限边界、证据包、operability 和教学边界。
 46. 已完成阶段 40 后的前端体验改造第二版：顶部导航收敛为 `Console` / `Manual` 两个主入口，左侧目录负责 Console 和 Manual 内部章节跳转；Manual 支持 `?lang=en` / `?lang=cn` 双语切换，并新增详细事件流程图，用一笔订单说明从请求进入、幂等、KYC/AML、风控、入账、retry approval、对账、证据包到 operability review 的端到端路径。
+47. 已新增 Playwright 小型浏览器回归：`test_platform_ui_playwright.py` 会自动启动临时 FastAPI 服务、使用临时 SQLite 数据库，并通过本机 Edge/Chrome 验证 Console/Manual 导航、Manual CN/EN 切换，以及 failed async run 从网页提交 retry approval 并 approve 后回到 accepted 的流程。
 
 ## 运行示例
 
@@ -305,6 +306,12 @@ demo 现在也会输出 `Platform operability snapshot`，用于观察本地 rea
 
 运行 API 服务后，`GET /platform/view` 是运营控制台入口，`GET /platform/manual` 是面向使用者的手册页。顶部导航只负责在 `Console` 和 `Manual` 两个主入口之间切换；左侧目录负责页面内部章节跳转。Manual 支持 `GET /platform/manual?lang=en` 和 `GET /platform/manual?lang=cn`，并在 `#flow-diagram` 提供详细事件流程图。手册页只解释本教学平台的功能和流程，不代表生产级支付、清结算、监管合规、法律留存或企业 IAM。
 
+如果要执行小型浏览器回归，需要先安装 `pytest-playwright`。当前测试会优先使用本机 Edge/Chrome，不强制依赖 Playwright 自带 Chromium：
+
+```powershell
+& 'C:\App\Anaconda\python.exe' -m pytest -p no:cacheprovider .\labs\fintech-platform\test_platform_ui_playwright.py -q
+```
+
 demo 还会写入并重新读取：
 
 ```text
@@ -325,13 +332,16 @@ labs/fintech-platform/.test-data/demo_platform_api_investigation_cases.db
 
 ## 当前状态
 
-这个目录已经包含第一版综合平台设计、最小 orchestration、demo、综合报表导出、SQLite 持久化、历史运行报表、risk review 后续处理、教学版一致性检查、平台报表访问控制与访问审计、平台访问异常检测、平台访问异常调查工单、异步任务、运营控制台、retry 审批边界、运行报告与对账视角、operation approval record、operation approval report、console report views、ledger reconciliation report、operation approval state flow、operation approval HTTP endpoints、create operation approval HTTP endpoint、retry approval before execution、operation approval console view、operation approval pagination and sorting、operation approval detail view、operation approval lifecycle、console approval actions、approval lifecycle timeline、async run detail view、platform result detail view、operation approval pagination metadata、console cancel / expire approval actions、console filter controls、payment detail reconciliation context、剩余章节路线图、console workflow controls、identity / permission / form security boundary、consistency / concurrency / recovery boundary、external settlement reconciliation、evidence package、operability readiness / metrics / test matrix、前端工作台导航、双语平台用户手册页和端到端事件流程图，以及测试。阶段 8 以来的目标仍然是把已有实验组合成一个清晰的学习平台，而不是立即扩成生产级系统。
+这个目录已经包含第一版综合平台设计、最小 orchestration、demo、综合报表导出、SQLite 持久化、历史运行报表、risk review 后续处理、教学版一致性检查、平台报表访问控制与访问审计、平台访问异常检测、平台访问异常调查工单、异步任务、运营控制台、retry 审批边界、运行报告与对账视角、operation approval record、operation approval report、console report views、ledger reconciliation report、operation approval state flow、operation approval HTTP endpoints、create operation approval HTTP endpoint、retry approval before execution、operation approval console view、operation approval pagination and sorting、operation approval detail view、operation approval lifecycle、console approval actions、approval lifecycle timeline、async run detail view、platform result detail view、operation approval pagination metadata、console cancel / expire approval actions、console filter controls、payment detail reconciliation context、剩余章节路线图、console workflow controls、identity / permission / form security boundary、consistency / concurrency / recovery boundary、external settlement reconciliation、evidence package、operability readiness / metrics / test matrix、前端工作台导航、双语平台用户手册页和端到端事件流程图，以及测试。阶段 40 后已开始做小规模文件分类整理，Manual CN/EN 内容和事件流程图已从 `platform_api_app.py` 拆到 `platform_api_manual_views.py`，Console 的纯 HTML helper、筛选表单、提示和表格渲染已拆到 `platform_api_console_views.py`，payment / async / operation approval 详情页渲染已拆到 `platform_api_detail_views.py`，详情页 API 测试已从 `test_platform_api_app.py` 拆到 `test_platform_api_detail_views.py`，Console 只读渲染和筛选测试已拆到 `test_platform_api_console.py`，Console 表单动作测试已拆到 `test_platform_api_console_actions.py`，API / Console / Detail view 测试共用 helper 已抽到 `test_platform_api_helpers.py`，operation approval JSON endpoint 测试已拆到 `test_platform_api_operation_approvals.py`，async / retry JSON endpoint 测试已拆到 `test_platform_api_async_runs.py`，payment run 基础 API 测试已拆到 `test_platform_api_payment_runs.py`。阶段 8 以来的目标仍然是把已有实验组合成一个清晰的学习平台，而不是立即扩成生产级系统；后续建议保留 `test_platform_api_app.py` 作为 smoke 入口，不再继续拆得过碎。
 
 阶段 9 已经开始在这个目录上做 API 服务化的第一步：
 
 ```text
 platform_api_service.py
 platform_api_app.py
+platform_api_console_views.py
+platform_api_detail_views.py
+platform_api_manual_views.py
 ```
 
 当前先实现纯 Python service 边界，支持创建 payment run、查询 payment run、按状态或客户筛选 runs，并用 `run_id` 加 request fingerprint 做教学版幂等校验。FastAPI 路由层已经接入，提供 `GET /health`、`POST /platform/payment-runs`、`GET /platform/payment-runs/{run_id}` 和带筛选参数的 `GET /platform/payment-runs`。

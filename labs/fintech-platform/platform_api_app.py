@@ -32,7 +32,6 @@ from platform_api_service import (
 )
 from platform_async_service import (  # noqa: E402
     ASYNC_RUN_FAILED,
-    ASYNC_RUN_STATUSES,
     PlatformAsyncRun,
     PlatformAsyncRunStoreError,
     PlatformAsyncWorker,
@@ -45,6 +44,22 @@ from platform_api_access_anomaly_report import (  # noqa: E402
 from platform_api_investigation_cases import (  # noqa: E402
     open_platform_api_access_investigation_cases,
 )
+from platform_api_console_views import (  # noqa: E402
+    approval_feedback_html as _approval_feedback_html,
+    console_filter_feedback_html as _console_filter_feedback_html,
+    console_filter_form_html,
+    html_table as _html_table,
+    metric_html as _metric_html,
+    normalize_console_filters,
+    retry_feedback_html as _retry_feedback_html,
+    table as _table,
+)
+from platform_api_detail_views import (  # noqa: E402
+    render_async_run_detail_html,
+    render_operation_approval_detail_html,
+    render_payment_run_detail_html,
+)
+from platform_api_manual_views import render_platform_manual_html  # noqa: E402
 from platform_operation_approval import (  # noqa: E402
     OPERATION_APPROVAL_APPROVED,
     OPERATION_APPROVAL_CANCELLED,
@@ -53,7 +68,6 @@ from platform_operation_approval import (  # noqa: E402
     OPERATION_APPROVAL_REJECTED,
     OPERATION_APPROVAL_SORT_FIELDS,
     OPERATION_APPROVAL_SORT_ORDERS,
-    OPERATION_APPROVAL_STATUSES,
     OperationApprovalError,
     OperationApprovalRecord,
     SQLiteOperationApprovalStore,
@@ -389,7 +403,12 @@ def create_app(
             outcome="granted",
             reason="view manual",
         )
-        return HTMLResponse(content=_render_platform_manual_html(lang=lang))
+        return HTMLResponse(
+            content=render_platform_manual_html(
+                lang=lang,
+                page_shell=_platform_page_shell,
+            )
+        )
 
     @app.get("/health")
     def health(x_actor_id: str | None = Header(default=None)) -> dict:
@@ -615,7 +634,26 @@ def create_app(
             outcome="granted",
             reason="view detail",
         )
-        return HTMLResponse(_render_payment_run_detail_html(app, response))
+        async_run = _async_run_or_none(app, response["run_id"])
+        return HTMLResponse(
+            render_payment_run_detail_html(
+                platform_result=response,
+                async_run=async_run,
+                reconciliation_rows=_payment_run_reconciliation_rows(
+                    app,
+                    response["run_id"],
+                ),
+                chrome_css=_platform_chrome_css(),
+                content_css=_platform_content_css(),
+                topbar_html=_platform_topbar_html("payments"),
+                side_nav_html=_platform_side_nav_html("payments"),
+                page_header_html=_platform_page_header_html(
+                    "Payment Run Detail",
+                    "Read-only platform result, ledger context, and audit timeline.",
+                    active_nav="payments",
+                ),
+            )
+        )
 
     @app.get("/platform/payment-runs")
     def list_payment_runs(
@@ -801,7 +839,21 @@ def create_app(
             outcome="granted",
             reason="view detail",
         )
-        return HTMLResponse(_render_async_run_detail_html(app, run))
+        return HTMLResponse(
+            render_async_run_detail_html(
+                run=run,
+                platform_result=_async_platform_result_or_none(app, run),
+                chrome_css=_platform_chrome_css(),
+                content_css=_platform_content_css(),
+                topbar_html=_platform_topbar_html("async"),
+                side_nav_html=_platform_side_nav_html("async"),
+                page_header_html=_platform_page_header_html(
+                    "Async Run Detail",
+                    "Read-only async request, worker status, and platform result context.",
+                    active_nav="async",
+                ),
+            )
+        )
 
     @app.post(
         "/platform/async-payment-runs/{run_id}/retry",
@@ -1198,7 +1250,28 @@ def create_app(
             outcome="granted",
             reason="view detail",
         )
-        return HTMLResponse(_render_operation_approval_detail_html(app, record))
+        async_run = _async_run_or_none(app, record.operation_id)
+        platform_result = None
+        if async_run is not None and async_run.status == "completed":
+            platform_result = _platform_result_or_none(app, async_run.run_id)
+        return HTMLResponse(
+            render_operation_approval_detail_html(
+                record=record,
+                async_run=async_run,
+                platform_result=platform_result,
+                access_events=_access_events(app),
+                retry_permission=RETRY_PLATFORM_ASYNC_PAYMENT_RUN,
+                chrome_css=_platform_chrome_css(),
+                content_css=_platform_content_css(),
+                topbar_html=_platform_topbar_html("approvals"),
+                side_nav_html=_platform_side_nav_html("approvals"),
+                page_header_html=_platform_page_header_html(
+                    "Operation Approval Detail",
+                    "Read-only approval context and lifecycle timeline.",
+                    active_nav="approvals",
+                ),
+            )
+        )
 
     @app.patch("/platform/operation-approvals/{approval_id}/approve")
     def approve_operation_approval(
@@ -2582,125 +2655,6 @@ def _operation_approval_record_response(record: OperationApprovalRecord) -> dict
     }
 
 
-def _operation_approval_detail_rows(
-    record: OperationApprovalRecord,
-) -> list[tuple[object, ...]]:
-    decided_at = "" if record.decided_at is None else record.decided_at.isoformat()
-    return [
-        ("approval_id", record.approval_id),
-        ("operation_type", record.operation_type),
-        ("operation_id", record.operation_id),
-        ("target", record.target),
-        ("requested_by", record.requested_by),
-        ("request_reason", record.request_reason),
-        ("approved_by", record.approved_by or ""),
-        ("approval_reason", record.approval_reason or ""),
-        ("status", record.status),
-        ("decision_reason", record.decision_reason),
-        ("requested_at", record.requested_at.isoformat()),
-        ("decided_at", decided_at),
-    ]
-
-
-def _operation_approval_async_run_detail_rows_html(
-    run: PlatformAsyncRun | None,
-) -> list[tuple[str, ...]]:
-    if run is None:
-        return []
-    return [
-        ("run_id", _async_run_detail_link(run.run_id)),
-        ("status", html.escape(run.status)),
-        ("attempt_count", html.escape(str(run.attempt_count))),
-        ("max_attempts", html.escape(str(run.max_attempts))),
-        ("last_error", html.escape(run.last_error or "")),
-        ("created_at", html.escape(run.created_at.isoformat())),
-        ("updated_at", html.escape(run.updated_at.isoformat())),
-        (
-            "started_at",
-            "" if run.started_at is None else html.escape(run.started_at.isoformat()),
-        ),
-        (
-            "completed_at",
-            ""
-            if run.completed_at is None
-            else html.escape(run.completed_at.isoformat()),
-        ),
-    ]
-
-
-def _async_run_detail_rows_html(run: PlatformAsyncRun) -> list[tuple[str, ...]]:
-    return _operation_approval_async_run_detail_rows_html(run)
-
-
-def _request_payload_rows_html(run: PlatformAsyncRun) -> list[tuple[str, ...]]:
-    return [
-        (html.escape(str(field)), html.escape(str(value)))
-        for field, value in sorted(run.request_payload.items())
-    ]
-
-
-def _platform_result_detail_rows_html(
-    platform_result: dict | None,
-    *,
-    link_run_id: bool,
-    summary_only: bool,
-) -> list[tuple[str, ...]]:
-    if platform_result is None:
-        return []
-    fields = [
-        "run_id",
-        "customer_id",
-        "status",
-        "payment_order_id",
-        "payment_order_status",
-        "risk_status",
-        "ledger_transaction_id",
-        "audit_event_count",
-        "created_at",
-    ]
-    if not summary_only:
-        fields = [
-            "run_id",
-            "customer_id",
-            "status",
-            "kyc_status",
-            "payment_order_id",
-            "payment_order_status",
-            "risk_status",
-            "risk_review_case_id",
-            "ledger_transaction_id",
-            "platform_bank_balance",
-            "user_wallet_balance",
-            "audit_event_count",
-            "created_at",
-        ]
-    rows: list[tuple[str, ...]] = []
-    for field in fields:
-        value = platform_result.get(field) or ""
-        if field == "run_id" and link_run_id and value:
-            rows.append((field, _payment_run_detail_link(str(value))))
-        else:
-            rows.append((field, html.escape(str(value))))
-    return rows
-
-
-def _platform_result_audit_event_rows(
-    platform_result: dict,
-) -> list[tuple[object, ...]]:
-    return [
-        (
-            event["occurred_at"],
-            event["source_system"],
-            event["event_type"],
-            event["aggregate_type"],
-            event["aggregate_id"],
-            event["actor"],
-            event["reason"],
-        )
-        for event in platform_result.get("audit_events", [])
-    ]
-
-
 def _payment_run_reconciliation_rows(
     app: FastAPI,
     run_id: str,
@@ -2717,67 +2671,6 @@ def _payment_run_reconciliation_rows(
         )
         for finding in evaluate_platform_ledger_reconciliation((snapshot,))
     ]
-
-
-def _operation_approval_lifecycle_timeline_rows(
-    record: OperationApprovalRecord,
-    access_events: tuple[AuditAccessEvent, ...],
-) -> list[tuple[object, ...]]:
-    rows: list[tuple[datetime, str, str, str, str]] = [
-        (
-            record.requested_at,
-            "approval_requested",
-            record.requested_by,
-            OPERATION_APPROVAL_PENDING,
-            record.request_reason,
-        )
-    ]
-    if record.decided_at is not None:
-        rows.append(
-            (
-                record.decided_at,
-                "approval_decided",
-                record.approved_by or "",
-                record.status,
-                record.approval_reason or record.decision_reason,
-            )
-        )
-    for event in _retry_execution_events_for_approval(record, access_events):
-        rows.append(
-            (
-                event.occurred_at,
-                "retry_execution",
-                event.actor,
-                event.outcome,
-                event.reason,
-            )
-        )
-    return [
-        (
-            occurred_at.isoformat(),
-            event_type,
-            actor,
-            outcome,
-            reason,
-        )
-        for occurred_at, event_type, actor, outcome, reason in sorted(
-            rows,
-            key=lambda row: (row[0], row[1], row[2]),
-        )
-    ]
-
-
-def _retry_execution_events_for_approval(
-    record: OperationApprovalRecord,
-    access_events: tuple[AuditAccessEvent, ...],
-) -> tuple[AuditAccessEvent, ...]:
-    approval_marker = f"approval_id={record.approval_id}"
-    return tuple(
-        event
-        for event in access_events
-        if event.permission == RETRY_PLATFORM_ASYNC_PAYMENT_RUN
-        and approval_marker in event.reason
-    )
 
 
 def _platform_page_shell(
@@ -3405,632 +3298,6 @@ def _platform_content_css() -> str:
     """
 
 
-def _render_platform_manual_html(*, lang: str | None = None) -> str:
-    normalized_lang = "cn" if _normalize_manual_lang(lang) == "cn" else "en"
-    if normalized_lang == "cn":
-        title = "平台用户手册"
-        subtitle = "面向使用者的 FinTech 学习平台功能、流程和操作边界说明。"
-        content = _platform_manual_content_cn()
-    else:
-        title = "Platform User Manual"
-        subtitle = "A workflow guide for using the FinTech learning platform console."
-        content = _platform_manual_content_en()
-    return _platform_page_shell(
-        title=title,
-        subtitle=subtitle,
-        active_nav="manual",
-        content_html=content,
-        lang=normalized_lang,
-    )
-
-
-def _normalize_manual_lang(lang: str | None) -> str:
-    if lang is None:
-        return "en"
-    normalized = lang.strip().lower()
-    return "cn" if normalized in {"cn", "zh", "zh-cn"} else "en"
-
-
-def _platform_manual_content_en() -> str:
-    return f"""
-    <section class="platform-section" id="overview">
-      <h2>What This Platform Does</h2>
-      <p class="muted">
-        This is an educational FinTech operations platform. It shows how onboarding,
-        payment processing, risk review, ledger posting, audit trails, approvals,
-        reconciliation, evidence exports, and operability checks connect in one
-        small system.
-      </p>
-      <div class="manual-callout">
-        Need the end-to-end picture first? Open the <a href="#flow-diagram">Detailed Event Flow</a>.
-      </div>
-    </section>
-
-    <section class="platform-section" id="capabilities">
-      <h2>Platform Capabilities</h2>
-      <ul class="manual-list">
-        <li>Payment run creation, idempotency, KYC/AML decisioning, risk decisioning, and ledger posting.</li>
-        <li>Async payment runs, worker processing, failed-run retry requests, and maker-checker approvals.</li>
-        <li>Operations reports, ledger reconciliation, settlement reconciliation, evidence packages, audit events, and investigation cases.</li>
-      </ul>
-    </section>
-
-    <div class="manual-grid" id="workflows">
-      <section class="platform-section" id="payment-workflow">
-        <h2>Payment Workflow</h2>
-        <ol class="manual-list">
-          <li>Create a payment run through <code>POST /platform/payment-runs</code>.</li>
-          <li>The platform evaluates KYC/AML context, creates a payment order, runs risk checks, and posts ledger entries when the run is completed.</li>
-          <li>Use the console payment table to open a run detail page and inspect the platform result, ledger context, and audit timeline.</li>
-        </ol>
-      </section>
-
-      <section class="platform-section" id="async-workflow">
-        <h2>Async Workflow</h2>
-        <ol class="manual-list">
-          <li>Create an async run through <code>POST /platform/async-payment-runs</code>.</li>
-          <li>Process queued work through the worker endpoint or demo flow.</li>
-          <li>Failed async runs appear in the console with a retry approval request form.</li>
-        </ol>
-      </section>
-
-      <section class="platform-section" id="approval-workflow">
-        <h2>Approval Workflow</h2>
-        <ol class="manual-list">
-          <li>A retry request creates a pending operation approval.</li>
-          <li>An authorized operator reviews the request, async status, and reason.</li>
-          <li>The approval can be approved, rejected, cancelled, or expired. The detail page shows the lifecycle timeline.</li>
-        </ol>
-      </section>
-
-      <section class="platform-section" id="reconciliation">
-        <h2>Reconciliation</h2>
-        <p class="muted">
-          The console includes ledger reconciliation findings for teaching consistency
-          checks between platform status, payment order status, ledger posting, and
-          customer audit events. These checks are not a production settlement control.
-        </p>
-      </section>
-    </div>
-
-    <section class="platform-section" id="flow-diagram">
-      <h2>Detailed Event Flow</h2>
-      <p class="muted">A single order can be followed from request intake to final evidence and operability review.</p>
-      {_platform_flow_diagram_en()}
-    </section>
-
-    <section class="platform-section" id="audit-cases">
-      <h2>Audit And Cases</h2>
-      <ul class="manual-list">
-        <li>Every API and console view writes an access audit event.</li>
-        <li>Access anomaly detection summarizes repeated denied access and suspicious platform API access patterns.</li>
-        <li>Investigation cases can be opened from anomaly findings and moved through a simple investigation lifecycle.</li>
-      </ul>
-    </section>
-
-    <section class="platform-section" id="evidence-packages">
-      <h2>Evidence Packages</h2>
-      <p class="muted">
-        The platform demo can export educational evidence package files that collect
-        platform reports, reconciliation outputs, approval records, audit records,
-        and operability outputs for portfolio review.
-      </p>
-    </section>
-
-    <section class="platform-section" id="operability">
-      <h2>Operability</h2>
-      <ul class="manual-list">
-        <li><code>GET /platform/operability/readiness</code> checks whether the local stores are reachable.</li>
-        <li><code>GET /platform/operability/metrics</code> returns teaching metrics for payment runs, async runs, access events, approvals, and cases.</li>
-        <li><code>GET /platform/operability/test-matrix</code> lists the local verification commands used by this lab.</li>
-      </ul>
-    </section>
-
-    <section class="platform-section" id="roles-permissions">
-      <h2>Roles And Permissions</h2>
-      <p class="muted">
-        The lab uses a teaching identity model based on actor names and optional
-        <code>x-actor-role</code> headers. It demonstrates permission checks and
-        denied-access audit records; it is not enterprise IAM, SSO, or a legal
-        authorization model.
-      </p>
-    </section>
-
-    <section class="platform-section" id="local-commands">
-      <h2>Local Commands</h2>
-      <pre><code>python -m pytest -p no:cacheprovider labs/fintech-platform -q
-python labs/fintech-platform/demo.py
-python -m uvicorn platform_api_app:app --host 127.0.0.1 --port 8000</code></pre>
-    </section>
-
-    <section class="platform-section" id="boundary">
-      <h2>Educational Boundary</h2>
-      <p class="muted">
-        This platform does not connect to real payment rails, external KYC vendors,
-        live market data, legal retention systems, production settlement, or licensed
-        compliance workflows. It is designed for engineering learning and portfolio
-        demonstration only.
-      </p>
-    </section>
-"""
-
-
-def _platform_manual_content_cn() -> str:
-    return f"""
-    <section class="platform-section" id="overview">
-      <h2>平台概览</h2>
-      <p class="muted">
-        这是一个教学版 FinTech 运营平台，用来观察开户、支付处理、风控复核、
-        账本入账、审计轨迹、操作审批、对账、证据包和可运行性检查如何在一个小系统中串起来。
-      </p>
-      <div class="manual-callout">
-        如果想先看一笔订单从发起到结束的完整路径，可以打开 <a href="#flow-diagram">详细流程图</a>。
-      </div>
-    </section>
-
-    <section class="platform-section" id="capabilities">
-      <h2>平台能力清单</h2>
-      <ul class="manual-list">
-        <li>创建 payment run，演示幂等、KYC/AML 决策、风控决策和账本入账。</li>
-        <li>创建 async payment run，由 worker 后台处理，失败后通过 retry request 和 maker-checker approval 恢复。</li>
-        <li>查看 operations report、ledger reconciliation、settlement reconciliation、evidence package、access audit 和 investigation case。</li>
-      </ul>
-    </section>
-
-    <div class="manual-grid" id="workflows">
-      <section class="platform-section" id="payment-workflow">
-        <h2>支付流程</h2>
-        <ol class="manual-list">
-          <li>通过 <code>POST /platform/payment-runs</code> 创建支付运行。</li>
-          <li>平台依次评估 KYC/AML、创建 payment order、执行 risk decision，完成后写入 ledger posting。</li>
-          <li>在 Console 的 payment 表格打开详情页，查看 platform result、ledger context 和 audit timeline。</li>
-        </ol>
-      </section>
-
-      <section class="platform-section" id="async-workflow">
-        <h2>异步流程</h2>
-        <ol class="manual-list">
-          <li>通过 <code>POST /platform/async-payment-runs</code> 创建 async run。</li>
-          <li>通过 worker endpoint 或 demo 触发后台处理。</li>
-          <li>失败的 async run 会出现在 Console，并可提交 retry approval request。</li>
-        </ol>
-      </section>
-
-      <section class="platform-section" id="approval-workflow">
-        <h2>审批流程</h2>
-        <ol class="manual-list">
-          <li>retry request 会创建 pending operation approval。</li>
-          <li>授权操作人员检查申请原因、async 状态和确认文本。</li>
-          <li>approval 可以流转为 approved、rejected、cancelled 或 expired，详情页展示 lifecycle timeline。</li>
-        </ol>
-      </section>
-
-      <section class="platform-section" id="reconciliation">
-        <h2>对账视角</h2>
-        <p class="muted">
-          Console 会展示 ledger reconciliation findings，用于教学性检查 platform status、payment order status、
-          ledger posting 和 customer audit events 是否互相吻合。它不是生产级清结算控制。
-        </p>
-      </section>
-    </div>
-
-    <section class="platform-section" id="flow-diagram">
-      <h2>详细流程图</h2>
-      <p class="muted">下面用一笔订单说明事件如何从请求进入平台，一直到最终审计、对账和证据输出。</p>
-      {_platform_flow_diagram_cn()}
-    </section>
-
-    <section class="platform-section" id="audit-cases">
-      <h2>审计与工单</h2>
-      <ul class="manual-list">
-        <li>每次 API 和 Console 查看都会写入 access audit event。</li>
-        <li>access anomaly detection 会汇总重复拒绝访问和可疑 API 访问模式。</li>
-        <li>investigation case 可以从 anomaly finding 打开，并按教学版生命周期推进。</li>
-      </ul>
-    </section>
-
-    <section class="platform-section" id="evidence-packages">
-      <h2>证据包</h2>
-      <p class="muted">
-        demo 可以导出教学版 evidence package，把平台报表、对账输出、审批记录、审计记录和 operability 输出组织到一起。
-      </p>
-    </section>
-
-    <section class="platform-section" id="operability">
-      <h2>可运行性</h2>
-      <ul class="manual-list">
-        <li><code>GET /platform/operability/readiness</code> 检查本地 store 是否可打开。</li>
-        <li><code>GET /platform/operability/metrics</code> 返回 payment、async、access、approval 和 case 的教学版指标。</li>
-        <li><code>GET /platform/operability/test-matrix</code> 返回本实验使用的本地验证命令。</li>
-      </ul>
-    </section>
-
-    <section class="platform-section" id="roles-permissions">
-      <h2>角色与权限</h2>
-      <p class="muted">
-        本实验使用基于 actor 名称和可选 <code>x-actor-role</code> header 的教学版 identity model。
-        它用于演示权限校验和 denied access audit，不是企业 IAM、SSO 或法律授权模型。
-      </p>
-    </section>
-
-    <section class="platform-section" id="local-commands">
-      <h2>本地命令</h2>
-      <pre><code>python -m pytest -p no:cacheprovider labs/fintech-platform -q
-python labs/fintech-platform/demo.py
-python -m uvicorn platform_api_app:app --host 127.0.0.1 --port 8000</code></pre>
-    </section>
-
-    <section class="platform-section" id="boundary">
-      <h2>教学边界</h2>
-      <p class="muted">
-        该平台不连接真实支付通道、外部 KYC 供应商、实时市场数据、法律留存系统、生产级清结算或持牌合规流程。
-        它只用于工程学习和作品集展示。
-      </p>
-    </section>
-"""
-
-
-def _platform_flow_diagram_en() -> str:
-    return """
-      <div class="flow-diagram" aria-label="Detailed order event flow">
-        <div class="flow-step"><strong>1. Request intake</strong>Client submits a payment or async payment request with actor, order, customer, amount, and idempotency inputs.</div>
-        <div class="flow-arrow">then</div>
-        <div class="flow-step"><strong>2. API access audit</strong>The platform records who tried to create or view the resource and whether access was granted or denied.</div>
-        <div class="flow-arrow">then</div>
-        <div class="flow-step"><strong>3. Idempotency check</strong>The service compares run id and request fingerprint to replay the same request or reject conflicting input.</div>
-        <div class="flow-arrow">then</div>
-        <div class="flow-step"><strong>4. KYC/AML and risk decisions</strong>The orchestration layer evaluates onboarding context, creates the payment order, and applies risk rules.</div>
-        <div class="flow-arrow">branch</div>
-        <div class="flow-branch">
-          <div class="flow-step"><strong>Approved</strong>Payment succeeds, ledger entries are posted, balances are captured, and customer audit events are appended.</div>
-          <div class="flow-step flow-step-warning"><strong>Review required</strong>The order waits for a human review path before it can complete or fail.</div>
-          <div class="flow-step flow-step-muted"><strong>Blocked or failed</strong>The payment order fails, ledger posting is skipped, and the reason remains visible in audit context.</div>
-        </div>
-        <div class="flow-arrow">then</div>
-        <div class="flow-step"><strong>5. Async retry approval</strong>If an async run fails, retry starts as a pending operation approval. Approval execution can move the run back to accepted.</div>
-        <div class="flow-arrow">then</div>
-        <div class="flow-step"><strong>6. Reconciliation and evidence</strong>Ledger and settlement reconciliation reports inspect consistency. Evidence packages collect failed findings, approvals, denied access, and audit facts.</div>
-        <div class="flow-arrow">finally</div>
-        <div class="flow-step"><strong>7. Operability review</strong>Readiness, metrics, and the test matrix show whether local stores and verification commands are healthy.</div>
-      </div>
-"""
-
-
-def _platform_flow_diagram_cn() -> str:
-    return """
-      <div class="flow-diagram" aria-label="订单端到端事件流程">
-        <div class="flow-step"><strong>1. 请求进入平台</strong>客户端提交 payment 或 async payment request，包含 actor、order、customer、amount 和幂等相关输入。</div>
-        <div class="flow-arrow">然后</div>
-        <div class="flow-step"><strong>2. API 访问审计</strong>平台记录是谁尝试创建或查看资源，以及本次访问是 granted 还是 denied。</div>
-        <div class="flow-arrow">然后</div>
-        <div class="flow-step"><strong>3. 幂等检查</strong>service 使用 run id 和 request fingerprint 判断是重放同一请求，还是拒绝冲突输入。</div>
-        <div class="flow-arrow">然后</div>
-        <div class="flow-step"><strong>4. KYC/AML 与风控决策</strong>orchestration 层评估开户上下文，创建 payment order，并执行 risk rules。</div>
-        <div class="flow-arrow">分支</div>
-        <div class="flow-branch">
-          <div class="flow-step"><strong>通过</strong>支付成功，写入 ledger entries，记录余额快照，并追加 customer audit events。</div>
-          <div class="flow-step flow-step-warning"><strong>需要复核</strong>订单进入人工复核路径，之后才能完成或失败。</div>
-          <div class="flow-step flow-step-muted"><strong>阻断或失败</strong>payment order 失败，不写入 ledger posting，失败原因保留在 audit context 中。</div>
-        </div>
-        <div class="flow-arrow">然后</div>
-        <div class="flow-step"><strong>5. 异步 retry 审批</strong>如果 async run 失败，retry 会先创建 pending operation approval；审批通过后才把 run 放回 accepted。</div>
-        <div class="flow-arrow">然后</div>
-        <div class="flow-step"><strong>6. 对账与证据</strong>ledger 和 settlement reconciliation 检查一致性；evidence package 汇总失败 finding、审批记录、拒绝访问和审计事实。</div>
-        <div class="flow-arrow">最后</div>
-        <div class="flow-step"><strong>7. 可运行性检查</strong>readiness、metrics 和 test matrix 用来观察本地 store 和验证命令是否健康。</div>
-      </div>
-"""
-
-
-def _render_operation_approval_detail_html(
-    app: FastAPI,
-    record: OperationApprovalRecord,
-) -> str:
-    async_run = _async_run_or_none(app, record.operation_id)
-    platform_result = None
-    if async_run is not None and async_run.status == "completed":
-        platform_result = _platform_result_or_none(app, async_run.run_id)
-    lifecycle_rows = _operation_approval_lifecycle_timeline_rows(
-        record,
-        _access_events(app),
-    )
-
-    return f"""<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Operation Approval Detail</title>
-  <style>
-    {_platform_chrome_css()}
-    {_platform_content_css()}
-  </style>
-</head>
-<body class="platform-shell">
-  {_platform_topbar_html("approvals")}
-  <main class="platform-main">
-    <div class="platform-workspace">
-      {_platform_side_nav_html("approvals")}
-      <div class="platform-content">
-  {_platform_page_header_html("Operation Approval Detail", "Read-only approval context and lifecycle timeline.", active_nav="approvals")}
-  <div class="meta">
-    Read-only approval context. Back to <a href="/platform/view">FinTech Platform Console</a>.
-  </div>
-  <div class="page-actions">
-    <a href="/platform/view">Back to Console</a>
-  </div>
-
-  <div class="section">
-    <h2>Approval Record</h2>
-    {_table(
-        ["field", "value"],
-        _operation_approval_detail_rows(record),
-        empty_message="No approval record is available.",
-    )}
-  </div>
-
-  <div class="section">
-    <h2>Lifecycle Timeline</h2>
-    {_table(
-        ["occurred_at", "event_type", "actor", "outcome", "reason"],
-        lifecycle_rows,
-        empty_message="No lifecycle events are available.",
-    )}
-  </div>
-
-  <div class="section">
-    <h2>Associated Async Run</h2>
-    {_html_table(
-        ["field", "value"],
-        _operation_approval_async_run_detail_rows_html(async_run),
-        empty_message="No associated async run was found.",
-    )}
-  </div>
-
-  <div class="section">
-    <h2>Platform Result Summary</h2>
-    {_html_table(
-        ["field", "value"],
-        _platform_result_detail_rows_html(
-            platform_result,
-            link_run_id=True,
-            summary_only=True,
-        ),
-        empty_message="No completed platform result is available.",
-    )}
-  </div>
-      </div>
-    </div>
-  </main>
-</body>
-</html>"""
-
-
-def _render_async_run_detail_html(
-    app: FastAPI,
-    run: PlatformAsyncRun,
-) -> str:
-    platform_result = _async_platform_result_or_none(app, run)
-    return f"""<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Async Run Detail</title>
-  <style>
-    {_platform_chrome_css()}
-    {_platform_content_css()}
-  </style>
-</head>
-<body class="platform-shell">
-  {_platform_topbar_html("async")}
-  <main class="platform-main">
-    <div class="platform-workspace">
-      {_platform_side_nav_html("async")}
-      <div class="platform-content">
-  {_platform_page_header_html("Async Run Detail", "Read-only async request, worker status, and platform result context.", active_nav="async")}
-  <div class="meta">
-    Read-only async run context. Back to <a href="/platform/view">FinTech Platform Console</a>.
-  </div>
-  <div class="page-actions">
-    <a href="/platform/view">Back to Console</a>
-  </div>
-
-  <div class="section">
-    <h2>Async Run</h2>
-    {_html_table(
-        ["field", "value"],
-        _async_run_detail_rows_html(run),
-        empty_message="No async run is available.",
-    )}
-  </div>
-
-  <div class="section">
-    <h2>Request Payload</h2>
-    {_html_table(
-        ["field", "value"],
-        _request_payload_rows_html(run),
-        empty_message="No request payload is available.",
-    )}
-  </div>
-
-  <div class="section">
-    <h2>Platform Result Summary</h2>
-    {_html_table(
-        ["field", "value"],
-        _platform_result_detail_rows_html(
-            platform_result,
-            link_run_id=True,
-            summary_only=True,
-        ),
-        empty_message="No completed platform result is available.",
-    )}
-  </div>
-      </div>
-    </div>
-  </main>
-</body>
-</html>"""
-
-
-def _render_payment_run_detail_html(
-    app: FastAPI,
-    platform_result: dict,
-) -> str:
-    async_run = _async_run_or_none(app, platform_result["run_id"])
-    return f"""<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Payment Run Detail</title>
-  <style>
-    {_platform_chrome_css()}
-    {_platform_content_css()}
-  </style>
-</head>
-<body class="platform-shell">
-  {_platform_topbar_html("payments")}
-  <main class="platform-main">
-    <div class="platform-workspace">
-      {_platform_side_nav_html("payments")}
-      <div class="platform-content">
-  {_platform_page_header_html("Payment Run Detail", "Read-only platform result, ledger context, and audit timeline.", active_nav="payments")}
-  <div class="meta">
-    Read-only platform result context. Back to <a href="/platform/view">FinTech Platform Console</a>.
-  </div>
-  <div class="page-actions">
-    <a href="/platform/view">Back to Console</a>
-  </div>
-
-  <div class="section">
-    <h2>Platform Result</h2>
-    {_html_table(
-        ["field", "value"],
-        _platform_result_detail_rows_html(
-            platform_result,
-            link_run_id=False,
-            summary_only=False,
-        ),
-        empty_message="No platform result is available.",
-    )}
-  </div>
-
-  <div class="section">
-    <h2>Associated Async Run</h2>
-    {_html_table(
-        ["field", "value"],
-        _operation_approval_async_run_detail_rows_html(async_run),
-        empty_message="No associated async run was found.",
-    )}
-  </div>
-
-  <div class="section">
-    <h2>Ledger Reconciliation Context</h2>
-    {_table(
-        ["check_id", "status", "severity", "message"],
-        _payment_run_reconciliation_rows(app, platform_result["run_id"]),
-        empty_message="No ledger reconciliation context is available.",
-    )}
-  </div>
-
-  <div class="section">
-    <h2>Customer Audit Timeline</h2>
-    {_table(
-        [
-            "occurred_at",
-            "source_system",
-            "event_type",
-            "aggregate_type",
-            "aggregate_id",
-            "actor",
-            "reason",
-        ],
-        _platform_result_audit_event_rows(platform_result),
-        empty_message="No customer audit events are available.",
-    )}
-  </div>
-      </div>
-    </div>
-  </main>
-</body>
-</html>"""
-
-
-def _detail_page_css() -> str:
-    return """
-    body {
-      color: #1f2937;
-      font-family: Arial, sans-serif;
-      line-height: 1.5;
-      margin: 0;
-      max-width: 1080px;
-      padding: 16px;
-    }
-    @media (min-width: 768px) {
-      body {
-        padding: 24px;
-      }
-    }
-    h1, h2 {
-      margin: 0 0 12px;
-    }
-    h2 {
-      margin-top: 28px;
-    }
-    .meta {
-      color: #6b7280;
-      font-size: 14px;
-      margin-bottom: 18px;
-    }
-    .page-actions {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      margin-bottom: 18px;
-    }
-    .page-actions a {
-      align-items: center;
-      border: 1px solid #d1d5db;
-      border-radius: 4px;
-      box-sizing: border-box;
-      color: #1f2937;
-      display: inline-flex;
-      min-height: 44px;
-      padding: 8px 12px;
-      text-decoration: none;
-    }
-    .section {
-      margin-top: 24px;
-      overflow-x: auto;
-    }
-    table {
-      border-collapse: collapse;
-      margin-top: 8px;
-      min-width: 680px;
-      width: 100%;
-    }
-    th, td {
-      border: 1px solid #d1d5db;
-      padding: 8px 10px;
-      text-align: left;
-      vertical-align: top;
-    }
-    th {
-      background: #f3f4f6;
-    }
-    .muted {
-      color: #6b7280;
-      font-size: 14px;
-    }
-    code {
-      background: #f3f4f6;
-      border-radius: 4px;
-      padding: 2px 4px;
-    }
-    """
-
-
 def _render_platform_console_html(
     app: FastAPI,
     *,
@@ -4045,13 +3312,16 @@ def _render_platform_console_html(
     retry_error: str | None = None,
     retry_status: str | None = None,
 ) -> str:
-    filters, date_filters, filter_errors = _normalize_console_filters(
+    filters, date_filters, filter_errors = normalize_console_filters(
         payment_status=payment_status_filter,
         async_status=async_status_filter,
         operation_approval_status=operation_approval_status_filter,
         actor=actor_filter,
         created_from=created_from_filter,
         created_to=created_to_filter,
+        payment_status_options=CONSOLE_PAYMENT_STATUS_OPTIONS,
+        async_status_options=CONSOLE_ASYNC_STATUS_OPTIONS,
+        operation_approval_status_options=CONSOLE_OPERATION_APPROVAL_STATUS_OPTIONS,
     )
     app.state.database_path.parent.mkdir(parents=True, exist_ok=True)
     service = PlatformApiService(
@@ -4361,7 +3631,12 @@ def _render_platform_console_html(
         approval_error=approval_error,
     )}
   {_console_filter_feedback_html(filter_errors)}
-  {_console_filter_form_html(filters)}
+  {console_filter_form_html(
+        filters,
+        payment_status_options=CONSOLE_PAYMENT_STATUS_OPTIONS,
+        async_status_options=CONSOLE_ASYNC_STATUS_OPTIONS,
+        operation_approval_status_options=CONSOLE_OPERATION_APPROVAL_STATUS_OPTIONS,
+    )}
 
   <div class="summary">
     {''.join(_metric_html(label, value) for label, value in summary_rows)}
@@ -4589,319 +3864,6 @@ def _render_platform_console_html(
 </body>
 </html>
 """
-
-
-def _metric_html(label: str, value: str) -> str:
-    return f"""
-      <div class="metric">
-        <div class="metric-label">{html.escape(label)}</div>
-        <div class="metric-value">{html.escape(value)}</div>
-      </div>
-    """
-
-
-def _normalize_console_filters(
-    *,
-    payment_status: str | None,
-    async_status: str | None,
-    operation_approval_status: str | None,
-    actor: str | None,
-    created_from: str | None,
-    created_to: str | None,
-) -> tuple[dict[str, str | None], dict[str, date | None], list[str]]:
-    filters = {
-        "payment_status": _normalize_console_filter_value(payment_status),
-        "async_status": _normalize_console_filter_value(async_status),
-        "operation_approval_status": _normalize_console_filter_value(
-            operation_approval_status
-        ),
-        "actor": _normalize_console_filter_value(actor),
-        "created_from": _normalize_console_filter_value(created_from),
-        "created_to": _normalize_console_filter_value(created_to),
-    }
-    errors: list[str] = []
-    if filters["payment_status"] not in {None, *CONSOLE_PAYMENT_STATUS_OPTIONS}:
-        errors.append(f"Unknown payment_status filter: {filters['payment_status']}")
-        filters["payment_status"] = None
-    if filters["async_status"] not in {None, *ASYNC_RUN_STATUSES}:
-        errors.append(f"Unknown async_status filter: {filters['async_status']}")
-        filters["async_status"] = None
-    if filters["operation_approval_status"] not in {
-        None,
-        *OPERATION_APPROVAL_STATUSES,
-    }:
-        errors.append(
-            "Unknown operation_approval_status filter: "
-            f"{filters['operation_approval_status']}"
-        )
-        filters["operation_approval_status"] = None
-    date_filters = {
-        "created_from": _parse_console_filter_date(
-            filters["created_from"],
-            "created_from",
-            errors,
-        ),
-        "created_to": _parse_console_filter_date(
-            filters["created_to"],
-            "created_to",
-            errors,
-        ),
-    }
-    if filters["created_from"] is not None and date_filters["created_from"] is None:
-        filters["created_from"] = None
-    if filters["created_to"] is not None and date_filters["created_to"] is None:
-        filters["created_to"] = None
-    if (
-        date_filters["created_from"] is not None
-        and date_filters["created_to"] is not None
-        and date_filters["created_from"] > date_filters["created_to"]
-    ):
-        errors.append("created_from must be on or before created_to")
-        filters["created_from"] = None
-        filters["created_to"] = None
-        date_filters["created_from"] = None
-        date_filters["created_to"] = None
-    return filters, date_filters, errors
-
-
-def _parse_console_filter_date(
-    value: str | None,
-    field_name: str,
-    errors: list[str],
-) -> date | None:
-    if value is None:
-        return None
-    try:
-        return date.fromisoformat(value)
-    except ValueError:
-        errors.append(f"Invalid {field_name} filter: {value}")
-        return None
-
-
-def _normalize_console_filter_value(value: str | None) -> str | None:
-    if value is None:
-        return None
-    normalized = value.strip()
-    return normalized or None
-
-
-def _console_filter_feedback_html(errors: list[str]) -> str:
-    if not errors:
-        return ""
-    items = "".join(f"<li>{html.escape(error)}</li>" for error in errors)
-    return (
-        '<div class="notice notice-error">'
-        f"Console filter ignored invalid value:<ul>{items}</ul>"
-        "</div>"
-    )
-
-
-def _console_filter_form_html(filters: dict[str, str | None]) -> str:
-    return f"""
-      <form class="filter-form" method="get" action="/platform/view">
-        <div class="filter-fields">
-          {_console_filter_select_html(
-              name="payment_status",
-              label="Payment status",
-              options=CONSOLE_PAYMENT_STATUS_OPTIONS,
-              selected=filters["payment_status"],
-          )}
-          {_console_filter_select_html(
-              name="async_status",
-              label="Async status",
-              options=CONSOLE_ASYNC_STATUS_OPTIONS,
-              selected=filters["async_status"],
-          )}
-          {_console_filter_select_html(
-              name="operation_approval_status",
-              label="Approval status",
-              options=CONSOLE_OPERATION_APPROVAL_STATUS_OPTIONS,
-              selected=filters["operation_approval_status"],
-          )}
-          {_console_filter_input_html(
-              name="actor",
-              label="Actor",
-              value=filters["actor"],
-              placeholder="actor id",
-          )}
-          {_console_filter_input_html(
-              name="created_from",
-              label="Created from",
-              value=filters["created_from"],
-              input_type="date",
-          )}
-          {_console_filter_input_html(
-              name="created_to",
-              label="Created to",
-              value=filters["created_to"],
-              input_type="date",
-          )}
-        </div>
-        <div class="filter-actions">
-          <button type="submit">Apply Filters</button>
-          <a href="/platform/view">Clear Filters</a>
-        </div>
-      </form>
-    """
-
-
-def _console_filter_input_html(
-    *,
-    name: str,
-    label: str,
-    value: str | None,
-    input_type: str = "text",
-    placeholder: str | None = None,
-) -> str:
-    escaped_name = html.escape(name, quote=True)
-    escaped_value = "" if value is None else html.escape(value, quote=True)
-    placeholder_attr = ""
-    if placeholder is not None:
-        placeholder_attr = f' placeholder="{html.escape(placeholder, quote=True)}"'
-    return f"""
-      <div class="filter-field">
-        <label for="{escaped_name}">{html.escape(label)}</label>
-        <input id="{escaped_name}" name="{escaped_name}" type="{html.escape(input_type, quote=True)}" value="{escaped_value}"{placeholder_attr}>
-      </div>
-    """
-
-
-def _console_filter_select_html(
-    *,
-    name: str,
-    label: str,
-    options: tuple[str, ...],
-    selected: str | None,
-) -> str:
-    escaped_name = html.escape(name, quote=True)
-    option_html = [
-        _console_filter_option_html(value="", label="All", selected=selected is None)
-    ]
-    option_html.extend(
-        _console_filter_option_html(
-            value=option,
-            label=option,
-            selected=selected == option,
-        )
-        for option in options
-    )
-    return f"""
-      <div class="filter-field">
-        <label for="{escaped_name}">{html.escape(label)}</label>
-        <select id="{escaped_name}" name="{escaped_name}">
-          {''.join(option_html)}
-        </select>
-      </div>
-    """
-
-
-def _console_filter_option_html(
-    *,
-    value: str,
-    label: str,
-    selected: bool,
-) -> str:
-    selected_attr = " selected" if selected else ""
-    return (
-        f'<option value="{html.escape(value, quote=True)}"{selected_attr}>'
-        f"{html.escape(label)}</option>"
-    )
-
-
-def _retry_feedback_html(
-    *,
-    retry_status: str | None,
-    retry_error: str | None,
-) -> str:
-    if retry_error:
-        return (
-            '<div class="notice notice-error">'
-            f"Retry failed: {html.escape(retry_error)}"
-            "</div>"
-        )
-    if retry_status == "pending_approval":
-        return (
-            '<div class="notice notice-success">'
-            "Retry approval request created."
-            "</div>"
-        )
-    return ""
-
-
-def _approval_feedback_html(
-    *,
-    approval_status: str | None,
-    approval_error: str | None,
-) -> str:
-    if approval_error:
-        return (
-            '<div class="notice notice-error">'
-            f"Approval update failed: {html.escape(approval_error)}"
-            "</div>"
-        )
-    if approval_status == "approved":
-        return (
-            '<div class="notice notice-success">'
-            "Operation approval approved."
-            "</div>"
-        )
-    if approval_status == "rejected":
-        return (
-            '<div class="notice notice-success">'
-            "Operation approval rejected."
-            "</div>"
-        )
-    if approval_status == "cancelled":
-        return (
-            '<div class="notice notice-success">'
-            "Operation approval cancelled."
-            "</div>"
-        )
-    if approval_status == "expired":
-        return (
-            '<div class="notice notice-success">'
-            "Operation approval expired."
-            "</div>"
-        )
-    return ""
-
-
-def _table(
-    headers: list[str],
-    rows: list[tuple[object, ...]],
-    *,
-    empty_message: str,
-) -> str:
-    if not rows:
-        return f'<div class="muted">{html.escape(empty_message)}</div>'
-    header_html = "".join(f"<th>{html.escape(header)}</th>" for header in headers)
-    row_html = []
-    for row in rows:
-        cells = "".join(f"<td>{html.escape(str(value))}</td>" for value in row)
-        row_html.append(f"<tr>{cells}</tr>")
-    return (
-        f"<table><thead><tr>{header_html}</tr></thead>"
-        f"<tbody>{''.join(row_html)}</tbody></table>"
-    )
-
-
-def _html_table(
-    headers: list[str],
-    rows: list[tuple[str, ...]],
-    *,
-    empty_message: str,
-) -> str:
-    if not rows:
-        return f'<div class="muted">{html.escape(empty_message)}</div>'
-    header_html = "".join(f"<th>{html.escape(header)}</th>" for header in headers)
-    row_html = []
-    for row in rows:
-        cells = "".join(f"<td>{value}</td>" for value in row)
-        row_html.append(f"<tr>{cells}</tr>")
-    return (
-        f"<table><thead><tr>{header_html}</tr></thead>"
-        f"<tbody>{''.join(row_html)}</tbody></table>"
-    )
 
 
 def _failed_async_runs_table(

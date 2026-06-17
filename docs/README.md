@@ -320,14 +320,17 @@ platform / wallet balance snapshot
 
 ## 文档维护约定
 
-- 新金融基础概念优先写在编号文档中，例如账本、支付、风控、KYC/AML、合规审计。
-- 阶段性工程计划和总结继续放在 `17+` 的阶段文档中。
-- 小阶段尽量把设计、实现进度和验证记录合并到同一篇阶段文档，避免继续拆出很多细碎文档。
+- 新金融基础概念优先写在编号文档中，例如账本、支付、风控、KYC/AML、合规审计；文件名使用 `NN-topic-name.md`。
+- 阶段性工程计划和总结继续放在 `17+` 的阶段文档中；文件名使用 `NN-stage-X-topic.md`。
+- 小阶段尽量把设计、实现进度和验证记录合并到同一篇阶段文档，避免继续拆出很多细碎文档。阶段 40 后的小型 UI、Manual、Playwright 和结构复盘记录优先写入现有入口文档、实验 README 和 [../LEARNING_PROGRESS.md](../LEARNING_PROGRESS.md)。
+- `docs/25-stage-11b-retry-failed-async-run-implementation-plan.md` 是历史遗留的重复编号阶段草稿，后续不继续采用重复编号；如果将来整理文件名，需要同时检查并更新引用。
+- 实验目录使用 `labs/<domain-slug>/`，核心代码使用领域名或 `platform_*` 前缀，测试文件使用 `test_*.py`，demo 使用 `demo.py` 或 `demo_sqlite.py`。
+- 运行生成物统一放在实验目录下的 `reports/`、`.test-data/`、SQLite `*.db` 或 pytest cache 中，并由根目录 `.gitignore` / `.ignore` 忽略，不作为学习文档入口。
 - 根目录 [../README.md](../README.md) 只保留仓库入口、快速阅读路径和运行方式；详细文档导航放在本文件。
 
 ## 当前收口状态
 
-阶段 40 已完成最终验收与学习作品集总结第一版。
+阶段 40 已完成最终验收与学习作品集总结第一版；阶段 40 后又完成 Console / Manual 前端体验改造和 Playwright 小型浏览器回归。
 
 当前仓库已经可以作为一个可运行的 FinTech 工程学习作品集。后续如果继续推进，建议按大章节而不是很多小文档扩展：
 
