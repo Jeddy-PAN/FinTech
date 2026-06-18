@@ -342,6 +342,73 @@ def test_sqlite_account_status_rules_match_memory_version(
         banking.deposit(account.account_id, "10.00", posted_at=JAN_3)
 
 
+def test_sqlite_account_version_increments_on_status_change(
+    banking: SQLiteCoreBankingService,
+) -> None:
+    account = open_checking(banking)
+
+    opened_snapshot = banking.account_version_snapshot(account.account_id)
+    banking.set_account_status(
+        account.account_id,
+        AccountStatus.FROZEN,
+        expected_version=opened_snapshot.version,
+    )
+    frozen_snapshot = banking.account_version_snapshot(account.account_id)
+
+    assert opened_snapshot.version == 0
+    assert frozen_snapshot.status == AccountStatus.FROZEN
+    assert frozen_snapshot.version == 1
+    status_events = [
+        event for event in banking.audit_events
+        if event.event_type == "account.status_changed"
+    ]
+    assert status_events[-1].payload["previous_version"] == "0"
+    assert status_events[-1].payload["new_version"] == "1"
+
+
+def test_sqlite_two_connections_cannot_update_account_with_same_old_version(
+    database_path: Path,
+) -> None:
+    setup = SQLiteCoreBankingService(database_path)
+    setup.create_product(
+        product_id="basic-checking",
+        name="Basic Checking",
+        product_type=AccountProductType.CHECKING,
+    )
+    account = open_checking(setup)
+    setup.close()
+
+    first = SQLiteCoreBankingService(database_path)
+    second = SQLiteCoreBankingService(database_path)
+    try:
+        first_snapshot = first.account_version_snapshot(account.account_id)
+        second_snapshot = second.account_version_snapshot(account.account_id)
+
+        first.set_account_status(
+            account.account_id,
+            AccountStatus.FROZEN,
+            expected_version=first_snapshot.version,
+        )
+
+        with pytest.raises(CoreBankingError, match="Account version conflict"):
+            second.set_account_status(
+                account.account_id,
+                AccountStatus.CLOSED,
+                expected_version=second_snapshot.version,
+            )
+
+        latest = second.account_version_snapshot(account.account_id)
+        assert latest.status == AccountStatus.FROZEN
+        assert latest.version == 1
+        assert [
+            event.event_type for event in second.audit_events
+            if event.event_type == "account.status_changed"
+        ] == ["account.status_changed"]
+    finally:
+        first.close()
+        second.close()
+
+
 def test_sqlite_preserves_small_interest_rate_precision(database_path: Path) -> None:
     service = SQLiteCoreBankingService(database_path)
     service.create_product(

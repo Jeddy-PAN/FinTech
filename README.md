@@ -7,7 +7,7 @@
 - 学习对象：有编程背景，金融领域零基础。
 - 学习目标：理解金融业务、FinTech 工程系统、数据分析、风控和合规基础。
 - 学习方式：先学概念，再写最小实验，再把知识沉淀成文档。
-- 当前阶段：阶段 40 后已完成前端 Console / Manual 体验改造、Playwright 小型浏览器回归、结构整理、知识地图复盘、Mermaid 图集初版、payment provider boundary / webhook endpoint 第一版、provider intent link、provider settlement CSV demo 接入、webhook timestamp replay window 教学规则、provider webhook evidence item，以及 core banking basics / SQLite persistence / statement CSV and HTML export / audit events 第一版。
+- 当前阶段：阶段 40 后已完成前端 Console / Manual 体验改造、Playwright 小型浏览器回归、结构整理、知识地图复盘、Mermaid 图集初版、payment provider boundary / webhook endpoint 第一版、provider intent link、provider settlement CSV demo 接入、webhook timestamp replay window 教学规则、provider webhook evidence item，以及 core banking basics / SQLite persistence / statement CSV and HTML export / audit events / optimistic version 第一版。
 
 ## 环境和语言约定
 
@@ -46,7 +46,7 @@ PYTHONIOENCODING=utf-8
     ├── kyc-aml-onboarding/    # 第六个实验：KYC/AML 开户筛查
     ├── compliance-audit/      # 第七个实验：合规审计时间线
     ├── fintech-platform/      # 第八个实验：端到端 FinTech 工程作品
-    └── core-banking-basics/   # 第九个实验：核心银行账户、余额、hold、利息、SQLite 持久化、statement 导出和 audit events
+    └── core-banking-basics/   # 第九个实验：核心银行账户、余额、hold、利息、SQLite 持久化、statement 导出、audit events 和 optimistic version
 ```
 
 ## 快速阅读路径

@@ -25,6 +25,7 @@ hold
 interest accrual
 statement
 audit event
+optimistic version
 ```
 
 这意味着账户不是一个简单的 `balance = 100`。一个账户可能账面余额是 100，但有 30 被 card authorization hold 占用，那么可用余额只有 70。
@@ -44,6 +45,8 @@ audit event
 - monthly statement
 - account status
 - audit event
+- optimistic concurrency
+- optimistic version
 
 ## 3. 为什么金融系统需要它
 
@@ -203,6 +206,36 @@ statement.html_exported
 
 当前 audit events 仍是教学版追踪记录，不代表真实法律证据链、监管留存、电子签名、WORM 存储或正式审计报告。
 
+### 4.7 Optimistic version 解释“我看到的状态还是最新的吗”
+
+Optimistic concurrency control，中文可理解为乐观并发控制，适合解释一个常见问题：两个操作员或两个后台进程几乎同时读取了同一个账户状态，然后都想更新它。
+
+当前 SQLite 版给 account 增加一个整数 `version`：
+
+```text
+account opened -> version 0
+status updated -> version 1
+status updated again -> version 2
+```
+
+调用方可以带着自己读到的版本号更新账户状态：
+
+```text
+UPDATE account
+SET status = new_status, version = version + 1
+WHERE account_id = ? AND version = expected_version
+```
+
+如果另一个连接已经先更新了账户，版本号就会变化，后来的旧版本更新会失败：
+
+```text
+expected_version = 0
+current_version = 1
+-> Account version conflict
+```
+
+这能防止“基于旧状态覆盖新状态”的 lost update 问题。当前实现仍是教学版，只覆盖账户状态更新；生产系统还会考虑锁、事务隔离级别、重试策略、幂等、死锁、监控告警和跨服务一致性。
+
 ## 5. 当前实现范围
 
 代码位置：
@@ -228,6 +261,7 @@ labs/core-banking-basics/test_core_banking_statement_export.py
 - `MonthlyStatement`
 - `CoreBankingAuditEvent`
 - `CoreBankingAuditTrail`
+- `AccountVersionSnapshot`
 - `CoreBankingService.create_product()`
 - `CoreBankingService.open_account()`
 - `CoreBankingService.set_account_status()`
@@ -243,11 +277,15 @@ labs/core-banking-basics/test_core_banking_statement_export.py
 - SQLite tables：`core_banking_products`、`core_banking_accounts`、`core_banking_postings`、`core_banking_holds`
 - SQLite table：`core_banking_audit_events`
 - SQLite 版 products、accounts、postings 和 holds 持久化
+- SQLite 版 account `version` 字段
+- `SQLiteCoreBankingService.account_version_snapshot()`
+- `SQLiteCoreBankingService.set_account_status(..., expected_version=...)`
 - SQLite 版 account / posting / hold / interest audit events 持久化
 - SQLite 版重开数据库后继续查询 balance、statement 和幂等记录
 - SQLite 版 hold capture 的 posting + hold status 更新边界
 - SQLite 版重复 capture / release 的状态条件保护
 - SQLite 版两个连接不能重复 capture 同一个 active hold 的教学测试
+- SQLite 版两个连接不能基于同一个旧 account version 同时更新账户状态的教学测试
 - `export_monthly_statement_csv()`
 - `export_monthly_statement_html()`
 - statement summary CSV 和 postings CSV 导出
@@ -266,6 +304,7 @@ labs/core-banking-basics/test_core_banking_statement_export.py
 - 总账科目、会计期间、关账和财务报表。
 - 与现有 `fintech-platform` 的自动集成。
 - 生产级并发控制、分布式锁、schema migration、backup / restore 或灾备。
+- 生产级 lease、retry policy、死锁处理、隔离级别调优或跨服务并发恢复。
 
 ## 6. 最小例子
 
@@ -315,18 +354,20 @@ assert "hold.placed" in audit_event_types
 5. statement 如何把账户变化解释给用户、运营和审计人员。
 6. account status 为什么属于金融系统的权限边界。
 7. audit event 如何把账户动作变成可查询的事件时间线。
+8. optimistic version 如何避免基于旧账户状态覆盖新状态。
 
-对普通 FinTech 岗位来说，这一章的要求不高，但很实用：你不需要先懂复杂银行法规，也不需要会做真实银行计息；你需要先能把账户、余额、hold、posting、statement、audit event 和幂等这些工程对象讲清楚并写出可靠代码。
+对普通 FinTech 岗位来说，这一章的要求不高，但很实用：你不需要先懂复杂银行法规，也不需要会做真实银行计息；你需要先能把账户、余额、hold、posting、statement、audit event、optimistic version 和幂等这些工程对象讲清楚并写出可靠代码。
 
 ## 8. 下一步
 
-已补 SQLite 持久化版本和账户 audit events。当前学习重点已经从“对象模型”进入“事务边界 + 可追溯性”：
+已补 SQLite 持久化版本、账户 audit events 和 optimistic version。当前学习重点已经从“对象模型”进入“事务边界 + 可追溯性 + 并发控制”：
 
 - deposit / withdraw / hold capture 如何在事务中保存。
 - idempotency key 如何落库并防止并发重复入账。
 - statement 如何从数据库查询生成。
 - account / posting / hold / interest / statement export 如何形成事件时间线。
 - statement CSV 和 HTML report 分别适合机器复核和人工阅读。
+- account version 如何阻止两个连接基于同一个旧版本同时改账户状态。
 
 更准确地说，代码文件名采用：
 
@@ -338,7 +379,7 @@ SQLiteCoreBankingService
 
 后续可以继续扩展：
 
-1. 增加更严格的并发控制演示，例如 optimistic version、lease 或 retry policy。
-2. 增加更完整的 statement activity filters。
+1. 增加更完整的 statement activity filters。
+2. 增加 lease、retry policy 或更接近生产的并发恢复演示。
 3. 再考虑是否把 core banking account 接入现有 `fintech-platform` 的支付资金流。
 4. 进入 `loan-lifecycle`，学习授信、还款计划和逾期状态。

@@ -1,6 +1,6 @@
 # Core Banking Basics
 
-这是核心银行账户实验。目标是用最小 Python 代码理解 account product、bank account、ledger balance、available balance、hold、interest accrual、monthly statement、audit events，以及这些对象落到 SQLite 后的事务和幂等边界。
+这是核心银行账户实验。目标是用最小 Python 代码理解 account product、bank account、ledger balance、available balance、hold、interest accrual、monthly statement、audit events、optimistic version，以及这些对象落到 SQLite 后的事务和幂等边界。
 
 配套文档：[../../docs/56-core-banking-basics.md](../../docs/56-core-banking-basics.md)
 
@@ -24,6 +24,8 @@
 - SQLite 版支持重开数据库后继续查询余额、statement 和幂等记录。
 - SQLite 版用状态条件更新保护 hold capture / release，避免重复消费同一个 active hold。
 - SQLite 版会持久化 `core_banking_audit_events`。
+- SQLite 版会给 account 维护 `version`，并支持 `expected_version` 条件更新账户状态。
+- SQLite 版测试覆盖两个连接不能基于同一个旧 account version 同时更新账户状态。
 
 ## 教学边界
 
@@ -34,6 +36,7 @@
 - 真实银行产品规则。
 - 真实利息、费用、税务、披露或监管要求。
 - 生产级并发控制、分布式锁、灾备、迁移框架和审计留痕。
+- 生产级 lease、retry policy、死锁处理或跨服务并发恢复。
 - 真实法律、监管、电子签名或证据链意义上的审计留痕。
 - overdraft、limits、joint account、account ownership。
 - 总账科目、会计期间、关账和财务报表。
@@ -50,7 +53,7 @@
 
 1. 先读 [../../docs/56-core-banking-basics.md](../../docs/56-core-banking-basics.md)。
 2. 再读 [core_banking.py](core_banking.py)，重点看 `CoreBankingService.balance()` 和 hold 相关方法。
-3. 再读 [sqlite_core_banking.py](sqlite_core_banking.py)，重点看 `core_banking_postings`、`core_banking_holds` 和 `idempotency_key` 的落库方式。
+3. 再读 [sqlite_core_banking.py](sqlite_core_banking.py)，重点看 `core_banking_postings`、`core_banking_holds`、`idempotency_key` 和 account `version` 的落库方式。
 4. 再读 [core_banking_audit.py](core_banking_audit.py)，理解 audit event 如何记录事件类型、账户、时间、来源和 payload。
 5. 再读 [core_banking_statement_export.py](core_banking_statement_export.py)，理解 statement 如何导出为 summary / postings CSV 和静态 HTML report，并可选记录 `statement.exported` / `statement.html_exported`。
 6. 最后读 [test_core_banking.py](test_core_banking.py)、[test_sqlite_core_banking.py](test_sqlite_core_banking.py)、[test_core_banking_statement_export.py](test_core_banking_statement_export.py) 和 [test_core_banking_audit.py](test_core_banking_audit.py)，通过测试理解每个金融概念对应的工程行为。

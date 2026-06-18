@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sqlite3
 import json
+from dataclasses import dataclass
 from datetime import date, datetime, time, timezone
 from decimal import Decimal, ROUND_HALF_UP
 from pathlib import Path
@@ -30,6 +31,13 @@ from core_banking import (
     _timestamp,
     money,
 )
+
+
+@dataclass(frozen=True)
+class AccountVersionSnapshot:
+    account_id: str
+    status: AccountStatus
+    version: int
 
 
 class SQLiteCoreBankingService:
@@ -146,6 +154,24 @@ class SQLiteCoreBankingService:
             self._insert_audit_event(event)
         return event
 
+    def account_version_snapshot(self, account_id: str) -> AccountVersionSnapshot:
+        normalized_account_id = _require_text(account_id, "account_id")
+        row = self._connection.execute(
+            """
+            SELECT account_id, status, version
+            FROM core_banking_accounts
+            WHERE account_id = ?
+            """,
+            (normalized_account_id,),
+        ).fetchone()
+        if row is None:
+            raise CoreBankingError(f"Unknown account: {normalized_account_id}")
+        return AccountVersionSnapshot(
+            account_id=row["account_id"],
+            status=AccountStatus(row["status"]),
+            version=int(row["version"]),
+        )
+
     def create_product(
         self,
         *,
@@ -245,8 +271,16 @@ class SQLiteCoreBankingService:
         self,
         account_id: str,
         status: AccountStatus | str,
+        *,
+        expected_version: int | None = None,
     ) -> BankAccount:
         account = self._get_account(account_id)
+        before_version = self.account_version_snapshot(account.account_id).version
+        normalized_expected_version = (
+            self._version(expected_version)
+            if expected_version is not None
+            else None
+        )
         updated = BankAccount(
             account_id=account.account_id,
             customer_id=account.customer_id,
@@ -256,14 +290,31 @@ class SQLiteCoreBankingService:
             opened_at=account.opened_at,
         )
         with self._connection:
-            self._connection.execute(
-                """
-                UPDATE core_banking_accounts
-                SET status = ?
-                WHERE account_id = ?
-                """,
-                (updated.status.value, updated.account_id),
-            )
+            if normalized_expected_version is None:
+                cursor = self._connection.execute(
+                    """
+                    UPDATE core_banking_accounts
+                    SET status = ?, version = version + 1
+                    WHERE account_id = ?
+                    """,
+                    (updated.status.value, updated.account_id),
+                )
+            else:
+                cursor = self._connection.execute(
+                    """
+                    UPDATE core_banking_accounts
+                    SET status = ?, version = version + 1
+                    WHERE account_id = ? AND version = ?
+                    """,
+                    (
+                        updated.status.value,
+                        updated.account_id,
+                        normalized_expected_version,
+                    ),
+                )
+            if cursor.rowcount != 1:
+                raise CoreBankingError("Account version conflict")
+            after_version = before_version + 1
             self._insert_audit_event(
                 self._build_audit_event(
                     "account.status_changed",
@@ -271,6 +322,8 @@ class SQLiteCoreBankingService:
                     payload=audit_payload(
                         previous_status=account.status,
                         new_status=updated.status,
+                        previous_version=before_version,
+                        new_version=after_version,
                     ),
                 )
             )
@@ -600,6 +653,7 @@ class SQLiteCoreBankingService:
                     product_id TEXT NOT NULL,
                     currency TEXT NOT NULL,
                     status TEXT NOT NULL CHECK (status IN ('active', 'frozen', 'closed')),
+                    version INTEGER NOT NULL DEFAULT 0,
                     opened_at TEXT NOT NULL,
                     FOREIGN KEY (product_id) REFERENCES core_banking_products(product_id)
                 );
@@ -660,6 +714,7 @@ class SQLiteCoreBankingService:
                 ON core_banking_audit_events (account_id, occurred_at);
                 """
             )
+            self._ensure_account_version_column()
 
     def _post_in_transaction(
         self,
@@ -1020,6 +1075,17 @@ class SQLiteCoreBankingService:
             payload=dict(json.loads(row["payload_json"])),
         )
 
+    def _ensure_account_version_column(self) -> None:
+        rows = self._connection.execute("PRAGMA table_info(core_banking_accounts)").fetchall()
+        column_names = {row["name"] for row in rows}
+        if "version" not in column_names:
+            self._connection.execute(
+                """
+                ALTER TABLE core_banking_accounts
+                ADD COLUMN version INTEGER NOT NULL DEFAULT 0
+                """
+            )
+
     def _decimal_to_storage(self, amount: Decimal) -> str:
         return str(amount.quantize(CENT))
 
@@ -1028,3 +1094,9 @@ class SQLiteCoreBankingService:
 
     def _rate_to_storage(self, rate: Decimal) -> str:
         return str(rate)
+
+    def _version(self, value: int) -> int:
+        version = int(value)
+        if version < 0:
+            raise CoreBankingError("Version must be greater than or equal to 0")
+        return version
