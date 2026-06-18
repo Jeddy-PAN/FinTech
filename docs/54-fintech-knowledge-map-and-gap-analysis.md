@@ -1,6 +1,6 @@
 # FinTech 知识地图与缺口分析
 
-最后更新：2026-06-17
+最后更新：2026-06-18
 
 本文件用于回答一个实际问题：当前仓库的 FinTech 理论知识是否完整，以及下一步应该补什么。
 
@@ -135,7 +135,7 @@
 | 知识域 | 当前覆盖 | 为什么重要 | 建议落地方式 | 是否需要查证 |
 | --- | --- | --- | --- | --- |
 | 外部支付接口和 webhook | 已有教学版 provider intent link、webhook signature、FastAPI webhook endpoint、timestamp tolerance / replay window、event dedupe、settlement CSV parser、demo 中的 CSV 驱动 settlement reconciliation，以及 provider webhook evidence item；尚未接真实 provider API 或生产级 webhook 安全规则 | 真实支付系统的状态经常来自外部 provider，必须处理签名、重放、乱序、对账和证据留存 | 下一步可开始核心银行账户大章节，或查证真实 provider docs 后设计 adapter | 真实 API 和签名规则需要查证官方文档 |
-| 银行业务和核心账户 | 只有教学版 account / ledger | 存款、贷款、利息、账户状态和资金头寸是银行科技基础 | 新增 core banking mini lab：account product、interest accrual、account hold | 监管和产品规则需要查证 |
+| 银行业务和核心账户 | 已新增教学版 core banking basics 和 SQLite persistence：account product、bank account、ledger balance、available balance、account hold、daily interest accrual、monthly statement、account status、posting 幂等、SQLite products/accounts/postings/holds/audit events 落库、重复/跨连接 hold capture 状态保护，以及 statement summary / postings CSV、statement HTML report、statement.exported 和 statement.html_exported 审计事件；尚未做真实产品规则或信贷 | 存款、贷款、利息、账户状态和资金头寸是银行科技基础 | 下一步可做更严格并发控制演示、activity filters，或进入信贷生命周期 | 监管和产品规则需要查证 |
 | 信贷生命周期 | 基本未覆盖 | 授信、放款、还款、逾期和损失准备是重要 FinTech 场景 | 新增 loan lifecycle lab：application、underwriting、repayment schedule、delinquency | 信用法规、披露、会计处理需要查证 |
 | 证券交易生命周期 | 只有投资组合分析 | 交易、撮合、清算、结算、托管和保证金是资本市场系统核心 | 新增 securities trade lifecycle lab：order、fill、position、settlement | 交易所、清算机构和监管规则需要查证 |
 | 会计和总账 | 有双分录但不完整 | 金融系统最终要能解释账务、科目、期间和报表 | 扩展 ledger：chart of accounts、journal entry、period close、adjustment | IFRS/GAAP 等准则需要查证 |
@@ -210,21 +210,42 @@ docs/55-payment-provider-boundary.md
 
 原因：当前账本有 account，但还没有银行产品语义。补上 deposit account、interest accrual 和 account hold，可以让用户理解银行系统和普通支付系统的差别。
 
-建议新增实验：
+已新增第一版实验：
 
 ```text
 labs/core-banking-basics/
+docs/56-core-banking-basics.md
 ```
 
-候选能力：
+已覆盖能力：
 
-- deposit account。
-- available balance vs ledger balance。
-- account hold。
-- daily interest accrual。
+- account product：checking / savings。
+- bank account：customer、product、currency、status。
+- ledger balance vs available balance。
+- account hold：place / release / capture。
+- deposit / withdraw。
+- daily interest accrual 教学版计算和幂等键。
 - monthly statement。
+- frozen / closed account 状态控制。
+- posting idempotency key + request fingerprint。
+- SQLite products、accounts、postings 和 holds 持久化。
+- 重开数据库后保持 balance、statement、interest accrual 和 idempotency 记录。
+- 重复 capture / release 同一个 hold 的状态条件保护。
+- 两个 SQLite 连接不能重复 capture 同一个 active hold 的教学测试。
+- statement summary CSV 和 postings CSV 导出。
+- account.opened、account.status_changed、posting.created、hold.placed、hold.released、hold.captured、interest.accrued 和 statement.exported 教学版 audit events。
+- SQLite `core_banking_audit_events` 表持久化账户审计事件，重开数据库后仍可查询。
+- statement HTML report，把 summary 和 posting details 输出成可人工阅读的静态 HTML。
+- statement HTML export 可选记录 `statement.html_exported` audit event。
 
-需要查证：真实利息规则、计息天数、产品披露和监管要求需要查证；教学版可以先用明确假设。
+仍可继续扩展：
+
+- 更严格的 optimistic version、lease 或 retry policy 并发控制演示。
+- 更完整的 statement activity filters。
+- account limit、fees、overdraft、account ownership 等更完整银行对象。
+- 与 `labs/fintech-platform/` 的资金流关系。
+
+需要查证：真实利息规则、计息天数、产品披露、费用、税务和监管要求需要查证；教学版只能使用明确假设。
 
 ### 第三优先级：信贷生命周期
 
@@ -266,7 +287,7 @@ scripts/verify_labs.ps1
 
 仍可作为后续候选能力：
 
-- `docs/55-production-readiness-roadmap.md`。
+- `docs/57-production-readiness-roadmap.md`。
 - 结构化日志示例。
 - CI 测试矩阵。
 - demo 数据清理。
@@ -285,15 +306,16 @@ scripts/verify_labs.ps1
 建议下一步选择其一：
 
 1. 新增 `payment-provider-adapter` 实验，补外部 provider、webhook 和 settlement parser。
-2. 新增 `core-banking-basics` 实验，补银行账户、余额、hold 和利息。
-3. 补 `docs/55-production-readiness-roadmap.md`，把 CI、配置、日志、metrics 和交付边界整理成后续工程路线。
+2. 扩展 `core-banking-basics`，补更严格并发控制演示、activity filters 或平台接入设计。
+3. 补 `docs/57-production-readiness-roadmap.md`，把 CI、配置、日志、metrics 和交付边界整理成后续工程路线。
 
 如果目标是最快让作品集更完整，推荐顺序是：
 
 ```text
 labs/payment-provider-adapter/
 -> labs/core-banking-basics/
+-> labs/core-banking-basics concurrency / activity filters / platform integration
 -> labs/loan-lifecycle/
 ```
 
-当前已先补 `scripts/verify_labs.ps1` 来稳定本地验证入口，后续可以逐步补齐理论和业务域。
+当前已先补 `scripts/verify_labs.ps1` 来稳定本地验证入口，并完成 `payment provider boundary`、`core banking basics`、SQLite persistence、重复 hold 消费保护、statement CSV/HTML export 和 core banking audit events 第一版。后续可以继续补 core banking 更严格并发控制 / activity filters，或进入信贷生命周期。

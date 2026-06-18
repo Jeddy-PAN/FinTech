@@ -7,7 +7,7 @@
 - 学习对象：有编程背景，金融领域零基础。
 - 学习目标：理解金融业务、FinTech 工程系统、数据分析、风控和合规基础。
 - 学习方式：先学概念，再写最小实验，再把知识沉淀成文档。
-- 当前阶段：阶段 40 后已完成前端 Console / Manual 体验改造、Playwright 小型浏览器回归、结构整理、知识地图复盘、Mermaid 图集初版、payment provider boundary / webhook endpoint 第一版、provider intent link、provider settlement CSV demo 接入、webhook timestamp replay window 教学规则，以及 provider webhook evidence item。
+- 当前阶段：阶段 40 后已完成前端 Console / Manual 体验改造、Playwright 小型浏览器回归、结构整理、知识地图复盘、Mermaid 图集初版、payment provider boundary / webhook endpoint 第一版、provider intent link、provider settlement CSV demo 接入、webhook timestamp replay window 教学规则、provider webhook evidence item，以及 core banking basics / SQLite persistence / statement CSV and HTML export / audit events 第一版。
 
 ## 环境和语言约定
 
@@ -36,7 +36,7 @@ PYTHONIOENCODING=utf-8
 │   ├── README.md              # 文档入口、阅读路径和平台能力地图
 │   ├── 00-authoritative-sources.md
 │   ├── 01-16-*.md             # 基础概念和早期实验笔记
-│   └── 17-53-*.md             # 阶段计划、总结和平台演进记录；阶段 40 后改动记录在现有入口和进度文件中
+│   └── 17-56-*.md             # 阶段计划、总结、平台演进记录和阶段 40 后新增大章节
 └── labs/                      # 后续代码实验
     ├── ledger-basics/         # 第一个实验：双分录账本
     ├── payment-orders/        # 第二个实验：支付订单系统
@@ -45,7 +45,8 @@ PYTHONIOENCODING=utf-8
     ├── risk-rule-engine/      # 第五个实验：风控规则引擎
     ├── kyc-aml-onboarding/    # 第六个实验：KYC/AML 开户筛查
     ├── compliance-audit/      # 第七个实验：合规审计时间线
-    └── fintech-platform/      # 第八个实验：端到端 FinTech 工程作品
+    ├── fintech-platform/      # 第八个实验：端到端 FinTech 工程作品
+    └── core-banking-basics/   # 第九个实验：核心银行账户、余额、hold、利息、SQLite 持久化、statement 导出和 audit events
 ```
 
 ## 快速阅读路径
@@ -54,7 +55,7 @@ PYTHONIOENCODING=utf-8
 
 建议按目标选择路径：
 
-1. 从零开始学 FinTech：先读 [docs/00-authoritative-sources.md](docs/00-authoritative-sources.md)、[docs/01-fintech-overview.md](docs/01-fintech-overview.md)、[docs/02-developer-to-finance.md](docs/02-developer-to-finance.md)，再按 `docs/03` 到 `docs/16` 逐步进入账本、支付、风控、KYC/AML 和合规审计。
+1. 从零开始学 FinTech：先读 [docs/00-authoritative-sources.md](docs/00-authoritative-sources.md)、[docs/01-fintech-overview.md](docs/01-fintech-overview.md)、[docs/02-developer-to-finance.md](docs/02-developer-to-finance.md)，再按 `docs/03` 到 `docs/16` 逐步进入账本、支付、风控、KYC/AML 和合规审计；之后读 [docs/55-payment-provider-boundary.md](docs/55-payment-provider-boundary.md) 和 [docs/56-core-banking-basics.md](docs/56-core-banking-basics.md) 补外部支付边界与核心银行账户。
 2. 直接理解综合平台：先读 [labs/fintech-platform/README.md](labs/fintech-platform/README.md)，再读 [docs/53-stage-40-final-acceptance-and-portfolio.md](docs/53-stage-40-final-acceptance-and-portfolio.md) 了解最终验收、作品集能力和仍不覆盖的生产级边界；最新 UI / Manual / Playwright 回归状态见 [LEARNING_PROGRESS.md](LEARNING_PROGRESS.md)。
 3. 运行工程作品：执行 `& 'C:\App\Anaconda\python.exe' .\labs\fintech-platform\demo.py`，观察端到端支付、async run、retry、access audit、investigation case、operations report、approval report、ledger / settlement reconciliation report、evidence package、operability snapshot、operation approval HTTP flow 和 console report views。
 4. 验证当前工程状态：执行 `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify_labs.ps1`。如果当前机器没有可用浏览器或只想快速验证平台核心逻辑，可以先执行 `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify_labs.ps1 -SkipBrowser -SkipDemo -SkipFullLabs`。

@@ -1,6 +1,6 @@
 # docs 文档入口
 
-这个目录保存 FinTech 学习笔记、阶段计划和阶段总结。当前文档已经比较多，阅读时不建议从文件名 01 一路顺读到 55，而应按目标选择路径。
+这个目录保存 FinTech 学习笔记、阶段计划和阶段总结。当前文档已经比较多，阅读时不建议从文件名 01 一路顺读到 56，而应按目标选择路径。
 
 ## 推荐阅读路径
 
@@ -15,6 +15,7 @@
 5. [12-transaction-statement-analysis.md](12-transaction-statement-analysis.md) 到 [16-compliance-audit.md](16-compliance-audit.md)：理解数据分析、投资组合、风控、KYC/AML 和合规审计。
 6. [54-fintech-knowledge-map-and-gap-analysis.md](54-fintech-knowledge-map-and-gap-analysis.md)：查看当前知识覆盖、理论缺口和下一步学习顺序。
 7. [55-payment-provider-boundary.md](55-payment-provider-boundary.md)：理解外部 payment provider、webhook、签名、事件幂等和 settlement file。
+8. [56-core-banking-basics.md](56-core-banking-basics.md)：理解核心银行账户、账面余额、可用余额、hold、利息、statement、SQLite 持久化、statement CSV/HTML 导出和 audit events。
 
 ### 路径 B：理解当前综合平台
 
@@ -56,6 +57,7 @@
 34. [53-stage-40-final-acceptance-and-portfolio.md](53-stage-40-final-acceptance-and-portfolio.md)：最终验收与学习作品集总结。
 35. [54-fintech-knowledge-map-and-gap-analysis.md](54-fintech-knowledge-map-and-gap-analysis.md)：当前 FinTech 知识地图、缺口分析和后续大章节建议。
 36. [55-payment-provider-boundary.md](55-payment-provider-boundary.md)：外部 payment provider 边界、webhook 签名、事件幂等和 settlement CSV parser。
+37. [56-core-banking-basics.md](56-core-banking-basics.md)：核心银行账户、余额、hold、利息、statement、SQLite 持久化、CSV/HTML 导出和 audit events。
 
 ### 路径 C：只看阶段计划和历史
 
@@ -102,6 +104,7 @@
 | [53-stage-40-final-acceptance-and-portfolio.md](53-stage-40-final-acceptance-and-portfolio.md) | final acceptance and portfolio summary |
 | [54-fintech-knowledge-map-and-gap-analysis.md](54-fintech-knowledge-map-and-gap-analysis.md) | knowledge map, gap analysis and next learning roadmap |
 | [55-payment-provider-boundary.md](55-payment-provider-boundary.md) | payment provider boundary, webhook signature and settlement parser |
+| [56-core-banking-basics.md](56-core-banking-basics.md) | core banking account, balance, hold, interest, SQLite persistence, statement CSV/HTML export and audit events |
 
 ### 路径 D：看图理解系统
 
@@ -116,6 +119,8 @@
 ## 当前平台能力地图
 
 当前综合平台位于 [../labs/fintech-platform/](../labs/fintech-platform/)。
+
+核心银行账户实验是独立 mini lab，位于 [../labs/core-banking-basics/](../labs/core-banking-basics/)。它先不接入综合平台主链路，用于单独学习 account product、ledger balance、available balance、hold、interest accrual、statement、SQLite 持久化、幂等落库、statement CSV/HTML 导出和账户 audit events。
 
 ### 主业务流程
 
@@ -346,12 +351,13 @@ platform / wallet balance snapshot
 
 ## 当前收口状态
 
-阶段 40 已完成最终验收与学习作品集总结第一版；阶段 40 后又完成 Console / Manual 前端体验改造和 Playwright 小型浏览器回归。
+阶段 40 已完成最终验收与学习作品集总结第一版；阶段 40 后又完成 Console / Manual 前端体验改造、Playwright 小型浏览器回归、payment provider boundary 和 core banking basics / SQLite persistence / statement HTML report / audit events 第一版。
 
 当前仓库已经可以作为一个可运行的 FinTech 工程学习作品集。后续如果继续推进，建议按大章节而不是很多小文档扩展：
 
-1. 真实外部接口模拟：provider adapter、webhook 验签、settlement file parser。
-2. 生产化基础设施：配置、部署、日志、metrics、追踪、告警和 CI。
-3. 更完整的身份权限：登录、token、session、CSRF、RBAC/ABAC。
-4. 更严肃的数据治理：schema migration、backup/restore、数据留存和证据链。
-5. 学习作品集整理：README 截图、架构图、运行脚本和面试讲解稿。
+1. core banking basics 下一步：更严格并发控制演示、activity filters 和平台接入设计。
+2. 真实外部接口模拟：查证官方 provider docs 后设计 adapter。
+3. 生产化基础设施：配置、部署、日志、metrics、追踪、告警和 CI。
+4. 更完整的身份权限：登录、token、session、CSRF、RBAC/ABAC。
+5. 更严肃的数据治理：schema migration、backup/restore、数据留存和证据链。
+6. 学习作品集整理：README 截图、架构图、运行脚本和面试讲解稿。
