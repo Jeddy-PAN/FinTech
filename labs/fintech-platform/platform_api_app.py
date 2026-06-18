@@ -9,7 +9,7 @@ from urllib.parse import parse_qs, quote
 from uuid import uuid4
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, status
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from pydantic import BaseModel, Field
 
 
@@ -60,6 +60,10 @@ from platform_api_detail_views import (  # noqa: E402
     render_payment_run_detail_html,
 )
 from platform_api_manual_views import render_platform_manual_html  # noqa: E402
+from platform_payment_provider import (  # noqa: E402
+    DEFAULT_WEBHOOK_TIMESTAMP_TOLERANCE_SECONDS,
+    ProviderWebhookEventProcessor,
+)
 from platform_operation_approval import (  # noqa: E402
     OPERATION_APPROVAL_APPROVED,
     OPERATION_APPROVAL_CANCELLED,
@@ -105,6 +109,7 @@ DEFAULT_INVESTIGATION_DATABASE_PATH = (
 DEFAULT_OPERATION_APPROVAL_DATABASE_PATH = (
     LAB_DIR / ".test-data" / "platform_api_operation_approvals.db"
 )
+DEFAULT_PROVIDER_WEBHOOK_SECRET = "teaching_provider_secret"
 
 CREATE_PLATFORM_PAYMENT_RUN = "create_platform_payment_run"
 VIEW_PLATFORM_PAYMENT_RUN = "view_platform_payment_run"
@@ -127,11 +132,13 @@ CHECK_PLATFORM_API_HEALTH = "check_platform_api_health"
 CHECK_PLATFORM_OPERABILITY_READINESS = "check_platform_operability_readiness"
 VIEW_PLATFORM_OPERABILITY_METRICS = "view_platform_operability_metrics"
 VIEW_PLATFORM_TEST_MATRIX = "view_platform_test_matrix"
+PROCESS_PLATFORM_PROVIDER_WEBHOOK = "process_platform_provider_webhook"
 
 PLATFORM_API_HEALTH_TARGET = "fintech_platform_api_health"
 PLATFORM_OPERABILITY_READINESS_TARGET = "fintech_platform_operability_readiness"
 PLATFORM_OPERABILITY_METRICS_TARGET = "fintech_platform_operability_metrics"
 PLATFORM_TEST_MATRIX_TARGET = "fintech_platform_test_matrix"
+PLATFORM_PROVIDER_WEBHOOKS_TARGET = "fintech_platform_provider_webhooks"
 PLATFORM_API_PAYMENT_RUNS_TARGET = "fintech_platform_api_payment_runs"
 PLATFORM_API_ASYNC_PAYMENT_RUNS_TARGET = "fintech_platform_api_async_payment_runs"
 PLATFORM_API_ASYNC_WORKER_TARGET = "fintech_platform_api_async_worker"
@@ -333,6 +340,10 @@ def create_app(
     async_database_path: str | Path = DEFAULT_ASYNC_DATABASE_PATH,
     investigation_database_path: str | Path = DEFAULT_INVESTIGATION_DATABASE_PATH,
     operation_approval_database_path: str | Path = DEFAULT_OPERATION_APPROVAL_DATABASE_PATH,
+    provider_webhook_secret: str = DEFAULT_PROVIDER_WEBHOOK_SECRET,
+    provider_webhook_timestamp_tolerance_seconds: int | None = (
+        DEFAULT_WEBHOOK_TIMESTAMP_TOLERANCE_SECONDS
+    ),
 ) -> FastAPI:
     app = FastAPI(title="FinTech Platform API", version="0.1.0")
     app.state.database_path = Path(database_path)
@@ -340,6 +351,10 @@ def create_app(
     app.state.async_database_path = Path(async_database_path)
     app.state.investigation_database_path = Path(investigation_database_path)
     app.state.operation_approval_database_path = Path(operation_approval_database_path)
+    app.state.provider_webhook_processor = ProviderWebhookEventProcessor(
+        secret=provider_webhook_secret,
+        timestamp_tolerance_seconds=provider_webhook_timestamp_tolerance_seconds,
+    )
 
     def get_service() -> PlatformApiService:
         app.state.database_path.parent.mkdir(parents=True, exist_ok=True)
@@ -420,6 +435,74 @@ def create_app(
             outcome="granted",
         )
         return {"status": "ok"}
+
+    @app.post("/platform/provider-webhooks")
+    async def process_provider_webhook(
+        request: Request,
+        x_provider_signature: str | None = Header(default=None),
+    ) -> JSONResponse:
+        actor = "provider_webhook"
+        payload = (await request.body()).decode("utf-8")
+        if x_provider_signature is None or not x_provider_signature.strip():
+            _record_api_access(
+                app,
+                actor=actor,
+                permission=PROCESS_PLATFORM_PROVIDER_WEBHOOK,
+                target=PLATFORM_PROVIDER_WEBHOOKS_TARGET,
+                outcome="denied",
+                reason="missing provider signature",
+            )
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Missing provider webhook signature",
+            )
+        try:
+            result = app.state.provider_webhook_processor.process_signed_payload(
+                payload,
+                x_provider_signature,
+            )
+        except ValueError as error:
+            reason = str(error)
+            _record_api_access(
+                app,
+                actor=actor,
+                permission=PROCESS_PLATFORM_PROVIDER_WEBHOOK,
+                target=PLATFORM_PROVIDER_WEBHOOKS_TARGET,
+                outcome="denied",
+                reason=reason,
+            )
+            if reason == "Invalid provider webhook signature":
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail=reason,
+                ) from error
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=reason,
+            ) from error
+
+        _record_api_access(
+            app,
+            actor=actor,
+            permission=PROCESS_PLATFORM_PROVIDER_WEBHOOK,
+            target=PLATFORM_PROVIDER_WEBHOOKS_TARGET,
+            outcome="granted",
+            reason=f"event_id={result.event.event_id} duplicate={result.duplicate}",
+        )
+        response = {
+            "event_id": result.event.event_id,
+            "provider_intent_id": result.event.provider_intent_id,
+            "event_type": result.event.event_type,
+            "provider_status": result.provider_status,
+            "internal_status": result.internal_status,
+            "duplicate": result.duplicate,
+        }
+        return JSONResponse(
+            content=response,
+            status_code=status.HTTP_200_OK
+            if result.duplicate
+            else status.HTTP_202_ACCEPTED,
+        )
 
     @app.get("/platform/operability/readiness")
     def platform_operability_readiness(

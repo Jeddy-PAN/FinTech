@@ -134,7 +134,7 @@
 
 | 知识域 | 当前覆盖 | 为什么重要 | 建议落地方式 | 是否需要查证 |
 | --- | --- | --- | --- | --- |
-| 外部支付接口和 webhook | 只有教学版 settlement row | 真实支付系统的状态经常来自外部 provider，必须处理签名、重放、乱序和对账 | 新增 provider adapter、webhook signature verifier、settlement file parser | 真实 API 和签名规则需要查证官方文档 |
+| 外部支付接口和 webhook | 已有教学版 provider intent link、webhook signature、FastAPI webhook endpoint、timestamp tolerance / replay window、event dedupe、settlement CSV parser、demo 中的 CSV 驱动 settlement reconciliation，以及 provider webhook evidence item；尚未接真实 provider API 或生产级 webhook 安全规则 | 真实支付系统的状态经常来自外部 provider，必须处理签名、重放、乱序、对账和证据留存 | 下一步可开始核心银行账户大章节，或查证真实 provider docs 后设计 adapter | 真实 API 和签名规则需要查证官方文档 |
 | 银行业务和核心账户 | 只有教学版 account / ledger | 存款、贷款、利息、账户状态和资金头寸是银行科技基础 | 新增 core banking mini lab：account product、interest accrual、account hold | 监管和产品规则需要查证 |
 | 信贷生命周期 | 基本未覆盖 | 授信、放款、还款、逾期和损失准备是重要 FinTech 场景 | 新增 loan lifecycle lab：application、underwriting、repayment schedule、delinquency | 信用法规、披露、会计处理需要查证 |
 | 证券交易生命周期 | 只有投资组合分析 | 交易、撮合、清算、结算、托管和保证金是资本市场系统核心 | 新增 securities trade lifecycle lab：order、fill、position、settlement | 交易所、清算机构和监管规则需要查证 |
@@ -181,19 +181,28 @@
 
 原因：当前综合平台已经有 internal run、ledger reconciliation 和 teaching settlement row，最自然的下一步是把“外部系统如何驱动内部状态”补齐。
 
-建议新增实验：
+已在现有综合平台内新增第一版：
 
 ```text
-labs/payment-provider-adapter/
+labs/fintech-platform/platform_payment_provider.py
+docs/55-payment-provider-boundary.md
 ```
 
-候选能力：
+已覆盖能力：
 
-- 教学版 provider payment intent。
+- 教学版 provider payment intent 和 `provider_payment_intents.csv` link 表。
 - webhook signature verifier。
+- 教学版 FastAPI webhook endpoint。
+- 教学版 timestamp tolerance / replay window。
 - webhook event 去重、乱序处理和状态推进。
 - settlement CSV parser。
-- 与现有 `fintech-platform` 的 settlement reconciliation 对接。
+- demo 生成 `provider_settlement_sample.csv`，解析后与现有 settlement reconciliation 对接。
+- provider webhook access event 被打包为专门的 evidence item。
+
+仍可继续扩展：
+
+- provider intent 与 payment run 的更明确关联。
+- 真实 provider adapter 前的官方文档查证。
 
 需要查证：如果模拟 Stripe、PayPal、Visa 或其他真实接口，只能引用官方 developer docs，并标明访问日期。第一版可以先做“虚构 provider 协议”，避免误用真实规则。
 

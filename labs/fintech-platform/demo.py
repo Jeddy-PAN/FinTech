@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+import csv
 import sys
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -34,6 +35,14 @@ from platform_evidence_package import (
 )
 from platform_ledger_reconciliation_report import (
     export_platform_ledger_reconciliation_report,
+)
+from platform_payment_provider import (
+    build_provider_payment_intents,
+    build_provider_webhook_payload,
+    export_provider_payment_intents_csv,
+    parse_provider_settlement_csv,
+    provider_intent_id_for_run,
+    sign_provider_webhook_payload,
 )
 from platform_settlement_reconciliation_report import (
     PROVIDER_SETTLEMENT_SETTLED,
@@ -246,6 +255,7 @@ def main() -> None:
     )
     settlement_findings_for_evidence = ()
     approval_records_for_evidence = ()
+    async_access_events_for_evidence = ()
     for path in (
         async_database_path,
         api_access_audit_database_path,
@@ -401,6 +411,48 @@ def main() -> None:
             "/platform/operability/test-matrix",
             headers={"x-actor-id": "audit_reader_001"},
         ).json()
+        provider_webhook_payload = build_provider_webhook_payload(
+            event_id="evt_demo_provider_001",
+            provider_intent_id=provider_intent_id_for_run(
+                "sample_provider",
+                "run_demo_async_001",
+            ),
+            event_type="payment_intent.succeeded",
+            occurred_at=datetime.now(timezone.utc),
+            payload={"amount": "100.00", "currency": "USD"},
+        )
+        provider_webhook_response = client.post(
+            "/platform/provider-webhooks",
+            content=provider_webhook_payload,
+            headers={
+                "content-type": "application/json",
+                "x-provider-signature": sign_provider_webhook_payload(
+                    "teaching_provider_secret",
+                    provider_webhook_payload,
+                ),
+            },
+        ).json()
+        expired_provider_webhook_payload = build_provider_webhook_payload(
+            event_id="evt_demo_provider_expired_001",
+            provider_intent_id=provider_intent_id_for_run(
+                "sample_provider",
+                "run_demo_001",
+            ),
+            event_type="payment_intent.succeeded",
+            occurred_at=datetime.now(timezone.utc) - timedelta(minutes=10),
+            payload={"amount": "100.00", "currency": "USD"},
+        )
+        expired_provider_webhook_response = client.post(
+            "/platform/provider-webhooks",
+            content=expired_provider_webhook_payload,
+            headers={
+                "content-type": "application/json",
+                "x-provider-signature": sign_provider_webhook_payload(
+                    "teaching_provider_secret",
+                    expired_provider_webhook_payload,
+                ),
+            },
+        ).json()
 
     print("\nAsync payment run via FastAPI")
     print(f"- Create HTTP style: {accepted_body['http_status']}")
@@ -457,6 +509,16 @@ def main() -> None:
     )
     print(f"- Test matrix rows: {len(test_matrix_body['rows'])}")
 
+    print("\nProvider webhook evidence sample")
+    print(
+        f"- Accepted provider event: {provider_webhook_response['event_id']} "
+        f"status={provider_webhook_response['internal_status']}"
+    )
+    print(
+        "- Expired provider event rejected: "
+        f"{expired_provider_webhook_response['detail']}"
+    )
+
     async_access_store = SQLiteAccessAuditStore(api_access_audit_database_path)
     async_store = SQLitePlatformAsyncRunStore(async_database_path)
     operations_platform_store = SQLitePlatformStore(database_path)
@@ -465,6 +527,7 @@ def main() -> None:
     )
     try:
         print("\nAsync API access audit events")
+        async_access_events_for_evidence = async_access_store.access_events
         for event in async_access_store.access_events:
             print(
                 f"- {event.occurred_at.isoformat()} actor={event.actor} "
@@ -475,6 +538,18 @@ def main() -> None:
             operations_platform_store.get_run(record.run_id)
             for record in operations_platform_store.runs
         )
+        provider_intents = build_provider_payment_intents(
+            operations_snapshots,
+            provider="sample_provider",
+        )
+        provider_intents_csv_path = export_provider_payment_intents_csv(
+            LAB_DIR / "reports",
+            intents=provider_intents,
+        )
+        print("\nExported provider payment intent links:")
+        print(f"- {provider_intents_csv_path}")
+        print(f"- Intent links: {len(provider_intents)}")
+
         operations_paths = export_platform_operations_report(
             LAB_DIR / "reports",
             async_runs=async_store.runs,
@@ -494,7 +569,13 @@ def main() -> None:
         print(f"- {ledger_reconciliation_paths.findings_csv}")
         print(f"- {ledger_reconciliation_paths.html_report}")
 
-        provider_settlement_rows = _provider_settlement_rows(operations_snapshots)
+        provider_settlement_csv_path = _write_provider_settlement_csv(
+            LAB_DIR / "reports",
+            operations_snapshots,
+        )
+        provider_settlement_rows = parse_provider_settlement_csv(
+            provider_settlement_csv_path.read_text(encoding="utf-8")
+        )
         settlement_findings_for_evidence = evaluate_platform_settlement_reconciliation(
             operations_snapshots,
             provider_rows=provider_settlement_rows,
@@ -506,6 +587,9 @@ def main() -> None:
                 provider_rows=provider_settlement_rows,
             )
         )
+        print("\nParsed provider settlement CSV:")
+        print(f"- {provider_settlement_csv_path}")
+        print(f"- Rows parsed: {len(provider_settlement_rows)}")
         print("\nExported platform settlement reconciliation reports:")
         print(f"- {settlement_reconciliation_paths.findings_csv}")
         print(f"- {settlement_reconciliation_paths.html_report}")
@@ -612,7 +696,10 @@ def main() -> None:
             settlement_findings=settlement_findings_for_evidence,
             access_findings=(*platform_findings, *platform_api_findings),
             approval_records=approval_records_for_evidence,
-            access_events=access_audit_store.access_events,
+            access_events=(
+                *access_audit_store.access_events,
+                *async_access_events_for_evidence,
+            ),
             legal_hold=True,
             retention_policy_id="platform-evidence-demo-hold",
         )
@@ -795,6 +882,47 @@ def create_failed_async_run_sample(
     }
 
 
+def _write_provider_settlement_csv(
+    output_directory: str | Path,
+    snapshots,
+) -> Path:
+    output_path = Path(output_directory)
+    output_path.mkdir(parents=True, exist_ok=True)
+    csv_path = output_path / "provider_settlement_sample.csv"
+
+    with csv_path.open("w", encoding="utf-8", newline="") as file:
+        writer = csv.writer(file)
+        writer.writerow(
+            [
+                "provider",
+                "settlement_id",
+                "provider_payment_id",
+                "platform_run_id",
+                "payment_order_id",
+                "amount",
+                "currency",
+                "status",
+                "settled_at",
+            ]
+        )
+        for row in _provider_settlement_rows(snapshots):
+            writer.writerow(
+                [
+                    row.provider,
+                    row.settlement_id,
+                    row.provider_payment_id,
+                    row.platform_run_id,
+                    row.payment_order_id,
+                    row.amount,
+                    row.currency,
+                    row.status,
+                    row.settled_at.isoformat(),
+                ]
+            )
+
+    return csv_path
+
+
 def _provider_settlement_rows(snapshots) -> tuple[ProviderSettlementRow, ...]:
     rows: list[ProviderSettlementRow] = []
     for snapshot in snapshots:
@@ -805,7 +933,10 @@ def _provider_settlement_rows(snapshots) -> tuple[ProviderSettlementRow, ...]:
             ProviderSettlementRow(
                 provider="sample_provider",
                 settlement_id=f"settlement_{record.run_id}",
-                provider_payment_id=f"provider_payment_{record.payment_order_id}",
+                provider_payment_id=provider_intent_id_for_run(
+                    "sample_provider",
+                    record.run_id,
+                ),
                 platform_run_id=record.run_id,
                 payment_order_id=record.payment_order_id,
                 amount=record.user_wallet_balance,

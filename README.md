@@ -7,7 +7,7 @@
 - 学习对象：有编程背景，金融领域零基础。
 - 学习目标：理解金融业务、FinTech 工程系统、数据分析、风控和合规基础。
 - 学习方式：先学概念，再写最小实验，再把知识沉淀成文档。
-- 当前阶段：阶段 40 后已完成前端 Console / Manual 体验改造和 Playwright 小型浏览器回归，当前进入结构、命名和文档规范复盘。
+- 当前阶段：阶段 40 后已完成前端 Console / Manual 体验改造、Playwright 小型浏览器回归、结构整理、知识地图复盘、Mermaid 图集初版、payment provider boundary / webhook endpoint 第一版、provider intent link、provider settlement CSV demo 接入、webhook timestamp replay window 教学规则，以及 provider webhook evidence item。
 
 ## 环境和语言约定
 

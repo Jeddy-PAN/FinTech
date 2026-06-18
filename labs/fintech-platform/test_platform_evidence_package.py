@@ -37,7 +37,11 @@ def test_build_platform_evidence_package_collects_key_evidence_sources() -> None
         settlement_findings=(_settlement_finding(),),
         access_findings=(_access_finding(),),
         approval_records=(_approval_record(),),
-        access_events=(_access_event(outcome="denied"), _access_event(outcome="granted")),
+        access_events=(
+            _access_event(outcome="denied"),
+            _access_event(outcome="granted"),
+            _provider_webhook_event(outcome="granted", reason="event_id=evt_001 duplicate=False"),
+        ),
         legal_hold=True,
         retention_policy_id="platform-evidence-hold",
     )
@@ -45,12 +49,13 @@ def test_build_platform_evidence_package_collects_key_evidence_sources() -> None
     assert package.package_id == "evidence_package:case_001"
     assert package.legal_hold is True
     assert package.retention_policy_id == "platform-evidence-hold"
-    assert package.evidence_count == 4
+    assert package.evidence_count == 5
     assert package.high_severity_count == 3
     assert package.source_counts == (
         ("access_audit", 1),
         ("access_monitoring", 1),
         ("operation_approval", 1),
+        ("payment_provider", 1),
         ("settlement_reconciliation", 1),
     )
     assert [item.severity for item in package.items][:3] == ["high", "high", "high"]
@@ -58,8 +63,43 @@ def test_build_platform_evidence_package_collects_key_evidence_sources() -> None
         "access_anomaly_finding",
         "denied_access_event",
         "operation_approval_record",
+        "provider_webhook_event",
         "settlement_reconciliation_finding",
     }
+
+
+def test_build_platform_evidence_package_collects_provider_webhook_events() -> None:
+    package = build_platform_evidence_package(
+        case_id="case_001",
+        generated_by="compliance_analyst_001",
+        generated_at=_now(),
+        access_events=(
+            _provider_webhook_event(
+                outcome="granted",
+                reason="event_id=evt_001 duplicate=False",
+            ),
+            _provider_webhook_event(
+                outcome="granted",
+                reason="event_id=evt_001 duplicate=True",
+                occurred_at=datetime(2026, 6, 12, 9, 1, tzinfo=timezone.utc),
+            ),
+            _provider_webhook_event(
+                outcome="denied",
+                reason="Provider webhook timestamp is outside the replay window",
+                occurred_at=datetime(2026, 6, 12, 9, 2, tzinfo=timezone.utc),
+            ),
+        ),
+    )
+
+    assert package.evidence_count == 3
+    assert package.source_counts == (("payment_provider", 3),)
+    assert {item.evidence_type for item in package.items} == {"provider_webhook_event"}
+    assert [item.severity for item in package.items] == ["high", "medium", "low"]
+    assert {item.subject_id for item in package.items} == {"evt_001", "provider_webhook"}
+    assert any(
+        item.summary == "Provider webhook denied: Provider webhook timestamp is outside the replay window"
+        for item in package.items
+    )
 
 
 def test_build_platform_evidence_package_ignores_passed_settlement_and_granted_access() -> None:
@@ -212,6 +252,23 @@ def _access_event(
         outcome=outcome,
         occurred_at=occurred_at or _now(),
         reason="Sample missing run lookup",
+    )
+
+
+def _provider_webhook_event(
+    *,
+    outcome: str,
+    reason: str,
+    occurred_at: datetime | None = None,
+) -> AuditAccessEvent:
+    return AuditAccessEvent(
+        event_type="audit_access.denied" if outcome == "denied" else "audit_access.granted",
+        actor="provider_webhook",
+        permission="process_platform_provider_webhook",
+        target="fintech_platform_provider_webhooks",
+        outcome=outcome,
+        occurred_at=occurred_at or _now(),
+        reason=reason,
     )
 
 

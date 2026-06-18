@@ -298,9 +298,9 @@ demo 现在也会输出 `Pending operation approval flow`，用于观察 retry a
 
 demo 现在也会输出 `Exported platform ledger reconciliation reports`，用于观察 completed run 的 payment order amount、ledger amount、platform bank balance 和 user wallet balance 是否一致。运行 API 服务后，`FinTech Platform Console` 也会显示 `Ledger Reconciliation Findings` 只读区块；单个 payment run 详情页也会显示该 run 的 ledger reconciliation context。
 
-demo 现在也会输出 `Exported platform settlement reconciliation reports`，用于观察内部 completed platform run 和教学版外部 provider settlement row 是否能对上；该报告会检查外部 settled row 是否存在、金额和币种是否匹配、非 completed 内部 run 是否错误出现在外部 settlement file 中，以及外部 row 是否能映射回内部 run。
+demo 现在也会先生成 `reports/provider_settlement_sample.csv`，再解析成教学版外部 provider settlement row，并输出 `Exported platform settlement reconciliation reports`。这个流程用于观察内部 completed platform run 和外部 settlement file 是否能对上；该报告会检查外部 settled row 是否存在、金额和币种是否匹配、非 completed 内部 run 是否错误出现在外部 settlement file 中，以及外部 row 是否能映射回内部 run。
 
-demo 现在也会输出 `Exported platform evidence package`，用于观察 settlement reconciliation、access anomaly、operation approval 和 denied access event 如何被组织成同一个教学版 evidence package。这个包会导出 evidence items、summary 和 HTML 报告，但不代表真实法律保全、真实监管证据清单或真实留存期限。
+demo 现在也会输出 `Exported platform evidence package`，用于观察 settlement reconciliation、access anomaly、operation approval、provider webhook event 和 denied access event 如何被组织成同一个教学版 evidence package。这个包会导出 evidence items、summary 和 HTML 报告，但不代表真实法律保全、真实监管证据清单或真实留存期限。
 
 demo 现在也会输出 `Platform operability snapshot`，用于观察本地 readiness、关键 metrics 和测试矩阵行数。readiness 会检查各个 SQLite store 是否可打开；metrics 会汇总 payment runs、async runs、operation approvals 和 denied access 等教学版计数。
 
@@ -733,7 +733,9 @@ test_platform_settlement_reconciliation_report.py
 demo.py
 ```
 
-阶段 37 新增教学版外部 settlement reconciliation：`ProviderSettlementRow` 表示外部 provider settlement file 的一行，`evaluate_platform_settlement_reconciliation()` 会检查内部 completed run 是否有外部 settled row、外部金额和币种是否匹配内部 payment audit payload、非 completed 内部 run 是否错误出现在外部 settlement file 中，以及外部 row 是否能映射回内部 run。`export_platform_settlement_reconciliation_report()` 可导出 CSV/HTML；demo 已接入 `Exported platform settlement reconciliation reports`。当前仍不接真实 payment provider、webhook、卡组织清算、银行流水、多币种 FX 或任何监管结论。
+阶段 37 新增教学版外部 settlement reconciliation：`ProviderSettlementRow` 表示外部 provider settlement file 的一行，`evaluate_platform_settlement_reconciliation()` 会检查内部 completed run 是否有外部 settled row、外部金额和币种是否匹配内部 payment audit payload、非 completed 内部 run 是否错误出现在外部 settlement file 中，以及外部 row 是否能映射回内部 run。`export_platform_settlement_reconciliation_report()` 可导出 CSV/HTML；demo 已接入 `provider_settlement_sample.csv -> parse_provider_settlement_csv() -> Exported platform settlement reconciliation reports`。当前仍不接真实 payment provider、webhook、卡组织清算、银行流水、多币种 FX 或任何监管结论。
+
+阶段 40 后补充了更明确的 provider boundary 教学实现：`platform_payment_provider.py` 支持教学版 provider intent link、HMAC-SHA256 webhook signature、timestamp tolerance / replay window、event_id 幂等去重、provider status 到 internal status 映射，以及 settlement CSV parser；demo 会导出 `provider_payment_intents.csv`，展示 `provider_intent_id -> internal_run_id -> payment_order_id` 的映射；`platform_api_app.py` 新增 `POST /platform/provider-webhooks`，会对 signed webhook payload 做验签、时间窗口检查、事件去重、状态映射和 access audit；`platform_evidence_package.py` 会把 provider webhook 的 granted / duplicate / denied 处理结果打包成 `provider_webhook_event` evidence item。当前这些规则是教学版协议，不代表 Stripe、PayPal、Visa、银行或清算机构的真实接口规范；如后续引用真实 provider API、签名 header、时间窗口或 settlement file 格式，必须查证官方或专业来源。
 
 阶段 38 第一版已完成：
 
@@ -744,7 +746,7 @@ test_platform_evidence_package.py
 demo.py
 ```
 
-阶段 38 新增教学版 evidence package：`build_platform_evidence_package()` 会把 failed settlement reconciliation findings、access anomaly findings、operation approval records 和 denied access events 汇总为统一 `PlatformEvidenceItem`，并用 `case_id`、`generated_by`、`legal_hold` 和 `retention_policy_id` 作为包级元数据。`export_platform_evidence_package()` 可导出 evidence items CSV、summary CSV 和 HTML；demo 已接入 `Exported platform evidence package`。当前仍不做真实法律保全、真实留存期限、WORM 存储、电子签名、附件哈希或 custody 流程；随后阶段 39 已进入可运行交付、观测和测试矩阵。
+阶段 38 新增教学版 evidence package：`build_platform_evidence_package()` 会把 failed settlement reconciliation findings、access anomaly findings、operation approval records、provider webhook events 和 denied access events 汇总为统一 `PlatformEvidenceItem`，并用 `case_id`、`generated_by`、`legal_hold` 和 `retention_policy_id` 作为包级元数据。`export_platform_evidence_package()` 可导出 evidence items CSV、summary CSV 和 HTML；demo 已接入 `Exported platform evidence package`。当前仍不做真实法律保全、真实留存期限、WORM 存储、电子签名、附件哈希或 custody 流程；随后阶段 39 已进入可运行交付、观测和测试矩阵。
 
 阶段 39 第一版已完成：
 

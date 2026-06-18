@@ -5,8 +5,10 @@
 ```mermaid
 flowchart TD
     Runs["PlatformRunSnapshot<br/>internal payment result"]
+    ProviderIntent["ProviderPaymentIntent<br/>provider_intent_id -> run_id"]
     LedgerAudit["ledger_transaction.posted<br/>audit payload"]
     Settlement["ProviderSettlementRow<br/>external settlement row"]
+    ProviderWebhook["Provider webhook event<br/>signed / duplicate / denied"]
     AccessAudit["API / report access audit"]
     Approval["OperationApprovalRecord<br/>retry approval lifecycle"]
 
@@ -17,9 +19,12 @@ flowchart TD
     Evidence["Evidence package<br/>items + summary + HTML report"]
 
     Runs --> LedgerRecon
+    Runs --> ProviderIntent
+    ProviderIntent --> SettlementRecon
     LedgerAudit --> LedgerRecon
     Runs --> SettlementRecon
     Settlement --> SettlementRecon
+    ProviderWebhook --> Evidence
     AccessAudit --> AccessAnomaly
     AccessAnomaly --> Case
 
@@ -37,7 +42,8 @@ flowchart TD
 - `Settlement reconciliation` 看内部 completed run 是否能和外部 provider settlement row 对上。
 - `Access anomaly` 把访问审计里的异常行为变成 finding。
 - `Investigation case` 把 finding 变成可处理的工单。
-- `Evidence package` 把对账差异、访问异常、审批记录和拒绝访问事件整理成可复核材料。
+- `Provider webhook event` 把外部 signed webhook 的成功、重复和拒绝处理结果纳入 evidence package。
+- `Evidence package` 把对账差异、访问异常、审批记录、provider webhook 事件和拒绝访问事件整理成可复核材料。
 
 ## 教学边界
 

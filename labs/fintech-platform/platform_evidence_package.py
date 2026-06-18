@@ -21,6 +21,10 @@ from platform_settlement_reconciliation_report import (  # noqa: E402
 )
 
 
+PROCESS_PLATFORM_PROVIDER_WEBHOOK = "process_platform_provider_webhook"
+PLATFORM_PROVIDER_WEBHOOKS_TARGET = "fintech_platform_provider_webhooks"
+
+
 @dataclass(frozen=True)
 class PlatformEvidenceItem:
     evidence_id: str
@@ -88,6 +92,7 @@ def build_platform_evidence_package(
 
     items = [
         *_settlement_evidence_items(settlement_findings),
+        *_provider_webhook_evidence_items(access_events),
         *_access_finding_evidence_items(access_findings),
         *_approval_evidence_items(approval_records),
         *_access_event_evidence_items(access_events),
@@ -151,6 +156,30 @@ def _settlement_evidence_items(
     return tuple(items)
 
 
+def _provider_webhook_evidence_items(
+    events: tuple[AuditAccessEvent, ...],
+) -> tuple[PlatformEvidenceItem, ...]:
+    items: list[PlatformEvidenceItem] = []
+    provider_events = tuple(event for event in events if _is_provider_webhook_event(event))
+    for index, event in enumerate(provider_events, start=1):
+        items.append(
+            PlatformEvidenceItem(
+                evidence_id=(
+                    f"provider_webhook:{index}:{event.outcome}:"
+                    f"{_provider_webhook_subject_id(event)}"
+                ),
+                evidence_type="provider_webhook_event",
+                source_system="payment_provider",
+                subject_id=_provider_webhook_subject_id(event),
+                severity=_provider_webhook_severity(event),
+                summary=_provider_webhook_summary(event),
+                recorded_at=_validate_timestamp(event.occurred_at, "occurred_at"),
+                reference=f"{event.permission}:{event.target}",
+            )
+        )
+    return tuple(items)
+
+
 def _access_finding_evidence_items(
     findings: tuple[AccessAnomalyFinding, ...],
 ) -> tuple[PlatformEvidenceItem, ...]:
@@ -201,6 +230,8 @@ def _access_event_evidence_items(
     for index, event in enumerate(events, start=1):
         if event.outcome != "denied":
             continue
+        if _is_provider_webhook_event(event):
+            continue
         items.append(
             PlatformEvidenceItem(
                 evidence_id=f"access_event:{index}:{event.actor}:{event.permission}",
@@ -214,6 +245,36 @@ def _access_event_evidence_items(
             )
         )
     return tuple(items)
+
+
+def _is_provider_webhook_event(event: AuditAccessEvent) -> bool:
+    return (
+        event.permission == PROCESS_PLATFORM_PROVIDER_WEBHOOK
+        and event.target == PLATFORM_PROVIDER_WEBHOOKS_TARGET
+    )
+
+
+def _provider_webhook_subject_id(event: AuditAccessEvent) -> str:
+    reason = event.reason or ""
+    for part in reason.split():
+        if part.startswith("event_id="):
+            event_id = part.removeprefix("event_id=").strip()
+            if event_id:
+                return event_id
+    return event.actor
+
+
+def _provider_webhook_severity(event: AuditAccessEvent) -> str:
+    if event.outcome == "denied":
+        return "high"
+    if "duplicate=True" in (event.reason or ""):
+        return "medium"
+    return "low"
+
+
+def _provider_webhook_summary(event: AuditAccessEvent) -> str:
+    reason = event.reason or "provider webhook processed"
+    return f"Provider webhook {event.outcome}: {reason}"
 
 
 def _approval_severity(record: OperationApprovalRecord) -> str:

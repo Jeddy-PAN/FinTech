@@ -1,6 +1,6 @@
 # docs 文档入口
 
-这个目录保存 FinTech 学习笔记、阶段计划和阶段总结。当前文档已经比较多，阅读时不建议从文件名 01 一路顺读到 54，而应按目标选择路径。
+这个目录保存 FinTech 学习笔记、阶段计划和阶段总结。当前文档已经比较多，阅读时不建议从文件名 01 一路顺读到 55，而应按目标选择路径。
 
 ## 推荐阅读路径
 
@@ -14,6 +14,7 @@
 4. [03-ledger-basics.md](03-ledger-basics.md) 到 [11-outbox-publisher.md](11-outbox-publisher.md)：理解账本、支付订单、幂等、请求指纹和 outbox。
 5. [12-transaction-statement-analysis.md](12-transaction-statement-analysis.md) 到 [16-compliance-audit.md](16-compliance-audit.md)：理解数据分析、投资组合、风控、KYC/AML 和合规审计。
 6. [54-fintech-knowledge-map-and-gap-analysis.md](54-fintech-knowledge-map-and-gap-analysis.md)：查看当前知识覆盖、理论缺口和下一步学习顺序。
+7. [55-payment-provider-boundary.md](55-payment-provider-boundary.md)：理解外部 payment provider、webhook、签名、事件幂等和 settlement file。
 
 ### 路径 B：理解当前综合平台
 
@@ -54,6 +55,7 @@
 33. [52-stage-39-operability-observability-test-matrix.md](52-stage-39-operability-observability-test-matrix.md)：可运行交付、观测和测试矩阵。
 34. [53-stage-40-final-acceptance-and-portfolio.md](53-stage-40-final-acceptance-and-portfolio.md)：最终验收与学习作品集总结。
 35. [54-fintech-knowledge-map-and-gap-analysis.md](54-fintech-knowledge-map-and-gap-analysis.md)：当前 FinTech 知识地图、缺口分析和后续大章节建议。
+36. [55-payment-provider-boundary.md](55-payment-provider-boundary.md)：外部 payment provider 边界、webhook 签名、事件幂等和 settlement CSV parser。
 
 ### 路径 C：只看阶段计划和历史
 
@@ -99,6 +101,7 @@
 | [52-stage-39-operability-observability-test-matrix.md](52-stage-39-operability-observability-test-matrix.md) | operability, observability and test matrix |
 | [53-stage-40-final-acceptance-and-portfolio.md](53-stage-40-final-acceptance-and-portfolio.md) | final acceptance and portfolio summary |
 | [54-fintech-knowledge-map-and-gap-analysis.md](54-fintech-knowledge-map-and-gap-analysis.md) | knowledge map, gap analysis and next learning roadmap |
+| [55-payment-provider-boundary.md](55-payment-provider-boundary.md) | payment provider boundary, webhook signature and settlement parser |
 
 ### 路径 D：看图理解系统
 
