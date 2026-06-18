@@ -57,7 +57,8 @@ PYTHONIOENCODING=utf-8
 1. 从零开始学 FinTech：先读 [docs/00-authoritative-sources.md](docs/00-authoritative-sources.md)、[docs/01-fintech-overview.md](docs/01-fintech-overview.md)、[docs/02-developer-to-finance.md](docs/02-developer-to-finance.md)，再按 `docs/03` 到 `docs/16` 逐步进入账本、支付、风控、KYC/AML 和合规审计。
 2. 直接理解综合平台：先读 [labs/fintech-platform/README.md](labs/fintech-platform/README.md)，再读 [docs/53-stage-40-final-acceptance-and-portfolio.md](docs/53-stage-40-final-acceptance-and-portfolio.md) 了解最终验收、作品集能力和仍不覆盖的生产级边界；最新 UI / Manual / Playwright 回归状态见 [LEARNING_PROGRESS.md](LEARNING_PROGRESS.md)。
 3. 运行工程作品：执行 `& 'C:\App\Anaconda\python.exe' .\labs\fintech-platform\demo.py`，观察端到端支付、async run、retry、access audit、investigation case、operations report、approval report、ledger / settlement reconciliation report、evidence package、operability snapshot、operation approval HTTP flow 和 console report views。
-4. 继续协作前：先看 [LEARNING_PROGRESS.md](LEARNING_PROGRESS.md) 的“当前状态”和“最新记录”，确认当前阶段和下一步候选方向。
+4. 验证当前工程状态：执行 `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify_labs.ps1`。如果当前机器没有可用浏览器或只想快速验证平台核心逻辑，可以先执行 `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify_labs.ps1 -SkipBrowser -SkipDemo -SkipFullLabs`。
+5. 继续协作前：先看 [LEARNING_PROGRESS.md](LEARNING_PROGRESS.md) 的“当前状态”和“最新记录”，确认当前阶段和下一步候选方向。
 
 ## 协作原则
 

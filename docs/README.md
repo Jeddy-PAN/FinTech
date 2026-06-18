@@ -1,6 +1,6 @@
 # docs 文档入口
 
-这个目录保存 FinTech 学习笔记、阶段计划和阶段总结。当前文档已经比较多，阅读时不建议从文件名 01 一路顺读到 53，而应按目标选择路径。
+这个目录保存 FinTech 学习笔记、阶段计划和阶段总结。当前文档已经比较多，阅读时不建议从文件名 01 一路顺读到 54，而应按目标选择路径。
 
 ## 推荐阅读路径
 
@@ -13,6 +13,7 @@
 3. [02-developer-to-finance.md](02-developer-to-finance.md)：理解程序员需要补哪些金融知识。
 4. [03-ledger-basics.md](03-ledger-basics.md) 到 [11-outbox-publisher.md](11-outbox-publisher.md)：理解账本、支付订单、幂等、请求指纹和 outbox。
 5. [12-transaction-statement-analysis.md](12-transaction-statement-analysis.md) 到 [16-compliance-audit.md](16-compliance-audit.md)：理解数据分析、投资组合、风控、KYC/AML 和合规审计。
+6. [54-fintech-knowledge-map-and-gap-analysis.md](54-fintech-knowledge-map-and-gap-analysis.md)：查看当前知识覆盖、理论缺口和下一步学习顺序。
 
 ### 路径 B：理解当前综合平台
 
@@ -52,6 +53,7 @@
 32. [51-stage-38-evidence-retention-governance.md](51-stage-38-evidence-retention-governance.md)：合规证据、调查工单和留存治理。
 33. [52-stage-39-operability-observability-test-matrix.md](52-stage-39-operability-observability-test-matrix.md)：可运行交付、观测和测试矩阵。
 34. [53-stage-40-final-acceptance-and-portfolio.md](53-stage-40-final-acceptance-and-portfolio.md)：最终验收与学习作品集总结。
+35. [54-fintech-knowledge-map-and-gap-analysis.md](54-fintech-knowledge-map-and-gap-analysis.md)：当前 FinTech 知识地图、缺口分析和后续大章节建议。
 
 ### 路径 C：只看阶段计划和历史
 
@@ -96,6 +98,17 @@
 | [51-stage-38-evidence-retention-governance.md](51-stage-38-evidence-retention-governance.md) | evidence package and retention governance |
 | [52-stage-39-operability-observability-test-matrix.md](52-stage-39-operability-observability-test-matrix.md) | operability, observability and test matrix |
 | [53-stage-40-final-acceptance-and-portfolio.md](53-stage-40-final-acceptance-and-portfolio.md) | final acceptance and portfolio summary |
+| [54-fintech-knowledge-map-and-gap-analysis.md](54-fintech-knowledge-map-and-gap-analysis.md) | knowledge map, gap analysis and next learning roadmap |
+
+### 路径 D：看图理解系统
+
+适合先建立全局结构，再回到具体文档和代码。
+
+1. [diagrams/README.md](diagrams/README.md)：图集入口。
+2. [diagrams/fintech-platform-architecture.md](diagrams/fintech-platform-architecture.md)：综合平台系统结构图。
+3. [diagrams/payment-run-lifecycle.md](diagrams/payment-run-lifecycle.md)：payment run、async run、retry approval 和 worker 生命周期。
+4. [diagrams/payment-provider-boundary-flow.md](diagrams/payment-provider-boundary-flow.md)：外部 payment provider 与内部平台的协议边界。
+5. [diagrams/reconciliation-and-evidence-flow.md](diagrams/reconciliation-and-evidence-flow.md)：对账、异常、调查工单和 evidence package 流程。
 
 ## 当前平台能力地图
 
